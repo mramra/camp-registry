@@ -643,6 +643,7 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
 <script>
 const SUPABASE_URL = 'https://ojclpkenecicujkqhhlu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_d6q8hoDDcohuZFHk3jxI7g_IBWWCmNu'
+const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qY2xwa2VuZWNpY3Vqa3FoaGx1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDIxMTMzMSwiZXhwIjoyMDg5Nzg3MzMxfQ.nm_rtTCvdxTiMc9ciyapgEq2c5k6pcMVFc_F-tN6_ro'
 const ORG_ID       = 'ddc8abe7-518f-40a4-8c3b-ee03bb0f47d5'
 
 const { createClient } = supabase
@@ -1426,7 +1427,7 @@ async function loadFamilies() {
   if (!navigator.onLine) return
   try {
     let q = db.from('families')
-      .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+      .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
       .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(500)
     if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
     const { data: srv, error: srvErr } = await q
@@ -2303,15 +2304,24 @@ async function createUser() {
 
   btn.disabled=true; btn.textContent='جارٍ الإنشاء...'
   try {
-    // إنشاء المستخدم مباشرة في قاعدة البيانات بدون إرسال email
-    const { data: newUser, error: fnErr } = await db.rpc('create_user_direct', {
-      p_email:    nationalId + '@c.co',
-      p_password: phone,
-      p_name:     fullName
+    // إنشاء المستخدم عبر Admin API
+    const adminRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SERVICE_KEY,
+        'Authorization': `Bearer ${SERVICE_KEY}`
+      },
+      body: JSON.stringify({
+        email: nationalId + '@c.co',
+        password: phone,
+        email_confirm: true,
+        user_metadata: { full_name: fullName }
+      })
     })
-    if (fnErr) throw fnErr
-    const userId = newUser
-
+    const adminData = await adminRes.json()
+    if (!adminRes.ok) throw new Error(adminData.message || adminData.msg || 'فشل إنشاء الحساب')
+    const userId = adminData.id
     if (!userId) throw new Error('فشل إنشاء الحساب')
 
     const { error: mErr } = await db.from('org_members').insert({
@@ -2458,25 +2468,26 @@ async function toggleUserStatus(id, isActive) {
 }
 
 async function resetUserPassword(id, name) {
-  // جلب بيانات المستخدم
-  const { data: member } = await db.from('org_members').select('phone, national_id').eq('id', id).single()
+  const { data: member } = await db.from('org_members').select('phone, national_id, user_id').eq('id', id).single()
   const phone = member?.phone || member?.national_id
   if (!phone) { showToast('⚠️ لا يوجد جوال لهذا المستخدم', true); return }
+  if (!member?.user_id) { showToast('❌ لم يتم العثور على المستخدم', true); return }
 
   if (!confirm(`إعادة كلمة مرور ${name} إلى: ${phone}؟`)) return
 
-  // تحديث كلمة المرور عبر SQL function
-  const { data: authMember } = await db.from('org_members').select('user_id').eq('id', id).single()
-  if (!authMember?.user_id) { showToast('❌ لم يتم العثور على المستخدم', true); return }
-
-  // جلب email من auth.users عبر dالة
-  const { data: updated, error } = await db.rpc('reset_user_password', {
-    p_user_id: authMember.user_id,
-    p_password: phone
+  if (phone.length < 6) { showToast('⚠️ كلمة المرور أقل من 6 أحرف', true); return }
+  const resetRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${member.user_id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SERVICE_KEY,
+      'Authorization': `Bearer ${SERVICE_KEY}`
+    },
+    body: JSON.stringify({ password: phone })
   })
-
-  if (error) {
-    showToast('خطأ: ' + error.message, true)
+  const resetJson = await resetRes.json().catch(()=>({}))
+  if (!resetRes.ok) {
+    showToast('خطأ: ' + (resetJson.message||resetJson.msg||'فشل تغيير كلمة المرور'), true)
     return
   }
 
