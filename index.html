@@ -762,6 +762,14 @@ async function loadMember() {
   buildSidebar()
   checkOnlineStatus()
   await loadCampsFromServer()
+  // DEBUG
+  if (navigator.onLine) {
+    const { count, error } = await db.from('families')
+      .select('*', { count: 'exact', head: true }).eq('org_id', ORG_ID)
+    if (error) alert('خطأ RLS:\n' + error.message)
+    else showToast('✅ ' + count + ' أسرة في السيرفر')
+  }
+  showPage('page-dashboard')
   await loadDashboard()
 }
 
