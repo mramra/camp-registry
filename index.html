@@ -677,8 +677,8 @@ const statusNames = {
 async function init() {
   showLoginScreen()
 
-  const cachedMember = localStorage.getItem('current_member')
-  const cachedUser   = localStorage.getItem('current_user')
+  const cachedMember = localStorage.getItem('current_member') || sessionStorage.getItem('current_member')
+  const cachedUser   = localStorage.getItem('current_user') || sessionStorage.getItem('current_user')
 
   if (cachedMember && cachedUser) {
     currentUser   = JSON.parse(cachedUser)
@@ -730,6 +730,8 @@ async function loadMember() {
 
   localStorage.setItem('current_member', JSON.stringify(member))
   localStorage.setItem('current_user',   JSON.stringify({ id: currentUser.id, email: currentUser.email }))
+  sessionStorage.setItem('current_member', JSON.stringify(member))
+  sessionStorage.setItem('current_user',   JSON.stringify({ id: currentUser.id, email: currentUser.email }))
 
   hideLoginScreen()
   buildSidebar()
@@ -1417,20 +1419,26 @@ async function loadFamilies() {
   if (!navigator.onLine) return
   try {
     let q = db.from('families')
-      .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
-      .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(500)
+      .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+      .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
     if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
-    const { data: srv } = await q
+    const { data: srv, error: srvErr } = await q
+    if (srvErr) { showToast('❌ ' + srvErr.message, true); return }
+    if (!srv?.length) { showToast('⚠️ لا أسر من السيرفر', true); return }
+    showToast('✅ ' + srv.length + ' أسرة')
     if (!srv?.length) return
     await localDB.families.bulkPut(srv)
 
-    // مزامنة الأفراد في الخلفية — نمسح القديم أولاً لتجنب التكرار
-    db.from('family_members').select('id,family_id,national_id,name,dob,relation,gender,health').then(async ({ data: mems }) => {
-      if (mems?.length) {
-        try {
-          await localDB.family_members.clear()
-          await localDB.family_members.bulkPut(mems)
-        } catch(e) { console.warn('members sync:', e.message) }
+    // مزامنة الأفراد — مع فلتر الأسر المجلوبة
+    db.from('family_members')
+      .select('id,family_id,national_id,name,dob,relation,gender,health')
+      .limit(2000)
+      .then(async ({ data: mems }) => {
+        if (mems?.length) {
+          try {
+            await localDB.family_members.clear()
+            await localDB.family_members.bulkPut(mems)
+          } catch(e) { console.warn('members sync:', e.message) }
       }
     })
 
@@ -2570,6 +2578,16 @@ async function loadCampsList() {
     fcs?.forEach(f => cMap[f.camp_id]=(cMap[f.camp_id]||0)+1)
   }
 
+  // خريطة مديري الإيواء
+  const managerMap = {}
+  if (navigator.onLine) {
+    const { data: admins } = await db.from('org_members').select('id,full_name').eq('org_id', ORG_ID).eq('role','super_admin')
+    admins?.forEach(a => managerMap[a.id] = a.full_name)
+    // تحديث allCamps مع manager_id
+    const { data: freshCamps } = await db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
+    if (freshCamps) { allCamps = freshCamps; camps = isDelegate ? allCamps.filter(c=>c.id===currentMember.camp_id) : allCamps }
+  }
+
   const sLabel = { active:'✅ نشط', suspended:'⏸️ موقوف', closed:'🔴 مغلق' }
   const sColor = { active:'var(--green)', suspended:'var(--accent)', closed:'var(--red)' }
 
@@ -2579,6 +2597,7 @@ async function loadCampsList() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
         <div>
           <div style="font-size:15px;font-weight:700;">⛺ ${c.name}</div>
+          ${c.manager_id?`<div style="font-size:11px;color:var(--purple);margin-top:2px;">👤 ${managerMap[c.manager_id]||''}</div>`:''}
           ${c.address?`<div style="font-size:11px;color:var(--muted);margin-top:4px;">📍 ${c.address}</div>`:''}
           <div style="font-size:11px;color:var(--muted);margin-top:2px;">👥 ${fc} أسرة ${c.capacity?`من ${c.capacity}`:''} ${c.facilities?`| 🏗️ ${c.facilities} مرافق`:''}</div>
         </div>
@@ -2586,6 +2605,7 @@ async function loadCampsList() {
       </div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
         ${c.latitude&&c.longitude?`<button onclick="window.open('https://maps.google.com/?q=${c.latitude},${c.longitude}')" style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗺️ الخريطة</button>`:''}
+        ${isOwner?`<button onclick="assignCampManager('${c.id}','${c.name}')" style="background:rgba(139,92,246,0.1);border:1px solid var(--purple);color:var(--purple);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">👤 مدير</button>`:''}
         ${!isDelegate?`<button onclick="editCamp('${c.id}')" style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✏️ تعديل</button>`:''}
         ${isOwner&&fc===0&&navigator.onLine?`<button onclick="deleteCamp('${c.id}','${c.name}')" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>`:''}
       </div>
@@ -4864,6 +4884,36 @@ function updateSelCount() {
   if (el) el.textContent = n + ' ✓'
   const btn = document.getElementById('btnConfirmDist')
   if (btn) btn.textContent = `✅ تأكيد الاستلام للمحددين (${n})`
+}
+
+// ══ CAMP MANAGER ══
+async function assignCampManager(campId, campName) {
+  const { data: admins } = await db.from('org_members')
+    .select('id,full_name').eq('org_id', ORG_ID).eq('role','super_admin').eq('is_active',true)
+  const { data: camp } = await db.from('camps').select('manager_id').eq('id',campId).single()
+  const opts = '<option value="">-- بدون مدير --</option>' +
+    (admins||[]).map(a=>`<option value="${a.id}" ${camp?.manager_id===a.id?'selected':''}>${a.full_name}</option>`).join('')
+  const m = document.createElement('div')
+  m.id = 'campMgrModal'
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;'
+  m.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:380px;">
+    <div style="font-size:14px;font-weight:700;color:var(--accent);margin-bottom:14px;">👤 مدير إيواء — ${campName}</div>
+    <select id="campMgrSel" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;">${opts}</select>
+    <div style="display:flex;gap:10px;margin-top:14px;">
+      <button onclick="saveCampManager('${campId}')" class="btn btn-primary" style="flex:1;">💾 حفظ</button>
+      <button onclick="document.getElementById('campMgrModal').remove()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 16px;font-family:Cairo,sans-serif;font-size:13px;cursor:pointer;">إلغاء</button>
+    </div>
+  </div>`
+  document.body.appendChild(m)
+}
+
+async function saveCampManager(campId) {
+  const managerId = document.getElementById('campMgrSel').value || null
+  const { error } = await db.from('camps').update({ manager_id: managerId }).eq('id', campId)
+  if (error) { showToast('خطأ: ' + error.message, true); return }
+  document.getElementById('campMgrModal')?.remove()
+  showToast('✅ تم تعيين مدير الإيواء')
+  loadCampsList()
 }
 
 // ══ TOAST ══
