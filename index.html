@@ -2,15 +2,6 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#f59e0b">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="سجل المخيم">
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#f59e0b">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="سجل المخيم">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>سجل أسر المخيم</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
@@ -643,7 +634,6 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
 <script>
 const SUPABASE_URL = 'https://ojclpkenecicujkqhhlu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_d6q8hoDDcohuZFHk3jxI7g_IBWWCmNu'
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qY2xwa2VuZWNpY3Vqa3FoaGx1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDIxMTMzMSwiZXhwIjoyMDg5Nzg3MzMxfQ.nm_rtTCvdxTiMc9ciyapgEq2c5k6pcMVFc_F-tN6_ro'
 const ORG_ID       = 'ddc8abe7-518f-40a4-8c3b-ee03bb0f47d5'
 
 const { createClient } = supabase
@@ -651,32 +641,15 @@ const db = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 // Local DB
 const localDB = new Dexie('CampRegistry')
-localDB.version(1).stores({
+localDB.version(5).stores({
   families:       'id, camp_id, org_id, status, updated_at',
   family_members: 'id, family_id, national_id',
   camps:          'id, org_id',
   sync_queue:     '++id, status',
   meta:           'key',
-})
-localDB.version(2).stores({
-  camp_distributions: 'id, camp_id, org_id, status',
-  camp_dist_families: 'id, distribution_id, family_id',
-})
-localDB.version(3).stores({
-  dist_rounds: 'id, camp_id, org_id, status',
-})
-localDB.version(4).stores({
-  camp_distributions: 'id, camp_id, org_id, status, round_id',
-})
-localDB.version(5).stores({
-  families:           'id, camp_id, org_id, status, updated_at',
-  family_members:     'id, family_id, national_id',
-  camps:              'id, org_id',
-  sync_queue:         '++id, status',
-  meta:               'key',
   dist_rounds:        'id, camp_id, org_id, status',
   camp_distributions: 'id, camp_id, org_id, status, round_id',
-  camp_dist_families: 'id, distribution_id, family_id',
+  camp_dist_families: 'id, distribution_id, family_id'
 })
 
 let currentUser   = null
@@ -752,7 +725,7 @@ async function loadMember() {
     .from('org_members').select('*')
     .eq('user_id', currentUser.id).eq('is_active', true).single()
 
-  if (!member) { showLoginScreen(); showToast('لم يتم العثور على بيانات المستخدم', true); return }
+  if (!member) { showLoginScreen(); return }
   currentMember = member
 
   localStorage.setItem('current_member', JSON.stringify(member))
@@ -762,7 +735,6 @@ async function loadMember() {
   buildSidebar()
   checkOnlineStatus()
   await loadCampsFromServer()
-  showPage('page-dashboard')
   await loadDashboard()
 }
 
@@ -880,7 +852,7 @@ function buildSidebar() {
   if (canAdmin()) {
     html += '<div class="nav-section">الإدارة</div>'
     html += navItem('👥', 'المستخدمون', 'page-users')
-    if (isOwner()) html += navItem('📱', 'الأجهزة', 'page-devices')
+    html += navItem('📱', 'الأجهزة', 'page-devices')
     html += navItem('⚙️', 'الإعدادات', 'page-settings')
   }
 
@@ -1431,27 +1403,27 @@ async function loadFamilies() {
     fillFilterCampWithCount()
   }
 
-  // ① حاول من localDB أولاً
+  // ① اعرض المحلي فوراً
   try {
     const local = await localDB.families.where('org_id').equals(ORG_ID).toArray()
     if (local.length) {
       await render(local)
     } else {
-      tbody.innerHTML = '<tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ تحميل البيانات...</div></div></td></tr>'
+      tbody.innerHTML = '<tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div></td></tr>'
     }
   } catch(e) {}
 
-  // ② اجلب دائماً من السيرفر
+  // ② مزامنة خلفية صامتة إذا متصل
   if (!navigator.onLine) return
   try {
     let q = db.from('families')
-      .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
-      .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
+      .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+      .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(500)
     if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
-    const { data: srv, error: srvErr } = await q
-    if (srvErr) { showToast('خطأ: ' + srvErr.message, true); return }
-    if (!srv?.length) { tbody.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-icon">👨‍👩‍👧</div>لا توجد أسر</div></td></tr>'; return }
+    const { data: srv } = await q
+    if (!srv?.length) return
     await localDB.families.bulkPut(srv)
+
     // مزامنة الأفراد في الخلفية — نمسح القديم أولاً لتجنب التكرار
     db.from('family_members').select('id,family_id,national_id,name,dob,relation,gender,health').then(async ({ data: mems }) => {
       if (mems?.length) {
@@ -1469,7 +1441,6 @@ async function loadFamilies() {
     loadDashboard()
   } catch(e) {
     console.warn('bg sync err:', e.message)
-    showToast('خطأ مزامنة: ' + e.message, true)
   }
 }
 
@@ -2321,30 +2292,20 @@ async function createUser() {
 
   btn.disabled=true; btn.textContent='جارٍ الإنشاء...'
   try {
-    // إنشاء المستخدم عبر Admin API
-    const adminRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SERVICE_KEY,
-        'Authorization': `Bearer ${SERVICE_KEY}`
-      },
-      body: JSON.stringify({
-        email: nationalId + '@c.co',
-        password: phone,
-        email_confirm: true,
-        user_metadata: { full_name: fullName }
-      })
+    // إنشاء المستخدم مباشرة في قاعدة البيانات بدون إرسال email
+    const { data: newUser, error: fnErr } = await db.rpc('create_user_direct', {
+      p_email:    nationalId + '@c.co',
+      p_password: phone,
+      p_name:     fullName
     })
-    const adminData = await adminRes.json()
-    if (!adminRes.ok) throw new Error(adminData.message || adminData.msg || 'فشل إنشاء الحساب')
-    const userId = adminData.id
+    if (fnErr) throw fnErr
+    const userId = newUser
+
     if (!userId) throw new Error('فشل إنشاء الحساب')
 
     const { error: mErr } = await db.from('org_members').insert({
       org_id: ORG_ID, user_id: userId, camp_id: campId||null, role,
       full_name: fullName, phone, national_id: nationalId,
-      created_by: currentUser.id,
       must_change_pass: true,
       can_add:    role==='assistant'?document.getElementById('uCanAdd').checked:true,
       can_edit:   role==='assistant'?document.getElementById('uCanEdit').checked:true,
@@ -2363,14 +2324,7 @@ async function createUser() {
 async function loadUsers() {
   const container = document.getElementById('usersList'); if(!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
-  let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
-  // المندوب ومدير الإيواء يرون فقط من أنشأوهم — لا يرون platform_owner ولا بعضهم
-  if (['camp_delegate','super_admin'].includes(currentMember.role)) {
-    usersQ = usersQ.eq('created_by', currentMember.user_id)
-  } else if (currentMember.role === 'platform_owner') {
-    // platform_owner يرى الكل
-  }
-  const { data: users } = await usersQ.order('created_at', { ascending: false })
+  const { data: users } = await db.from('org_members').select('*').eq('org_id', ORG_ID).order('created_at', { ascending: false })
   if (!users?.length) { container.innerHTML='<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'; return }
   const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
   container.innerHTML = users.map(u => `
@@ -2392,7 +2346,6 @@ async function loadUsers() {
         <button onclick="editUser('${u.id}')" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✏️ تعديل</button>
         <button onclick="toggleUserStatus('${u.id}',${u.is_active})" style="background:transparent;border:1px solid ${u.is_active?'var(--red)':'var(--green)'};color:${u.is_active?'var(--red)':'var(--green)'};border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">${u.is_active?'🚫 إيقاف':'✅ تفعيل'}</button>
         <button onclick="resetUserPassword('${u.id}','${u.full_name}')" style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🔑 إعادة كلمة المرور</button>
-        <button onclick="deleteUser('${u.id}','${u.full_name}')" style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>
       </div>`:''}
     </div>`).join('')
 }
@@ -2479,46 +2432,15 @@ async function saveEditUser(id) {
   loadUsers()
 }
 
-async function deleteUser(id, name) {
-  if (!confirm(`حذف مستخدم "${name}"؟ لا يمكن التراجع.`)) return
-  const { error } = await db.from('org_members').delete().eq('id', id)
-  if (error) { showToast('خطأ: ' + error.message, true); return }
-  showToast(`✅ تم حذف ${name}`)
-  loadUsers()
-}
-
 async function toggleUserStatus(id, isActive) {
   await db.from('org_members').update({ is_active: !isActive }).eq('id', id)
   showToast(isActive?'🚫 تم الإيقاف':'✅ تم التفعيل'); loadUsers()
 }
 
 async function resetUserPassword(id, name) {
-  const { data: member } = await db.from('org_members').select('phone, national_id, user_id').eq('id', id).single()
-  const phone = member?.phone || member?.national_id
-  if (!phone) { showToast('⚠️ لا يوجد جوال لهذا المستخدم', true); return }
-  if (!member?.user_id) { showToast('❌ لم يتم العثور على المستخدم', true); return }
-
-  if (!confirm(`إعادة كلمة مرور ${name} إلى: ${phone}؟`)) return
-
-  if (phone.length < 6) { showToast('⚠️ كلمة المرور أقل من 6 أحرف', true); return }
-  const resetRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${member.user_id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': SERVICE_KEY,
-      'Authorization': `Bearer ${SERVICE_KEY}`
-    },
-    body: JSON.stringify({ password: phone })
-  })
-  const resetJson = await resetRes.json().catch(()=>({}))
-  if (!resetRes.ok) {
-    showToast('خطأ: ' + (resetJson.message||resetJson.msg||'فشل تغيير كلمة المرور'), true)
-    return
-  }
-
+  if (!confirm(`إعادة كلمة مرور ${name} إلى رقم جواله؟`)) return
   await db.from('org_members').update({ must_change_pass: true }).eq('id', id)
-  showToast(`✅ تم تعيين كلمة مرور ${name} إلى ${phone}`)
-  loadUsers()
+  showToast(`✅ سيُطلب من ${name} تغيير كلمة المرور`); loadUsers()
 }
 
 // ══ CAMPS ══
@@ -2629,9 +2551,8 @@ async function loadCampsList() {
   const container = document.getElementById('campsList'); if(!container) return
   const isDelegate = currentMember.role==='camp_delegate'
   const isOwner    = currentMember.role==='platform_owner'
-  const isAdmin    = ['platform_owner','super_admin'].includes(currentMember.role)
   const btnAdd     = document.getElementById('btnAddCamp')
-  if (btnAdd) btnAdd.style.display = isAdmin?'inline-flex':'none'
+  if (btnAdd) btnAdd.style.display = isDelegate?'none':'inline-flex'
 
   let camps = allCamps
   if (isDelegate && currentMember.camp_id) camps = allCamps.filter(c => c.id===currentMember.camp_id)
@@ -3083,16 +3004,7 @@ function printFamily(id) {
       </tr>`).join('')
     const win = window.open('','_blank')
     win.document.write(`<!DOCTYPE html><html dir="rtl"><head>
-      <meta charset="UTF-8">
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#f59e0b">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="سجل المخيم">
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#f59e0b">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="سجل المخيم"><title>بطاقة أسرة - ${f.head_name}</title>
+      <meta charset="UTF-8"><title>بطاقة أسرة - ${f.head_name}</title>
       <style>
         body{font-family:Arial,sans-serif;padding:20px;color:#000;direction:rtl;}
         h2{text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:16px;}
@@ -3655,15 +3567,6 @@ async function printAllFamilies() {
 
   const win = window.open('','_blank')
   win.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#f59e0b">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="سجل المخيم">
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#f59e0b">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="سجل المخيم">
     <title>قائمة الأسر</title>
     <style>body{font-family:Arial;padding:20px;direction:rtl;}h2{text-align:center;}
     table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ddd;padding:6px;font-size:12px;text-align:right;}
@@ -4535,15 +4438,6 @@ async function printRoundReport(roundId) {
 
   const win = window.open('','_blank')
   win.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#f59e0b">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="سجل المخيم">
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#f59e0b">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="سجل المخيم">
     <title>${round?.name||'كشف الجولة'}</title>
     <style>body{font-family:Arial;padding:20px;direction:rtl;font-size:12px;}
     h2,h3{text-align:center;margin:4px 0;}
@@ -4972,32 +4866,6 @@ function updateSelCount() {
   if (btn) btn.textContent = `✅ تأكيد الاستلام للمحددين (${n})`
 }
 
-// ══ FORCE SYNC ══
-async function forceSyncFamilies() {
-  if (!navigator.onLine) return
-  try {
-    let q = db.from('families')
-      .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
-      .eq('org_id', ORG_ID)
-      .order('updated_at', { ascending: false })
-      .limit(1000)
-    if (currentMember?.camp_id) q = q.eq('camp_id', currentMember.camp_id)
-    const { data, error } = await q
-    if (error) { console.error('sync error:', error.message); return }
-    if (data?.length) {
-      await localDB.families.bulkPut(data)
-      // مزامنة الأفراد
-      const { data: mems } = await db.from('family_members')
-        .select('id,family_id,national_id,name,dob,relation,gender,health')
-        .in('family_id', data.map(f => f.id))
-      if (mems?.length) {
-        await localDB.family_members.clear()
-        await localDB.family_members.bulkPut(mems)
-      }
-    }
-  } catch(e) { console.error('forceSyncFamilies:', e) }
-}
-
 // ══ TOAST ══
 function showToast(msg, isError=false) {
   const t = document.getElementById('toast')
@@ -5014,43 +4882,6 @@ document.addEventListener('keydown', e => {
 
 // ══ START ══
 init()
-
-// ── Service Worker ──
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').then(reg => {
-    reg.addEventListener('updatefound', () => {
-      const newSW = reg.installing
-      newSW.addEventListener('statechange', () => {
-        if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-          showUpdateBanner()
-        }
-      })
-    })
-  }).catch(e => console.log('SW:', e))
-
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    window.location.reload()
-  })
-}
-
-function showUpdateBanner() {
-  const old = document.getElementById('updateBanner')
-  if (old) return
-  const b = document.createElement('div')
-  b.id = 'updateBanner'
-  b.style.cssText = 'position:fixed;bottom:72px;left:50%;transform:translateX(-50%);background:#1f2937;border:1px solid #f59e0b;border-radius:12px;padding:12px 16px;font-family:Cairo,sans-serif;font-size:13px;color:#e6edf3;z-index:9999;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.5);direction:rtl;white-space:nowrap;'
-  b.innerHTML = `
-    <span>🔄 يوجد تحديث جديد</span>
-    <button onclick="applyUpdate()" style="background:#f59e0b;color:#000;border:none;border-radius:8px;padding:6px 14px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">تحديث الآن</button>
-    <button onclick="this.parentElement.remove()" style="background:transparent;border:none;color:#8b949e;cursor:pointer;font-size:18px;line-height:1;">✕</button>`
-  document.body.appendChild(b)
-}
-
-function applyUpdate() {
-  navigator.serviceWorker.getRegistration().then(reg => {
-    if (reg?.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' })
-  })
-}
 </script>
 </body>
 </html>
