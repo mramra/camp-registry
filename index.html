@@ -651,15 +651,32 @@ const db = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 // Local DB
 const localDB = new Dexie('CampRegistry')
-localDB.version(5).stores({
+localDB.version(1).stores({
   families:       'id, camp_id, org_id, status, updated_at',
   family_members: 'id, family_id, national_id',
   camps:          'id, org_id',
   sync_queue:     '++id, status',
   meta:           'key',
+})
+localDB.version(2).stores({
+  camp_distributions: 'id, camp_id, org_id, status',
+  camp_dist_families: 'id, distribution_id, family_id',
+})
+localDB.version(3).stores({
+  dist_rounds: 'id, camp_id, org_id, status',
+})
+localDB.version(4).stores({
+  camp_distributions: 'id, camp_id, org_id, status, round_id',
+})
+localDB.version(5).stores({
+  families:           'id, camp_id, org_id, status, updated_at',
+  family_members:     'id, family_id, national_id',
+  camps:              'id, org_id',
+  sync_queue:         '++id, status',
+  meta:               'key',
   dist_rounds:        'id, camp_id, org_id, status',
   camp_distributions: 'id, camp_id, org_id, status, round_id',
-  camp_dist_families: 'id, distribution_id, family_id'
+  camp_dist_families: 'id, distribution_id, family_id',
 })
 
 let currentUser   = null
@@ -1413,26 +1430,22 @@ async function loadFamilies() {
     fillFilterCampWithCount()
   }
 
-  // ① اعرض المحلي فوراً
+  // ① حاول من localDB أولاً
   try {
     const local = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-    if (local.length) {
-      await render(local)
-    } else {
-      tbody.innerHTML = '<tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div></td></tr>'
-    }
+    if (local.length) await render(local)
   } catch(e) {}
 
-  // ② مزامنة خلفية صامتة إذا متصل
+  // ② اجلب دائماً من السيرفر لو متصل (ليس فقط في الخلفية)
   if (!navigator.onLine) return
   try {
     let q = db.from('families')
       .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
-      .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(500)
+      .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
     if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
     const { data: srv, error: srvErr } = await q
-    if (srvErr) { showToast('خطأ جلب الأسر: ' + srvErr.message, true); return }
-    if (!srv?.length) { showToast('⚠️ الأسر فارغة من السيرفر', true); return }
+    if (srvErr) { showToast('خطأ: ' + srvErr.message, true); return }
+    if (!srv?.length) { tbody.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-icon">👨‍👩‍👧</div>لا توجد أسر</div></td></tr>'; return }
     await localDB.families.bulkPut(srv)
 
     // مزامنة الأفراد في الخلفية — نمسح القديم أولاً لتجنب التكرار
