@@ -1433,10 +1433,14 @@ async function loadFamilies() {
   // ① حاول من localDB أولاً
   try {
     const local = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-    if (local.length) await render(local)
+    if (local.length) {
+      await render(local)
+    } else {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ تحميل البيانات...</div></div></td></tr>'
+    }
   } catch(e) {}
 
-  // ② اجلب دائماً من السيرفر لو متصل (ليس فقط في الخلفية)
+  // ② اجلب دائماً من السيرفر
   if (!navigator.onLine) return
   try {
     let q = db.from('families')
@@ -1447,7 +1451,6 @@ async function loadFamilies() {
     if (srvErr) { showToast('خطأ: ' + srvErr.message, true); return }
     if (!srv?.length) { tbody.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-icon">👨‍👩‍👧</div>لا توجد أسر</div></td></tr>'; return }
     await localDB.families.bulkPut(srv)
-
     // مزامنة الأفراد في الخلفية — نمسح القديم أولاً لتجنب التكرار
     db.from('family_members').select('id,family_id,national_id,name,dob,relation,gender,health').then(async ({ data: mems }) => {
       if (mems?.length) {
@@ -4966,6 +4969,32 @@ function updateSelCount() {
   if (el) el.textContent = n + ' ✓'
   const btn = document.getElementById('btnConfirmDist')
   if (btn) btn.textContent = `✅ تأكيد الاستلام للمحددين (${n})`
+}
+
+// ══ FORCE SYNC ══
+async function forceSyncFamilies() {
+  if (!navigator.onLine) return
+  try {
+    let q = db.from('families')
+      .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+      .eq('org_id', ORG_ID)
+      .order('updated_at', { ascending: false })
+      .limit(1000)
+    if (currentMember?.camp_id) q = q.eq('camp_id', currentMember.camp_id)
+    const { data, error } = await q
+    if (error) { console.error('sync error:', error.message); return }
+    if (data?.length) {
+      await localDB.families.bulkPut(data)
+      // مزامنة الأفراد
+      const { data: mems } = await db.from('family_members')
+        .select('id,family_id,national_id,name,dob,relation,gender,health')
+        .in('family_id', data.map(f => f.id))
+      if (mems?.length) {
+        await localDB.family_members.clear()
+        await localDB.family_members.bulkPut(mems)
+      }
+    }
+  } catch(e) { console.error('forceSyncFamilies:', e) }
 }
 
 // ══ TOAST ══
