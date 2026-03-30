@@ -2327,6 +2327,7 @@ async function createUser() {
     const { error: mErr } = await db.from('org_members').insert({
       org_id: ORG_ID, user_id: userId, camp_id: campId||null, role,
       full_name: fullName, phone, national_id: nationalId,
+      created_by: currentUser.id,
       must_change_pass: true,
       can_add:    role==='assistant'?document.getElementById('uCanAdd').checked:true,
       can_edit:   role==='assistant'?document.getElementById('uCanEdit').checked:true,
@@ -2345,7 +2346,12 @@ async function createUser() {
 async function loadUsers() {
   const container = document.getElementById('usersList'); if(!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
-  const { data: users } = await db.from('org_members').select('*').eq('org_id', ORG_ID).order('created_at', { ascending: false })
+  let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
+  // المندوب يرى فقط مستخدميه الذين أنشأهم
+  if (currentMember.role === 'camp_delegate') {
+    usersQ = usersQ.eq('created_by', currentMember.user_id)
+  }
+  const { data: users } = await usersQ.order('created_at', { ascending: false })
   if (!users?.length) { container.innerHTML='<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'; return }
   const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
   container.innerHTML = users.map(u => `
@@ -2604,8 +2610,9 @@ async function loadCampsList() {
   const container = document.getElementById('campsList'); if(!container) return
   const isDelegate = currentMember.role==='camp_delegate'
   const isOwner    = currentMember.role==='platform_owner'
+  const isAdmin    = ['platform_owner','super_admin'].includes(currentMember.role)
   const btnAdd     = document.getElementById('btnAddCamp')
-  if (btnAdd) btnAdd.style.display = isDelegate?'none':'inline-flex'
+  if (btnAdd) btnAdd.style.display = isAdmin?'inline-flex':'none'
 
   let camps = allCamps
   if (isDelegate && currentMember.camp_id) camps = allCamps.filter(c => c.id===currentMember.camp_id)
