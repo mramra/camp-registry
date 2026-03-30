@@ -862,7 +862,7 @@ function buildSidebar() {
   if (canAdmin()) {
     html += '<div class="nav-section">الإدارة</div>'
     html += navItem('👥', 'المستخدمون', 'page-users')
-    html += navItem('📱', 'الأجهزة', 'page-devices')
+    if (isOwner()) html += navItem('📱', 'الأجهزة', 'page-devices')
     html += navItem('⚙️', 'الإعدادات', 'page-settings')
   }
 
@@ -2347,9 +2347,11 @@ async function loadUsers() {
   const container = document.getElementById('usersList'); if(!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
   let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
-  // المندوب يرى فقط مستخدميه الذين أنشأهم
-  if (currentMember.role === 'camp_delegate') {
+  // المندوب ومدير الإيواء يرون فقط من أنشأوهم — لا يرون platform_owner ولا بعضهم
+  if (['camp_delegate','super_admin'].includes(currentMember.role)) {
     usersQ = usersQ.eq('created_by', currentMember.user_id)
+  } else if (currentMember.role === 'platform_owner') {
+    // platform_owner يرى الكل
   }
   const { data: users } = await usersQ.order('created_at', { ascending: false })
   if (!users?.length) { container.innerHTML='<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'; return }
