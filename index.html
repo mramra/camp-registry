@@ -1457,9 +1457,12 @@ async function loadFamilies() {
       .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
       .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
     if (currentMember.role === 'super_admin') {
-      const myCamps = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
-      if (myCamps.length === 1) q = q.eq('camp_id', myCamps[0])
-      else if (myCamps.length > 1) q = q.in('camp_id', myCamps)
+      const { data: myCampsData } = await db.from('camps')
+        .select('id').eq('org_id', ORG_ID).eq('manager_id', currentMember.id)
+      const myCamps = myCampsData?.map(c => c.id) || []
+      if (myCamps.length === 0) { tbody.innerHTML='<tr><td colspan="6"><div class="empty">لا توجد مخيمات مُعيَّنة</div></td></tr>'; return }
+      else if (myCamps.length === 1) q = q.eq('camp_id', myCamps[0])
+      else q = q.in('camp_id', myCamps)
     } else if (currentMember.camp_id) {
       q = q.eq('camp_id', currentMember.camp_id)
     }
@@ -2639,7 +2642,25 @@ async function loadCampsList() {
 
   let camps = allCamps
   if (isDelegate && currentMember.camp_id) camps = allCamps.filter(c => c.id===currentMember.camp_id)
-  if (currentMember.role==='super_admin') camps = allCamps.filter(c => c.manager_id===currentMember.id)
+  if (currentMember.role==='super_admin') {
+    // جلب مخيماته من السيرفر للتأكد من manager_id
+    if (navigator.onLine) {
+      const { data: myCamps } = await db.from('camps')
+        .select('*').eq('org_id', ORG_ID).eq('manager_id', currentMember.id)
+      if (myCamps) {
+        camps = myCamps
+        // تحديث allCamps بالبيانات الجديدة
+        myCamps.forEach(nc => {
+          const i = allCamps.findIndex(c => c.id === nc.id)
+          if (i >= 0) allCamps[i] = nc; else allCamps.push(nc)
+        })
+      } else {
+        camps = allCamps.filter(c => c.manager_id === currentMember.id)
+      }
+    } else {
+      camps = allCamps.filter(c => c.manager_id === currentMember.id)
+    }
+  }
   if (!camps.length) { container.innerHTML='<div class="empty"><div class="empty-icon">⛺</div>لا توجد مخيمات</div>'; return }
 
   // عدد الأسر من localDB أولاً (أسرع)
