@@ -415,6 +415,19 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
         <div class="form-group"><label>خط العرض (Latitude)</label><input type="text" id="campLat" placeholder="31.5204" dir="ltr"></div>
       </div>
       <div class="form-group"><label>خط الطول (Longitude)</label><input type="text" id="campLng" placeholder="34.4584" dir="ltr"></div>
+      <!-- قسم المندوب — يظهر فقط لمدير الإيواء عند إنشاء مخيم جديد -->
+      <div id="delegateSection" style="display:none;border-top:1px solid var(--border);margin-top:12px;padding-top:12px;">
+        <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px;">👤 تعيين مندوب (اختياري)</div>
+        <div class="form-group"><label>اسم المندوب</label>
+          <input type="text" id="delegateName" placeholder="الاسم الرباعي"></div>
+        <div class="form-grid-2">
+          <div class="form-group"><label>رقم الهوية</label>
+            <input type="text" id="delegateId" placeholder="412345678" maxlength="9" inputmode="numeric" dir="ltr"></div>
+          <div class="form-group"><label>رقم التواصل</label>
+            <input type="text" id="delegatePhone" placeholder="0501234567" maxlength="10" inputmode="numeric" dir="ltr"></div>
+        </div>
+      </div>
+
       <div style="display:flex;gap:10px;margin-top:4px;">
         <button class="btn btn-primary" onclick="saveCamp()" id="btnSaveCamp">💾 حفظ</button>
         <button class="btn" style="background:var(--surface2);border:1px solid var(--border);" onclick="hideCampForm()">إلغاء</button>
@@ -1443,7 +1456,13 @@ async function loadFamilies() {
     let q = db.from('families')
       .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
       .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
-    if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
+    if (currentMember.role === 'super_admin') {
+      const myCamps = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
+      if (myCamps.length === 1) q = q.eq('camp_id', myCamps[0])
+      else if (myCamps.length > 1) q = q.in('camp_id', myCamps)
+    } else if (currentMember.camp_id) {
+      q = q.eq('camp_id', currentMember.camp_id)
+    }
     const { data: srv, error: srvErr } = await q
     if (srvErr) { showToast('❌ ' + srvErr.message, true); return }
     if (!srv?.length) { showToast('⚠️ لا أسر من السيرفر', true); return }
@@ -2341,6 +2360,8 @@ async function createUser() {
       can_export: role==='assistant'?document.getElementById('uCanExport')?.checked:true,
       can_import: role==='assistant'?document.getElementById('uCanImport')?.checked:(role==='camp_delegate'),
       is_active:  true,
+      // لو platform_owner ينشئ مندوب — يُعيَّن created_by لمدير الإيواء المسؤول عن المخيم
+      created_by: await getCreatedBy(role, campId),
     })
     if (mErr) throw mErr
     showToast(`✅ تم إنشاء حساب ${fullName}`)
@@ -2476,6 +2497,9 @@ function showAddCampForm() {
   editingCampId = null
   document.getElementById('campFormTitle').textContent = '➕ مخيم جديد'
   document.getElementById('btnSaveCamp').textContent   = '💾 إضافة'
+  // أظهر قسم المندوب لمدير الإيواء فقط عند الإنشاء
+  const delSec = document.getElementById('delegateSection')
+  if (delSec) delSec.style.display = currentMember.role==='super_admin' ? 'block' : 'none'
   ;['campName','campAddress','campLat','campLng'].forEach(id => document.getElementById(id).value='')
   document.getElementById('campCapacity').value=''; document.getElementById('campFacilities').value=''; document.getElementById('campStatus').value='active'
   document.getElementById('campFormError').style.display='none'
@@ -2487,6 +2511,8 @@ function editCamp(id) {
   editingCampId = id
   document.getElementById('campFormTitle').textContent = '✏️ تعديل مخيم'
   document.getElementById('btnSaveCamp').textContent   = '💾 حفظ التعديل'
+  const delSec2 = document.getElementById('delegateSection')
+  if (delSec2) delSec2.style.display = 'none'
   document.getElementById('campName').value     = camp.name||''
   document.getElementById('campAddress').value  = camp.address||''
   document.getElementById('campCapacity').value = camp.capacity||''
@@ -2516,6 +2542,8 @@ async function saveCamp() {
     status:    document.getElementById('campStatus').value,
     latitude:  parseFloat(document.getElementById('campLat').value)||null,
     longitude: parseFloat(document.getElementById('campLng').value)||null,
+    // مدير الإيواء يملك المخيم تلقائياً
+    manager_id: currentMember.role === 'super_admin' ? currentMember.id : null,
   }
 
   try {
@@ -2552,6 +2580,33 @@ async function saveCamp() {
       allCamps.push(camp)
       await localDB.camps.put(camp)
       showToast('✅ تم إضافة المخيم')
+
+      // إنشاء المندوب إن وُجد
+      const delName  = document.getElementById('delegateName')?.value.trim()
+      const delNatId = document.getElementById('delegateId')?.value.trim()
+      const delPhone = document.getElementById('delegatePhone')?.value.trim()
+      if (delName && delNatId?.length >= 9 && delPhone?.length >= 10) {
+        try {
+          const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json', 'apikey':SERVICE_KEY, 'Authorization':`Bearer ${SERVICE_KEY}` },
+            body: JSON.stringify({ email: delNatId+'@c.co', password: delPhone, email_confirm: true, user_metadata:{ full_name: delName } })
+          })
+          const json = await res.json()
+          if (res.ok && json.id) {
+            await db.from('org_members').insert({
+              org_id: ORG_ID, user_id: json.id, camp_id: camp.id, role: 'camp_delegate',
+              full_name: delName, phone: delPhone, national_id: delNatId,
+              must_change_pass: true, can_add: true, can_edit: true, can_delete: true,
+              can_export: true, can_import: true, is_active: true,
+              created_by: currentUser.id,
+            })
+            showToast(`✅ تم إنشاء المندوب ${delName}`)
+          } else {
+            showToast('⚠️ المخيم أُنشئ لكن فشل إنشاء المندوب: ' + (json.message||''), true)
+          }
+        } catch(e) { showToast('⚠️ فشل إنشاء المندوب', true) }
+      }
     }
     await loadCampsFromServer(); hideCampForm(); loadCampsList()
     fillCampSelect('smsFilterCamp', false)
@@ -2584,6 +2639,7 @@ async function loadCampsList() {
 
   let camps = allCamps
   if (isDelegate && currentMember.camp_id) camps = allCamps.filter(c => c.id===currentMember.camp_id)
+  if (currentMember.role==='super_admin') camps = allCamps.filter(c => c.manager_id===currentMember.id)
   if (!camps.length) { container.innerHTML='<div class="empty"><div class="empty-icon">⛺</div>لا توجد مخيمات</div>'; return }
 
   // عدد الأسر من localDB أولاً (أسرع)
@@ -4907,6 +4963,17 @@ function updateSelCount() {
 }
 
 // ══ CAMP MANAGER ══
+async function getCreatedBy(role, campId) {
+  // platform_owner ينشئ مندوب → created_by = مدير الإيواء المسؤول عن المخيم
+  if (currentMember.role === 'platform_owner' && role === 'camp_delegate' && campId) {
+    const camp = allCamps.find(c => c.id === campId)
+    if (camp?.manager_id) return camp.manager_id
+  }
+  // super_admin ينشئ → هو نفسه
+  if (currentMember.role === 'super_admin') return currentMember.id
+  // platform_owner ينشئ مدير إيواء → created_by = platform_owner
+  return currentUser.id
+}
 async function assignCampManager(campId, campName) {
   const { data: admins } = await db.from('org_members')
     .select('id,full_name').eq('org_id', ORG_ID).eq('role','super_admin').eq('is_active',true)
