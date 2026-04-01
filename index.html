@@ -737,6 +737,27 @@ async function loadMember() {
   buildSidebar()
   checkOnlineStatus()
   await loadCampsFromServer()
+
+  // مزامنة فورية بعد الدخول
+  if (navigator.onLine) {
+    try {
+      let q = db.from('families')
+        .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+        .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
+      if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
+      const { data: fams } = await q
+      if (fams?.length) {
+        await localDB.families.bulkPut(fams)
+        const { data: mems } = await db.from('family_members')
+          .select('id,family_id,national_id,name,dob,relation,gender,health').limit(2000)
+        if (mems?.length) {
+          await localDB.family_members.clear()
+          await localDB.family_members.bulkPut(mems)
+        }
+      }
+    } catch(e) {}
+  }
+
   await loadDashboard()
 }
 
@@ -1430,19 +1451,17 @@ async function loadFamilies() {
     await localDB.families.bulkPut(srv)
 
     // مزامنة الأفراد — مع فلتر الأسر المجلوبة
-    db.from('family_members')
+    const { data: mems } = await db.from('family_members')
       .select('id,family_id,national_id,name,dob,relation,gender,health')
       .limit(2000)
-      .then(async ({ data: mems }) => {
-        if (mems?.length) {
-          try {
-            await localDB.family_members.clear()
-            await localDB.family_members.bulkPut(mems)
-          } catch(e) { console.warn('members sync:', e.message) }
-      }
-    })
+    if (mems?.length) {
+      try {
+        await localDB.family_members.clear()
+        await localDB.family_members.bulkPut(mems)
+      } catch(e) {}
+    }
 
-    // أعد العرض بعد المزامنة
+    // أعد العرض بعد مزامنة الأسر والأفراد — نقرأ من localDB مباشرة
     const updated = await localDB.families.where('org_id').equals(ORG_ID).toArray()
     await render(updated)
     // حدّث الإحصائيات بعد المزامنة
