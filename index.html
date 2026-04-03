@@ -837,15 +837,40 @@ async function init() {
     buildSidebar()
     checkOnlineStatus()
 
+    if (!navigator.onLine) {
+      // Offline — اعرض من localDB مباشرة بدون أي طلب شبكة
+      const localCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
+      if (localCamps.length) {
+        allCamps = localCamps
+        fillCampSelect('filterCamp', true)
+        fillCampSelect('familyCamp')
+        fillCampSelect('uCamp')
+      }
+      showPage('page-dashboard')
+      await loadDashboard()
+      return
+    }
+
     if (navigator.onLine) {
-      // جلب المخيمات والبيانات أولاً ثم عرض الداشبورد
-      const { data: { session } } = await db.auth.getSession()
-      if (!session) {
-        localStorage.removeItem('current_member')
-        localStorage.removeItem('current_user')
-        sessionStorage.removeItem('current_member')
-        sessionStorage.removeItem('current_user')
-        showLoginScreen()
+      // Online — تحقق من الجلسة مع timeout
+      try {
+        const sessionPromise = db.auth.getSession()
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise])
+        if (!session) {
+          localStorage.removeItem('current_member')
+          localStorage.removeItem('current_user')
+          sessionStorage.removeItem('current_member')
+          sessionStorage.removeItem('current_user')
+          showLoginScreen()
+          return
+        }
+      } catch(e) {
+        // فشل التحقق — اعمل كـ Offline
+        const localCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
+        if (localCamps.length) { allCamps = localCamps }
+        showPage('page-dashboard')
+        await loadDashboard()
         return
       }
       await loadCampsFromServer()
@@ -1726,25 +1751,13 @@ async function loadFamilies() {
   }
 
   // ① اعرض المحلي فوراً — فقط لو لا يوجد فلتر دور
-  const hasRoleFilter = currentMember.role === 'super_admin'
   try {
     const local = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-    if (local.length && !hasRoleFilter) {
-      await render(local)
-    } else {
-      tbody.innerHTML = '<tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div></td></tr>'
-    }
+    if (local.length) { await render(local) }
   } catch(e) {}
 
-  // ② إذا Offline — اعرض المحلي وارجع
-  if (!navigator.onLine) {
-    try {
-      const local = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-      if (local.length) await render(local)
-      else tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📴</div>لا توجد بيانات محلية</div></td></tr>'
-    } catch(e) {}
-    return
-  }
+  // ② إذا Offline — انتهى (البيانات عُرضت في ①)
+  if (!navigator.onLine) return
   try {
     let q = db.from('families')
       .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
