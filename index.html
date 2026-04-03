@@ -1775,7 +1775,6 @@ async function loadFamilies() {
     const { data: srv, error: srvErr } = await q
     if (srvErr) { showToast('❌ ' + srvErr.message, true); return }
     if (!srv?.length) { showToast('⚠️ لا أسر من السيرفر', true); return }
-    showToast('✅ ' + srv.length + ' أسرة')
     if (!srv?.length) return
     await localDB.families.bulkPut(srv)
 
@@ -2707,10 +2706,10 @@ async function createUser() {
 
 async function loadUsers() {
   // ══ فلتر المستخدمين حسب الدور ══
-  // platform_owner → يرى الكل (عدا platform_owner آخر)
-  // super_admin    → يرى فقط من created_by = currentMember.id
-  // camp_delegate  → يرى فقط من created_by = currentMember.id
-  // ملاحظة: المستخدمون القدامى created_by = NULL لا يظهرون لغير platform_owner
+  // platform_owner → يرى الكل
+  // super_admin    → يرى فقط من created_by = currentUser.id (auth.users.id)
+  // camp_delegate  → يرى فقط من created_by = currentUser.id (auth.users.id)
+  // ⚠️ created_by يخزن auth.users.id وليس org_members.id
   const container = document.getElementById('usersList'); if(!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
 
@@ -2719,8 +2718,8 @@ async function loadUsers() {
   if (currentMember.role === 'platform_owner') {
     // يرى الكل بما فيهم نفسه
   } else if (['super_admin','camp_delegate'].includes(currentMember.role)) {
-    // يرى فقط من أنشأهم هو
-    usersQ = usersQ.eq('created_by', currentMember.id)
+    // يرى فقط من أنشأهم هو — بـ auth.users.id
+    usersQ = usersQ.eq('created_by', currentUser.id)
   }
   const { data: users } = await usersQ.order('created_at', { ascending: false })
   if (!users?.length) { container.innerHTML='<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'; return }
@@ -5345,14 +5344,17 @@ function updateSelCount() {
 
 // ══ CAMP MANAGER ══
 async function getCreatedBy(role, campId) {
-  // platform_owner ينشئ مندوب → created_by = مدير الإيواء المسؤول عن المخيم
+  // ⚠️ created_by يجب أن يكون auth.users.id دائماً (ليس org_members.id)
+  // platform_owner ينشئ مندوب → created_by = user_id لمدير الإيواء المسؤول
   if (currentMember.role === 'platform_owner' && role === 'camp_delegate' && campId) {
     const camp = allCamps.find(c => c.id === campId)
-    if (camp?.manager_id) return camp.manager_id
+    if (camp?.manager_id) {
+      // manager_id هو org_members.id — نجلب user_id منه
+      const { data: mgr } = await db.from('org_members').select('user_id').eq('id', camp.manager_id).single()
+      if (mgr?.user_id) return mgr.user_id
+    }
   }
-  // super_admin ينشئ → هو نفسه
-  if (currentMember.role === 'super_admin') return currentMember.id
-  // platform_owner ينشئ مدير إيواء → created_by = platform_owner
+  // الكل الآخر → auth.users.id للمستخدم الحالي
   return currentUser.id
 }
 async function assignCampManager(campId, campName) {
