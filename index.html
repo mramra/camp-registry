@@ -449,6 +449,21 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <div class="card-title">⚙️ الإعدادات</div>
       <div style="color:var(--muted);font-size:13px;margin-bottom:16px;">إعدادات النظام</div>
     </div>
+
+    <!-- تغيير كلمة المرور -->
+    <div class="card">
+      <div class="card-title">🔑 تغيير كلمة المرور</div>
+      <div class="form-group">
+        <label>كلمة المرور الجديدة</label>
+        <input type="password" id="settingsNewPass" placeholder="8 أحرف على الأقل" style="direction:ltr;">
+      </div>
+      <div class="form-group">
+        <label>تأكيد كلمة المرور</label>
+        <input type="password" id="settingsConfirmPass" placeholder="أعد الكتابة" style="direction:ltr;">
+      </div>
+      <div id="settingsPassError" style="display:none;color:var(--red);font-size:12px;margin-top:8px;"></div>
+      <button class="btn btn-primary" onclick="changeMyPassword()" style="margin-top:12px;width:100%;">💾 تغيير كلمة المرور</button>
+    </div>
     <!-- أداة تنظيف قاعدة البيانات — للمالك فقط -->
     <div class="card" id="cleanupCard" style="display:none;">
       <div class="card-title" style="color:var(--red);">🧹 تنظيف قاعدة البيانات</div>
@@ -645,6 +660,87 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
 <div class="toast" id="toast"></div>
 
 <script>
+// ╔══════════════════════════════════════════════════════════════╗
+// ║     فهرس التطبيق — للبحث السريع اضغط Ctrl+F واكتب رقم السطر ║
+// ╠══════════════════════════════════════════════════════════════╣
+// ║  📄 صفحات HTML                                               ║
+// ╠══════════════════════════════════════════════════════════════╣
+// ║  page-dashboard            → سطر 242    لوحة التحكم
+// ║  page-families             → سطر 257    قائمة الأسر
+// ║  page-users                → سطر 364    المستخدمون
+// ║  page-camps                → سطر 400    المخيمات
+// ║  page-devices              → سطر 441    الأجهزة
+// ║  page-settings             → سطر 447    الإعدادات
+// ║  page-data                 → سطر 467    البيانات
+// ║  page-dist                 → سطر 474    التوزيعات
+// ║  page-analysis             → سطر 483    التحليل
+// ║  page-sms                  → سطر 488    الرسائل
+// ╠══════════════════════════════════════════════════════════════╣
+// ║  📦 أقسام JavaScript                                         ║
+// ╠══════════════════════════════════════════════════════════════╣
+// ║  ══ CONFIG                       → سطر 684
+// ║  ══ INIT                         → سطر 726
+// ║  ══ LOGIN (AUTH)                 → سطر 833
+// ║  ══ SIDEBAR                      → سطر 927
+// ║  ══ PERMISSIONS (الصلاحيات)      → سطر 967
+// ║  ══ NAVIGATION                   → سطر 984
+// ║  ══ SIDEBAR CONTROLS             → سطر 1032
+// ║  ══ ONLINE STATUS                → سطر 1036
+// ║  ══ CAMPS (المخيمات)             → سطر 1062
+// ║  ══ CUSTOM EXPORT MODAL          → سطر 1136
+// ║  ══ AGE CALC (early)             → سطر 1344
+// ║  ══ DASHBOARD (لوحة التحكم)      → سطر 1355
+// ║  ══ FAMILIES (الأسر)             → سطر 1476
+// ║  ══ FAMILY DRAWER                → سطر 1674
+// ║  ══ DUPLICATE DETECTION          → سطر 1859
+// ║  ══ VALIDATION                   → سطر 2023
+// ║  ══ SAVE / UPDATE FAMILY         → سطر 2167
+// ║  ══ TAGS                         → سطر 2378
+// ║  ══ MEMBERS FORM                 → سطر 2398
+// ║  ══ DATE SELECTS                 → سطر 2426
+// ║  ══ USERS (المستخدمون)           → سطر 2448
+// ║  ══ فلتر المستخدمين حسب الدور    → سطر 2533
+// ║  ══ CAMPS                        → سطر 2669
+// ║  ══ DEVICE REGISTRATION          → سطر 2873
+// ║  ══ DEVICES                      → سطر 2925
+// ║  ══ INCOMPLETE / MISSING DETECTION → سطر 2977
+// ║  ══ SMS PAGE                     → سطر 3013
+// ║  ══ SYNC QUEUE (المزامنة)        → سطر 3158
+// ║  ══ DB CLEANUP                   → سطر 3205
+// ║  ══ PRINT FAMILY                 → سطر 3279
+// ║  ══ EXPORT EXCEL                 → سطر 3333
+// ║  ══ ANALYSIS PAGE                → سطر 3419
+// ║  ══ DATA PAGE (استيراد/تصدير)    → سطر 3641
+// ║  ══ DISTRIBUTIONS (التوزيعات)    → سطر 4251
+// ║  ══ CAMP MANAGER                 → سطر 5167
+// ║  ══ TOAST                        → سطر 5208
+// ║  ══ KEYBOARD                     → سطر 5215
+// ║  ══ START                        → سطر 5222
+// ╠══════════════════════════════════════════════════════════════╣
+// ║  ⚡ الدوال الرئيسية                                           ║
+// ╠══════════════════════════════════════════════════════════════╣
+// ║  init                                → سطر 728
+// ║  loadMember                          → سطر 791
+// ║  doLogin                             → سطر 851
+// ║  loadDashboard                       → سطر 1362
+// ║  loadFamilies                        → سطر 1487
+// ║  saveFamily                          → سطر 2169
+// ║  loadCampsFromServer                 → سطر 1071
+// ║  loadCampsList                       → سطر 2807
+// ║  saveCamp                            → سطر 2704
+// ║  loadUsers                           → سطر 2532
+// ║  createUser                          → سطر 2477
+// ║  resetUserPassword                   → سطر 2663
+// ║  loadDistPage                        → سطر 4260
+// ║  saveNewRound                        → سطر 4383
+// ║  saveNewBatch                        → سطر 4575
+// ║  loadSmsPage                         → سطر 3016
+// ║  loadAnalysis                        → سطر 3420
+// ║  processSyncQueue                    → سطر 3164
+// ║  showToast                           → سطر 5209
+// ╚══════════════════════════════════════════════════════════════╝
+
+// ══ CONFIG ══ المتغيرات والثوابت + Dexie + Supabase
 const SUPABASE_URL = 'https://ojclpkenecicujkqhhlu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_d6q8hoDDcohuZFHk3jxI7g_IBWWCmNu'
 const ORG_ID       = 'ddc8abe7-518f-40a4-8c3b-ee03bb0f47d5'
@@ -687,6 +783,7 @@ const statusNames = {
 }
 
 // ══ INIT ══
+// 🚀 نقطة البداية | المنطق: جلسة محفوظة → بيانات → داشبورد | لا جلسة → تسجيل دخول
 async function init() {
   showLoginScreen()
 
@@ -700,27 +797,44 @@ async function init() {
     buildSidebar()
     checkOnlineStatus()
 
-    const localCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
-    if (localCamps.length) {
-      allCamps = localCamps
-      fillCampSelect('filterCamp', true)
-      fillCampSelect('familyCamp')
-      fillCampSelect('uCamp')
+    if (navigator.onLine) {
+      // جلب المخيمات والبيانات أولاً ثم عرض الداشبورد
+      const { data: { session } } = await db.auth.getSession()
+      if (!session) {
+        localStorage.removeItem('current_member')
+        localStorage.removeItem('current_user')
+        sessionStorage.removeItem('current_member')
+        sessionStorage.removeItem('current_user')
+        showLoginScreen()
+        return
+      }
+      await loadCampsFromServer()
+      // مزامنة الأسر والأفراد
+      try {
+        let q = db.from('families')
+          .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+          .eq('org_id', ORG_ID).limit(1000)
+        if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
+        const { data: fams } = await q
+        if (fams?.length) {
+          await localDB.families.bulkPut(fams)
+          const { data: mems } = await db.from('family_members')
+            .select('id,family_id,national_id,name,dob,relation,gender,health').limit(2000)
+          if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems) }
+        }
+      } catch(e) {}
+    } else {
+      // Offline — اجلب من localDB
+      const localCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
+      if (localCamps.length) {
+        allCamps = localCamps
+        fillCampSelect('filterCamp', true)
+        fillCampSelect('familyCamp')
+        fillCampSelect('uCamp')
+      }
     }
 
     await loadDashboard()
-
-    if (navigator.onLine) {
-      db.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-          loadCampsFromServer()
-        } else {
-          localStorage.removeItem('current_member')
-          localStorage.removeItem('current_user')
-          showLoginScreen()
-        }
-      })
-    }
     return
   }
 
@@ -772,10 +886,17 @@ async function loadMember() {
   }
 
   showPage('page-dashboard')
-  await loadDashboard()
+  await loadDashboard() // بعد المزامنة — البيانات جاهزة في localDB
 }
 
-// ══ LOGIN ══
+// ══ LOGIN (AUTH) ══
+// ┌────────────────────────────────────────────────┐
+// │ doLogin()         ← تسجيل الدخول              │
+// │ doChangePassword() ← تغيير كلمة المرور الأولى │
+// │ logout()          ← تسجيل الخروج              │
+// │ loadMember()      ← جلب بيانات المستخدم       │
+// │ ⚠️ email = nationalId + '@c.co'                │
+// └────────────────────────────────────────────────┘
 function showLoginScreen() {
   document.getElementById('loginScreen').style.display = 'flex'
   document.getElementById('loginFormSection').style.display = 'block'
@@ -889,8 +1010,10 @@ function buildSidebar() {
   if (canAdmin()) {
     html += '<div class="nav-section">الإدارة</div>'
     html += navItem('👥', 'المستخدمون', 'page-users')
-    html += navItem('📱', 'الأجهزة', 'page-devices')
-    html += navItem('⚙️', 'الإعدادات', 'page-settings')
+    if (currentMember.role === 'platform_owner') {
+      html += navItem('📱', 'الأجهزة', 'page-devices')
+      html += navItem('⚙️', 'الإعدادات', 'page-settings')
+    }
   }
 
   nav.innerHTML = html
@@ -900,7 +1023,16 @@ function navItem(icon, label, page) {
   return `<button class="nav-item" onclick="showPage('${page}');closeSidebar()"><span style="width:20px;text-align:center;">${icon}</span> ${label}</button>`
 }
 
-// ══ PERMISSIONS ══
+// ══ PERMISSIONS (الصلاحيات) ══
+// ┌──────────────────────────────────────────────────────────┐
+// │ canWrite()       ← يمكنه الكتابة (إضافة/تعديل)         │
+// │ canAdmin()       ← مدير أو أعلى                         │
+// │ canDelete()      ← يمكنه الحذف                          │
+// │ canViewReports() ← يمكنه رؤية التقارير                  │
+// │ isOwner()        ← platform_owner فقط                   │
+// │ الأدوار: platform_owner > super_admin > camp_delegate   │
+// │          > assistant                                     │
+// └──────────────────────────────────────────────────────────┘
 function canWrite()       { return ['platform_owner','super_admin','camp_delegate','assistant'].includes(currentMember.role) }
 function canViewReports() { return ['platform_owner','super_admin','camp_delegate'].includes(currentMember.role) }
 function canAdmin()       { return ['platform_owner','super_admin'].includes(currentMember.role) }
@@ -986,13 +1118,27 @@ function checkOnlineStatus() {
   window.addEventListener('offline', update)
 }
 
-// ══ CAMPS ══
+// ══ CAMPS (المخيمات) ══
+// ┌──────────────────────────────────────────────────────┐
+// │ loadCampsFromServer() ← جلب المخيمات من Supabase    │
+// │ loadCampsList()       ← عرض قائمة المخيمات          │
+// │ saveCamp()            ← حفظ مخيم جديد أو تعديل      │
+// │ fillCampSelect()      ← ملء قوائم اختيار المخيمات   │
+// │ ⚠️ الفلترة: super_admin يرى مخيماته فقط (manager_id)│
+// │ ⚠️ عند إنشاء مخيم → manager_id = currentMember.id   │
+// └──────────────────────────────────────────────────────┘
 async function loadCampsFromServer() {
   if (navigator.onLine) {
-    const { data: camps } = await db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
+    // جلب المخيمات حسب الدور من البداية
+    let q = db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
+    if (currentMember?.role === 'super_admin') {
+      q = q.eq('manager_id', currentMember.id)
+    } else if (currentMember?.role === 'camp_delegate' && currentMember.camp_id) {
+      q = q.eq('id', currentMember.camp_id)
+    }
+    const { data: camps } = await q
     if (camps) {
       allCamps = camps
-      // امسح القديم وأحفظ الجديد فقط
       await localDB.camps.clear()
       await localDB.camps.bulkPut(camps)
     }
@@ -1010,26 +1156,40 @@ async function loadCampsFromServer() {
 function fillCampSelect(selectId, addAll = false) {
   const sel = document.getElementById(selectId)
   if (!sel) return
-  const saved = sel.value  // احفظ الاختيار
+  const saved = sel.value
   sel.innerHTML = addAll ? '<option value="">كل المخيمات</option>' : '<option value="">اختر المخيم</option>'
-  allCamps.forEach(c => sel.innerHTML += `<option value="${c.id}">${c.name}</option>`)
-  if (saved) sel.value = saved  // أعد الاختيار
+  // فلترة المخيمات حسب الدور
+  const visibleCamps = currentMember?.role === 'super_admin'
+    ? allCamps.filter(x => x.manager_id === currentMember.id)
+    : currentMember?.role === 'camp_delegate'
+    ? allCamps.filter(x => x.id === currentMember.camp_id)
+    : allCamps
+  visibleCamps.forEach(c => sel.innerHTML += `<option value="${c.id}">${c.name}</option>`)
+    if (saved) sel.value = saved
 }
 
 async function fillFilterCampWithCount() {
   const sel = document.getElementById('filterCamp')
   if (!sel) return
-  const saved = sel.value  // احفظ الاختيار الحالي
+  const saved = sel.value
   const fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
   const cCount = {}
   fams.forEach(f => cCount[f.camp_id] = (cCount[f.camp_id]||0)+1)
-  const total = fams.length
+
+  // فلترة المخيمات حسب الدور
+  const visibleCamps = currentMember?.role === 'super_admin'
+    ? allCamps.filter(x => x.manager_id === currentMember.id)
+    : currentMember?.role === 'camp_delegate'
+    ? allCamps.filter(x => x.id === currentMember.camp_id)
+    : allCamps
+
+  const total = visibleCamps.reduce((s, x) => s + (cCount[x.id]||0), 0)
   sel.innerHTML = `<option value="">كل المخيمات (${total})</option>`
-  allCamps.forEach(c => {
+  visibleCamps.forEach(c => {
     const n = cCount[c.id]||0
     sel.innerHTML += `<option value="${c.id}">${c.name} (${n})</option>`
   })
-  if (saved) sel.value = saved  // أعد الاختيار السابق
+  if (saved) sel.value = saved // أعد الاختيار السابق
 }
 
 // ══ CUSTOM EXPORT MODAL ══
@@ -1251,12 +1411,51 @@ function calcAge(dob) {
   return age
 }
 
-// ══ DASHBOARD ══
+// ══ DASHBOARD (لوحة التحكم) ══
+// ┌──────────────────────────────────────────────────┐
+// │ loadDashboard() ← عرض الإحصائيات                │
+// │ يقرأ من localDB أولاً                           │
+// │ لو localDB فارغة → يجلب من Supabase مباشرة     │
+// │ يعرض: عدد الأسر، الأفراد، العاجل، الناقص        │
+// └──────────────────────────────────────────────────┘
 async function loadDashboard() {
   try {
     if (!currentMember) return
-    const fams    = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-    const members = await localDB.family_members.toArray()
+    let fams    = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+    let members = await localDB.family_members.toArray()
+
+    // فلتر الأسر حسب الدور
+    if (currentMember.role === 'super_admin') {
+      const myCampIds = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
+      fams = fams.filter(f => myCampIds.includes(f.camp_id))
+      members = members.filter(m => fams.some(f => f.id === m.family_id))
+    } else if (currentMember.camp_id) {
+      fams = fams.filter(f => f.camp_id === currentMember.camp_id)
+      members = members.filter(m => fams.some(f => f.id === m.family_id))
+    }
+
+    // لو localDB فارغة واتصال موجود — اجلب من السيرفر مباشرة
+    if (!fams.length && navigator.onLine) {
+      let q = db.from('families')
+        .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+        .eq('org_id', ORG_ID).limit(1000)
+      if (currentMember.role === 'super_admin') {
+        const { data: mc } = await db.from('camps').select('id').eq('org_id',ORG_ID).eq('manager_id',currentMember.id)
+        const ids = mc?.map(x=>x.id)||[]
+        if (ids.length===1) q=q.eq('camp_id',ids[0])
+        else if (ids.length>1) q=q.in('camp_id',ids)
+      } else if (currentMember.camp_id) {
+        q = q.eq('camp_id', currentMember.camp_id)
+      }
+      const { data: srv } = await q
+      if (srv?.length) {
+        await localDB.families.bulkPut(srv)
+        fams = srv
+        const { data: mems } = await db.from('family_members').select('id,family_id,national_id,name,dob,relation,gender,health').limit(2000)
+        if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems); members = mems }
+      }
+    }
+
     const urgent  = fams.filter(f => f.status === 'urgent').length
     const incompleteCount = fams.filter(f => isIncomplete(f)).length
 
@@ -1343,7 +1542,16 @@ async function loadDashboard() {
   }
 }
 
-// ══ FAMILIES ══
+// ══ FAMILIES (الأسر) ══
+// ┌──────────────────────────────────────────────────────┐
+// │ loadFamilies()     ← جلب وعرض قائمة الأسر           │
+// │ render()           ← رسم الجدول (داخلية)            │
+// │ searchFamilies()   ← بحث في الأسر                   │
+// │ openFamily()       ← فتح ملف أسرة                   │
+// │ deleteFamily()     ← حذف أسرة                       │
+// │ ⚠️ الفلتر: super_admin يرى أسر مخيماته فقط          │
+// │ ⚠️ لا تعدّل render() مباشرة — عدّل loadFamilies()   │
+// └──────────────────────────────────────────────────────┘
 // المبدأ: اعرض المحلي فوراً ← زامن الخلفية صامتاً ← أعد العرض لو في تحديث
 async function loadFamilies() {
   if (!currentMember) return
@@ -1440,18 +1648,26 @@ async function loadFamilies() {
     fillFilterCampWithCount()
   }
 
-  // ① اعرض المحلي فوراً
+  // ① اعرض المحلي فوراً — فقط لو لا يوجد فلتر دور
+  const hasRoleFilter = currentMember.role === 'super_admin'
   try {
     const local = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-    if (local.length) {
+    if (local.length && !hasRoleFilter) {
       await render(local)
     } else {
       tbody.innerHTML = '<tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div></td></tr>'
     }
   } catch(e) {}
 
-  // ② مزامنة خلفية صامتة إذا متصل
-  if (!navigator.onLine) return
+  // ② إذا Offline — اعرض المحلي وارجع
+  if (!navigator.onLine) {
+    try {
+      const local = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+      if (local.length) await render(local)
+      else tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📴</div>لا توجد بيانات محلية</div></td></tr>'
+    } catch(e) {}
+    return
+  }
   try {
     let q = db.from('families')
       .select('id,head_name,head_id,head_gender,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
@@ -1484,9 +1700,8 @@ async function loadFamilies() {
       } catch(e) {}
     }
 
-    // أعد العرض بعد مزامنة الأسر والأفراد — نقرأ من localDB مباشرة
-    const updated = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-    await render(updated)
+    // أعد العرض من بيانات السيرفر مباشرة (لا من localDB لتجنب خلط البيانات)
+    await render(srv)
     // حدّث الإحصائيات بعد المزامنة
     loadDashboard()
   } catch(e) {
@@ -2299,10 +2514,37 @@ function buildAllDateSelects() {
   }, 100)
 }
 
-// ══ USERS ══
+// ══ USERS (المستخدمون) ══
+// ┌────────────────────────────────────────────────────────┐
+// │ loadUsers()          ← عرض قائمة المستخدمين           │
+// │ createUser()         ← إنشاء مستخدم جديد (Admin API) │
+// │ editUser()           ← تعديل مستخدم                  │
+// │ resetUserPassword()  ← إعادة كلمة المرور              │
+// │ deleteUser()         ← حذف مستخدم                    │
+// │ ⚠️ platform_owner يرى الجميع عدا platform_owner آخر  │
+// │ ⚠️ super_admin يرى فقط من created_by = هو             │
+// │ ⚠️ إنشاء المستخدم عبر Admin API (SERVICE_KEY)         │
+// └────────────────────────────────────────────────────────┘
 function showAddUserForm() {
   document.getElementById('addUserForm').style.display = 'block'
   fillCampSelect('uCamp')
+
+  // فلترة الأدوار حسب الدور الحالي
+  const roleSelect = document.getElementById('uRole')
+  roleSelect.innerHTML = '<option value="">اختر الدور</option>'
+  if (currentMember.role === 'platform_owner') {
+    // مالك المنصة ينشئ الكل
+    roleSelect.innerHTML += '<option value="super_admin">🔴 مدير الإيواء</option>'
+    roleSelect.innerHTML += '<option value="camp_delegate">🟠 مندوب المخيم</option>'
+    roleSelect.innerHTML += '<option value="assistant">🟡 مساعد</option>'
+  } else if (currentMember.role === 'super_admin') {
+    // مدير الإيواء ينشئ مناديب ومساعدين فقط
+    roleSelect.innerHTML += '<option value="camp_delegate">🟠 مندوب المخيم</option>'
+    roleSelect.innerHTML += '<option value="assistant">🟡 مساعد</option>'
+  } else if (currentMember.role === 'camp_delegate') {
+    // المندوب ينشئ مساعدين فقط
+    roleSelect.innerHTML += '<option value="assistant">🟡 مساعد</option>'
+  }
 }
 
 function hideAddUserForm() {
@@ -2374,9 +2616,23 @@ async function createUser() {
 }
 
 async function loadUsers() {
+  // ══ فلتر المستخدمين حسب الدور ══
+  // platform_owner → يرى الكل (عدا platform_owner آخر)
+  // super_admin    → يرى فقط من created_by = currentMember.id
+  // camp_delegate  → يرى فقط من created_by = currentMember.id
+  // ملاحظة: المستخدمون القدامى created_by = NULL لا يظهرون لغير platform_owner
   const container = document.getElementById('usersList'); if(!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
-  const { data: users } = await db.from('org_members').select('*').eq('org_id', ORG_ID).order('created_at', { ascending: false })
+
+  let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
+
+  if (currentMember.role === 'platform_owner') {
+    // يرى الكل بما فيهم نفسه
+  } else if (['super_admin','camp_delegate'].includes(currentMember.role)) {
+    // يرى فقط من أنشأهم هو
+    usersQ = usersQ.eq('created_by', currentMember.id)
+  }
+  const { data: users } = await usersQ.order('created_at', { ascending: false })
   if (!users?.length) { container.innerHTML='<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'; return }
   const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
   container.innerHTML = users.map(u => `
@@ -2398,9 +2654,13 @@ async function loadUsers() {
         <button onclick="editUser('${u.id}')" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✏️ تعديل</button>
         <button onclick="toggleUserStatus('${u.id}',${u.is_active})" style="background:transparent;border:1px solid ${u.is_active?'var(--red)':'var(--green)'};color:${u.is_active?'var(--red)':'var(--green)'};border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">${u.is_active?'🚫 إيقاف':'✅ تفعيل'}</button>
         <button onclick="resetUserPassword('${u.id}','${u.full_name}')" style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🔑 إعادة كلمة المرور</button>
-      </div>`:''}
+        <button onclick="deleteUser('${u.id}','${u.full_name}')" style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>
+      </div>`:`<div style="margin-top:10px;">
+        <button onclick="showPage('page-settings')" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🔑 تغيير كلمة المرور</button>
+      </div>`}
     </div>`).join('')
 }
+
 
 async function editUser(id) {
   const { data: u } = await db.from('org_members').select('*').eq('id', id).single()
@@ -2637,29 +2897,20 @@ async function loadCampsList() {
   const container = document.getElementById('campsList'); if(!container) return
   const isDelegate = currentMember.role==='camp_delegate'
   const isOwner    = currentMember.role==='platform_owner'
+  const isAdmin    = currentMember.role==='super_admin'
   const btnAdd     = document.getElementById('btnAddCamp')
   if (btnAdd) btnAdd.style.display = isDelegate?'none':'inline-flex'
 
+  // ━━━ فلترة المخيمات حسب الدور ━━━
+  // platform_owner → كل المخيمات
+  // super_admin    → مخيماته فقط (manager_id = currentMember.id)
+  // camp_delegate  → مخيمه فقط (camp_id)
   let camps = allCamps
-  if (isDelegate && currentMember.camp_id) camps = allCamps.filter(c => c.id===currentMember.camp_id)
-  if (currentMember.role==='super_admin') {
-    // جلب مخيماته من السيرفر للتأكد من manager_id
-    if (navigator.onLine) {
-      const { data: myCamps } = await db.from('camps')
-        .select('*').eq('org_id', ORG_ID).eq('manager_id', currentMember.id)
-      if (myCamps) {
-        camps = myCamps
-        // تحديث allCamps بالبيانات الجديدة
-        myCamps.forEach(nc => {
-          const i = allCamps.findIndex(c => c.id === nc.id)
-          if (i >= 0) allCamps[i] = nc; else allCamps.push(nc)
-        })
-      } else {
-        camps = allCamps.filter(c => c.manager_id === currentMember.id)
-      }
-    } else {
-      camps = allCamps.filter(c => c.manager_id === currentMember.id)
-    }
+  if (isDelegate && currentMember.camp_id) {
+    camps = allCamps.filter(c => c.id === currentMember.camp_id)
+  } else if (isAdmin) {
+    // allCamps مفلتر مسبقاً من loadCampsFromServer
+    camps = allCamps.filter(x => x.manager_id === currentMember.id)
   }
   if (!camps.length) { container.innerHTML='<div class="empty"><div class="empty-icon">⛺</div>لا توجد مخيمات</div>'; return }
 
@@ -2680,9 +2931,7 @@ async function loadCampsList() {
   if (navigator.onLine) {
     const { data: admins } = await db.from('org_members').select('id,full_name').eq('org_id', ORG_ID).eq('role','super_admin')
     admins?.forEach(a => managerMap[a.id] = a.full_name)
-    // تحديث allCamps مع manager_id
-    const { data: freshCamps } = await db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
-    if (freshCamps) { allCamps = freshCamps; camps = isDelegate ? allCamps.filter(c=>c.id===currentMember.camp_id) : allCamps }
+    // لا نجلب كل المخيمات هنا — allCamps مفلتر مسبقاً
   }
 
   const sLabel = { active:'✅ نشط', suspended:'⏸️ موقوف', closed:'🔴 مغلق' }
@@ -2854,10 +3103,15 @@ function isIncomplete(f) { return checkFamilyIssues(f).length > 0 }
 let smsAllFamilies = []
 
 async function loadSmsPage() {
-  // جلب البيانات المحلية
+  // جلب البيانات المحلية مع فلتر الدور
   let allSmsFams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  // المندوب والمساعد يريان مخيمهم فقط
-  if (currentMember.camp_id) allSmsFams = allSmsFams.filter(f => f.camp_id === currentMember.camp_id)
+  if (currentMember.role === 'super_admin') {
+    // مدير الإيواء يرى أسر مخيماته فقط
+    const myCampIds = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
+    allSmsFams = allSmsFams.filter(f => myCampIds.includes(f.camp_id))
+  } else if (currentMember.camp_id) {
+    allSmsFams = allSmsFams.filter(f => f.camp_id === currentMember.camp_id)
+  }
   smsAllFamilies = allSmsFams
   fillCampSelect('smsFilterCamp', false)
   smsUpdateList()
@@ -2990,7 +3244,12 @@ function smsCopyNums() {
 }
 
 
-// ══ SYNC QUEUE ══
+// ══ SYNC QUEUE (المزامنة) ══
+// ┌──────────────────────────────────────────────────────┐
+// │ processSyncQueue() ← معالجة العمليات المعلّقة Offline│
+// │ يعمل تلقائياً عند عودة الاتصال                      │
+// │ البيانات تُحفظ في localDB (Dexie) أثناء الانقطاع    │
+// └──────────────────────────────────────────────────────┘
 async function processSyncQueue() {
   try {
     const queue = await localDB.sync_queue.where('status').equals('pending').toArray()
@@ -3253,8 +3512,13 @@ async function loadAnalysis() {
   out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحليل...</div></div>'
 
   let fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  // المندوب والمساعد يريان مخيمهم فقط
-  if (currentMember.camp_id) fams = fams.filter(f => f.camp_id === currentMember.camp_id)
+  // فلتر الدور: super_admin → مخيماته | delegate/assistant → مخيمه
+  if (currentMember.role === 'super_admin') {
+    const myCampIds = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
+    fams = fams.filter(f => myCampIds.includes(f.camp_id))
+  } else if (currentMember.camp_id) {
+    fams = fams.filter(f => f.camp_id === currentMember.camp_id)
+  }
   const famIds = new Set(fams.map(f => f.id))
   const allMems = await localDB.family_members.toArray()
   const members = allMems.filter(m => famIds.has(m.family_id))
@@ -4073,7 +4337,13 @@ async function doOldImport() {
   await loadFamilies(); loadDashboard()
 }
 
-// ══ DISTRIBUTIONS ══
+// ══ DISTRIBUTIONS (التوزيعات) ══
+// ┌──────────────────────────────────────────────────────┐
+// │ dist_rounds     = جولة توزيع (حملة كاملة)           │
+// │ camp_distributions = دفعة داخل الجولة               │
+// │ camp_dist_families = الأسر المستلِمة في الدفعة       │
+// │ من استلم في دفعة → لا يظهر في دفعات لاحقة           │
+// └──────────────────────────────────────────────────────┘
 let currentDist = null  // التوزيع المفتوح حالياً
 
 async function loadDistPage() {
@@ -5022,6 +5292,24 @@ async function saveCampManager(campId) {
   document.getElementById('campMgrModal')?.remove()
   showToast('✅ تم تعيين مدير الإيواء')
   loadCampsList()
+}
+
+// ══ TOAST ══
+async function changeMyPassword() {
+  const newPass  = document.getElementById('settingsNewPass').value
+  const confirm  = document.getElementById('settingsConfirmPass').value
+  const errEl    = document.getElementById('settingsPassError')
+  errEl.style.display = 'none'
+
+  if (newPass.length < 8) { errEl.textContent='كلمة المرور 8 أحرف على الأقل'; errEl.style.display='block'; return }
+  if (newPass !== confirm)  { errEl.textContent='كلمتا المرور غير متطابقتين'; errEl.style.display='block'; return }
+
+  const { error } = await db.auth.updateUser({ password: newPass })
+  if (error) { errEl.textContent='خطأ: '+error.message; errEl.style.display='block'; return }
+
+  document.getElementById('settingsNewPass').value = ''
+  document.getElementById('settingsConfirmPass').value = ''
+  showToast('✅ تم تغيير كلمة المرور')
 }
 
 // ══ TOAST ══
