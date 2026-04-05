@@ -902,9 +902,23 @@ async function init() {
         const { data: fams } = await q
         if (fams?.length) {
           await localDB.families.bulkPut(fams)
+          // احذف من المحلي أي أسرة محذوفة من السيرفر
+          const srvIds2 = new Set(fams.map(f => f.id))
+          const locals2 = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+          const toDel2  = locals2.filter(f => {
+            if (currentMember.camp_id && f.camp_id !== currentMember.camp_id) return false
+            return !srvIds2.has(f.id)
+          }).map(f => f.id)
+          if (toDel2.length) await localDB.families.bulkDelete(toDel2)
           const { data: mems } = await db.from('family_members')
             .select('id,family_id,national_id,name,dob,relation,gender,health').limit(2000)
           if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems) }
+        } else {
+          // لا أسر في السيرفر — امسح المحلي للمخيم الحالي
+          if (currentMember.camp_id) {
+            const oldFams = await localDB.families.where('camp_id').equals(currentMember.camp_id).toArray()
+            if (oldFams.length) await localDB.families.bulkDelete(oldFams.map(f => f.id))
+          }
         }
       } catch(e) {}
     } else {
@@ -1867,7 +1881,15 @@ async function loadFamilies() {
       return
     }
 
+    // حدّث localDB — أضف/عدّل الجديد واحذف ما حُذف من السيرفر
     await localDB.families.bulkPut(srv)
+    const srvIds    = new Set(srv.map(f => f.id))
+    const localFams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+    const toDelete  = localFams.filter(f => {
+      if (currentMember.camp_id && f.camp_id !== currentMember.camp_id) return false
+      return !srvIds.has(f.id)
+    }).map(f => f.id)
+    if (toDelete.length) await localDB.families.bulkDelete(toDelete)
 
     // مزامنة الأفراد — مع فلتر الأسر المجلوبة
     const { data: mems } = await db.from('family_members')
