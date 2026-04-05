@@ -1071,6 +1071,8 @@ async function logout() {
   await db.auth.signOut()
   localStorage.removeItem('current_member')
   localStorage.removeItem('current_user')
+  sessionStorage.removeItem('current_member')
+  sessionStorage.removeItem('current_user')
   // مسح IndexedDB
   try {
     await localDB.families.clear()
@@ -1107,7 +1109,7 @@ function buildSidebar() {
     html += navItem('⛺', 'المخيمات', 'page-camps')
   }
 
-  if (canAdmin()) {
+  if (canAdmin() || role === 'camp_delegate') {
     html += '<div class="nav-section">الإدارة</div>'
     html += navItem('👥', 'المستخدمون', 'page-users')
     if (['platform_owner','super_admin'].includes(currentMember.role)) {
@@ -1115,9 +1117,12 @@ function buildSidebar() {
     }
     if (currentMember.role === 'platform_owner') {
       html += navItem('📱', 'الأجهزة', 'page-devices')
-      html += navItem('⚙️', 'الإعدادات', 'page-settings')
     }
   }
+
+  // الإعدادات لجميع الأدوار (تغيير كلمة المرور)
+  html += '<div class="nav-section">الحساب</div>'
+  html += navItem('⚙️', 'الإعدادات', 'page-settings')
 
   nav.innerHTML = html
 }
@@ -2846,8 +2851,8 @@ async function editUser(id) {
 
       <div class="form-group"><label>الدور</label>
         <select id="euRole" onchange="euRoleChange()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
-          <option value="super_admin" ${u.role==='super_admin'?'selected':''}>🔴 مدير الإيواء</option>
-          <option value="camp_delegate" ${u.role==='camp_delegate'?'selected':''}>🟠 مندوب المخيم</option>
+          ${currentMember.role !== 'camp_delegate' ? `<option value="super_admin" ${u.role==='super_admin'?'selected':''}>🔴 مدير الإيواء</option>` : ''}
+          ${currentMember.role !== 'camp_delegate' ? `<option value="camp_delegate" ${u.role==='camp_delegate'?'selected':''}>🟠 مندوب المخيم</option>` : ''}
           <option value="assistant" ${u.role==='assistant'?'selected':''}>🟡 مساعد</option>
         </select>
       </div>
@@ -2892,6 +2897,11 @@ async function saveEditUser(id) {
   const canAdd  = document.getElementById('euCanAdd')?.checked ?? true
   const canEdit = document.getElementById('euCanEdit')?.checked ?? true
   const canDel  = document.getElementById('euCanDelete')?.checked ?? false
+
+  // حماية: المندوب لا يستطيع حفظ دور أعلى من مساعد
+  if (currentMember.role === 'camp_delegate' && role !== 'assistant') {
+    showToast('⛔ غير مسموح بتغيير الدور', true); return
+  }
 
   const { error } = await db.from('org_members').update({
     role,
@@ -3493,6 +3503,21 @@ async function processSyncQueue() {
               await localDB.families.delete(localId)
               await localDB.families.put({ ...localFam, id: srv.id })
             }
+            // ④ زامن الأفراد المرتبطين بالأسرة المحلية
+            try {
+              const localMembers = await localDB.family_members
+                .where('family_id').equals(localId).toArray()
+              if (localMembers.length) {
+                const serverMembers = localMembers.map(({ id: _id, ...m }) => ({
+                  ...m, family_id: srv.id
+                }))
+                await db.from('family_members').insert(serverMembers)
+                // حدّث family_id في المحلي
+                for (const m of localMembers) {
+                  await localDB.family_members.update(m.id, { family_id: srv.id })
+                }
+              }
+            } catch(me) { console.warn('members sync:', me.message) }
           }
         } else if (item.action === 'update_family') {
           const data = JSON.parse(item.data)
