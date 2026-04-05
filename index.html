@@ -1249,17 +1249,19 @@ function checkOnlineStatus() {
   window.addEventListener('online', async () => {
     setSyncing()
     showToast('🔄 جارٍ التحديث...')
-    // ① مزامنة الطابور المعلّق
     await processSyncQueue()
-    // ② تحديث البيانات
     await loadCampsFromServer()
     const activePage = document.querySelector('.page.active')?.id
     if (activePage === 'page-camps')     loadCampsList()
     if (activePage === 'page-families')  loadFamilies()
     if (activePage === 'page-dashboard') loadDashboard()
+    clearSyncing()
     showToast('✅ تم التحديث')
   })
-  window.addEventListener('offline', update)
+  window.addEventListener('offline', () => {
+    update()
+    showToast('📴 انقطع الاتصال — الوضع المحلي')
+  })
 }
 
 // ══ CAMPS (المخيمات) ══
