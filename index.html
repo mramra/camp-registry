@@ -443,6 +443,37 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
     <div id="devicesList"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div></div>
   </div>
 
+  <!-- Audit Log -->
+  <div class="page" id="page-audit">
+    <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px;">📋 سجل النشاط</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select id="auditFilterAction" onchange="loadAuditLog()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+        <option value="">كل الإجراءات</option>
+        <option value="إضافة أسرة">إضافة أسرة</option>
+        <option value="تعديل أسرة">تعديل أسرة</option>
+        <option value="حذف أسرة">حذف أسرة</option>
+        <option value="إضافة مخيم">إضافة مخيم</option>
+        <option value="حذف مخيم">حذف مخيم</option>
+        <option value="إضافة مستخدم">إضافة مستخدم</option>
+        <option value="تسجيل توزيع">تسجيل توزيع</option>
+        <option value="تعديل مخيم">تعديل مخيم</option>
+        <option value="حذف مستخدم">حذف مستخدم</option>
+        <option value="إيقاف مستخدم">إيقاف مستخدم</option>
+        <option value="تفعيل مستخدم">تفعيل مستخدم</option>
+        <option value="تعديل مستخدم">تعديل مستخدم</option>
+        <option value="إعادة كلمة مرور">إعادة كلمة مرور</option>
+        <option value="إنشاء جولة">إنشاء جولة</option>
+        <option value="إنشاء دفعة">إنشاء دفعة</option>
+        <option value="تسجيل دخول">تسجيل دخول</option>
+        <option value="تسجيل خروج">تسجيل خروج</option>
+      </select>
+      <select id="auditFilterUser" onchange="loadAuditLog()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+        <option value="">كل المستخدمين</option>
+      </select>
+    </div>
+    <div id="auditList"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div></div>
+  </div>
+
   <!-- Settings -->
   <div class="page" id="page-settings">
     <div class="card">
@@ -1019,9 +1050,11 @@ async function doChangePassword() {
   await db.from('org_members').update({ must_change_pass: false }).eq('user_id', currentUser.id)
   btn.disabled = false; btn.textContent = '💾 تغيير'
   await loadMember()
+  logAction('تسجيل دخول', null, '')
 }
 
 async function logout() {
+  logAction('تسجيل خروج', null, '')
   await db.auth.signOut()
   localStorage.removeItem('current_member')
   localStorage.removeItem('current_user')
@@ -1066,6 +1099,8 @@ function buildSidebar() {
     html += navItem('👥', 'المستخدمون', 'page-users')
     if (currentMember.role === 'platform_owner') {
       html += navItem('📱', 'الأجهزة', 'page-devices')
+      html += navItem('📋', 'سجل النشاط', 'page-audit')
+      html += navItem('📋', 'سجل النشاط', 'page-audit')
       html += navItem('⚙️', 'الإعدادات', 'page-settings')
     }
   }
@@ -1133,6 +1168,7 @@ function showPage(pageId) {
     'page-dist':       ['📦 توزيع المساعدات', ''],
     'page-analysis':   ['📊 تحليل البيانات', ''],
     'page-data':       ['📁 استيراد / تصدير', ''],
+    'page-audit':      ['📋 سجل النشاط', ''],
     'page-settings':   ['⚙️ الإعدادات', ''],
   }
 
@@ -1149,6 +1185,9 @@ function showPage(pageId) {
   if (pageId === 'page-analysis')   initReportsPage()
   if (pageId === 'page-analysis2')  loadAnalysis()
   if (pageId === 'page-data')        loadDataPage()
+  if (pageId === 'page-audit')     loadAuditLog()
+    if (pageId === 'page-audit')     loadAuditLog()
+  if (pageId === 'page-audit') loadAuditLog()
   if (pageId === 'page-settings') {
     const cc = document.getElementById('cleanupCard')
     if (cc) cc.style.display = currentMember.role === 'platform_owner' ? 'block' : 'none'
@@ -2392,6 +2431,7 @@ async function doSaveFamily() {
       clearFamilyForm(); showPage('page-families'); loadDashboard()
       return
     }
+    logAction('إضافة أسرة', family.id, familyData.head_name, { camp_id: familyData.camp_id })
     showToast('✅ تم حفظ الأسرة')
     clearFamilyForm(); showPage('page-families'); loadDashboard()
   } catch(err) { showToast('خطأ: '+err.message, true) }
@@ -2479,6 +2519,7 @@ async function doUpdateFamily(id) {
       return
     }
 
+    logAction('تعديل أسرة', id, updateData.head_name)
     clearSyncing()
     showToast('✅ تم حفظ التعديلات')
     clearFamilyForm()
@@ -2705,6 +2746,7 @@ async function createUser() {
       created_by: await getCreatedBy(role, campId),
     })
     if (mErr) throw mErr
+    logAction('إضافة مستخدم', null, fullName, { role })
     showToast(`✅ تم إنشاء حساب ${fullName}`)
     hideAddUserForm(); loadUsers()
   } catch(err) { errEl.textContent='خطأ: '+err.message; errEl.style.display='block' }
@@ -2854,6 +2896,7 @@ async function saveEditUser(id) {
   }).eq('id', id)
 
   if (error) { showToast('خطأ: '+error.message, true); return }
+  logAction('تعديل مستخدم', id, '')
   showToast('✅ تم حفظ التعديلات')
   document.getElementById('editUserModal')?.remove()
   loadUsers()
@@ -2868,6 +2911,7 @@ async function deleteUser(id, name) {
     if (error) throw error
     // حذف من localDB
     await localDB.org_members.delete(id)
+    logAction('حذف مستخدم', id, name)
     showToast('✅ تم حذف المستخدم')
     loadUsers()
   } catch(e) { showToast('خطأ: ' + e.message, true) }
@@ -2875,12 +2919,14 @@ async function deleteUser(id, name) {
 
 async function toggleUserStatus(id, isActive) {
   await db.from('org_members').update({ is_active: !isActive }).eq('id', id)
+  logAction(isActive?'إيقاف مستخدم':'تفعيل مستخدم', id, '')
   showToast(isActive?'🚫 تم الإيقاف':'✅ تم التفعيل'); loadUsers()
 }
 
 async function resetUserPassword(id, name) {
   if (!confirm(`إعادة كلمة مرور ${name} إلى رقم جواله؟`)) return
   await db.from('org_members').update({ must_change_pass: true }).eq('id', id)
+  logAction('إعادة كلمة مرور', id, name)
   showToast(`✅ سيُطلب من ${name} تغيير كلمة المرور`); loadUsers()
 }
 
@@ -2966,13 +3012,15 @@ async function saveCamp() {
     if (editingCampId) {
       const { error } = await db.from('camps').update(campData).eq('id', editingCampId)
       if (error) throw error
-      showToast('✅ تم تعديل المخيم')
+      logAction('تعديل مخيم', editingCampId, campData.name)
+    showToast('✅ تم تعديل المخيم')
     } else {
       const { data: camp, error } = await db.from('camps').insert(campData).select('*').single()
       if (error) throw error
       allCamps.push(camp)
       await localDB.camps.put(camp)
-      showToast('✅ تم إضافة المخيم')
+      logAction('إضافة مخيم', null, campData.name)
+    showToast('✅ تم إضافة المخيم')
 
       // إنشاء المندوب إن وُجد
       const delName  = document.getElementById('delegateName')?.value.trim()
@@ -3025,6 +3073,7 @@ async function deleteCamp(id, name) {
 
   if (navigator.onLine) {
     await db.from('camps').delete().eq('id', id)
+    logAction('حذف مخيم', id, name)
   } else {
     await localDB.sync_queue.add({ action:'delete_camp', record_id:id, data: JSON.stringify({id}), status:'pending', created_at: new Date().toISOString() })
     showToast('✅ تم حذف المخيم محلياً — سيُزامن عند الاتصال')
@@ -3427,6 +3476,25 @@ async function processSyncQueue() {
           const data = JSON.parse(item.data)
           const { id, ...updateFields } = data
           await db.from('camps').update(updateFields).eq('id', item.record_id)
+        } else if (item.action === 'insert_round') {
+          const data = JSON.parse(item.data)
+          const localId = data.id; delete data.id
+          const { data: srv } = await db.from('dist_rounds').insert(data).select('id').single()
+          if (srv?.id) {
+            const local = await localDB.dist_rounds.get(localId)
+            if (local) { await localDB.dist_rounds.delete(localId); await localDB.dist_rounds.put({ ...local, id: srv.id }) }
+          }
+        } else if (item.action === 'insert_batch') {
+          const data = JSON.parse(item.data)
+          const localId = data.id; delete data.id
+          const { data: srv } = await db.from('camp_distributions').insert(data).select('id').single()
+          if (srv?.id) {
+            const local = await localDB.camp_distributions.get(localId)
+            if (local) { await localDB.camp_distributions.delete(localId); await localDB.camp_distributions.put({ ...local, id: srv.id }) }
+          }
+        } else if (item.action === 'insert_dist') {
+          const records = JSON.parse(item.data)
+          await db.from('camp_dist_families').insert(records)
         } else if (item.action === 'insert_camp') {
           const data = JSON.parse(item.data)
           const localId = data.id; delete data.id
@@ -4543,8 +4611,8 @@ async function loadDistPage() {
       </div>
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
         <button onclick="openRound('${r.id}')" style="flex:1;background:var(--accent);color:#000;border:none;border-radius:6px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">📋 فتح الجولة</button>
-        <button onclick="editRound('${r.id}')" style="background:rgba(59,130,246,.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✏️</button>
-        <button onclick="deleteRound('${r.id}','${r.name.replace(/'/g,'')}')" style="background:rgba(239,68,68,.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️</button>
+        ${canWrite()?`<button onclick="editRound('${r.id}')" style="background:rgba(59,130,246,.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✏️</button>`:''}
+        ${canWrite()?`<button onclick="deleteRound('${r.id}','${r.name.replace(/'/g,'')}')" style="background:rgba(239,68,68,.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️</button>`:''}
         ${r.status==='active'?`<button onclick="closeRound('${r.id}')" style="background:rgba(16,185,129,.1);border:1px solid var(--green);color:var(--green);border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✅ إغلاق</button>`:''}
       </div>
     </div>`
@@ -4645,11 +4713,15 @@ async function saveNewRound() {
     await localDB.dist_rounds.put({ ...roundData, id: roundId })
   } else {
     roundId = 'local_r_' + Date.now()
-    await localDB.dist_rounds.put({ ...roundData, id: roundId })
+    roundData.id = roundId
+    await localDB.dist_rounds.put(roundData)
+    await localDB.sync_queue.add({ action:'insert_round', data: JSON.stringify(roundData), status:'pending', created_at: new Date().toISOString() })
+    showToast('✅ تم إنشاء الجولة محلياً — سيُزامن عند الاتصال')
   }
 
-  document.getElementById('newDistModal').remove()
-  showToast('✅ تم إنشاء الجولة')
+  if (navigator.onLine) document.getElementById('newDistModal').remove()
+  else { try { document.getElementById('newDistModal').remove() } catch(e) {} }
+  if (navigator.onLine) { logAction('إنشاء جولة', roundId, roundData.name); showToast('✅ تم إنشاء الجولة') }
   await openRound(roundId)
 }
 
@@ -4735,7 +4807,7 @@ async function openRound(roundId) {
           <div style="font-size:10px;color:var(--muted);">📋 متبقي</div>
         </div>
       </div>
-      <button onclick="addBatchToRound('${roundId}')" class="btn btn-primary" style="width:100%;margin-top:10px;">
+      <button onclick="addBatchToRound('${roundId}')" class="btn btn-primary" style="width:100%;margin-top:10px;${!canWrite()?'display:none;':''}">
         ➕ إضافة دفعة جديدة
       </button>
     </div>
@@ -4846,9 +4918,12 @@ async function saveNewBatch(roundId) {
     await localDB.camp_distributions.put({ ...batchData, id: batchId })
   } else {
     batchId = 'local_b_' + Date.now()
-    await localDB.camp_distributions.put({ ...batchData, id: batchId })
+    batchData.id = batchId
+    await localDB.camp_distributions.put(batchData)
+    await localDB.sync_queue.add({ action:'insert_batch', data: JSON.stringify(batchData), status:'pending', created_at: new Date().toISOString() })
   }
 
+  logAction('إنشاء دفعة', batchId, batchData.description)
   document.getElementById('newBatchModal').remove()
   showToast('✅ تم إنشاء الدفعة — اختر الأسر')
   await openDist(batchId)
@@ -5255,7 +5330,7 @@ async function applyDistFilter(distId) {
           </span>
         </div>`).join('')}
     </div>
-    <button onclick="confirmDistribution('${distId}')" class="btn btn-primary" style="width:100%;margin-top:12px;" id="btnConfirmDist">
+    ${(currentMember.role!=='assistant'||currentMember.can_add)?`<button onclick="confirmDistribution('${distId}')" class="btn btn-primary" style="width:100%;margin-top:12px;" id="btnConfirmDist">`:'<div style="display:none;">'}
       ✅ تأكيد الاستلام للمحددين (0)
     </button>
   `
@@ -5293,6 +5368,7 @@ async function confirmDistribution(distId) {
     await localDB.sync_queue.add({ action: 'insert_dist', data: JSON.stringify(records), status: 'pending', created_at: new Date().toISOString() })
   }
 
+  logAction('تسجيل توزيع', distId, `${selected.length} أسرة`)
   showToast(`✅ تم تسجيل استلام ${selected.length} أسرة`)
 
   // رجوع للجولة إن كانت موجودة
@@ -5879,6 +5955,81 @@ async function changeMyPassword() {
   document.getElementById('settingsNewPass').value = ''
   document.getElementById('settingsConfirmPass').value = ''
   showToast('✅ تم تغيير كلمة المرور')
+}
+
+
+// ══ AUDIT LOG ══
+// يُسجّل كل إجراء في audit_logs عند الاتصال
+async function logAction(action, targetId, targetName, details = {}) {
+  if (!navigator.onLine || !currentMember) return
+  try {
+    await db.from('audit_logs').insert({
+      org_id:      ORG_ID,
+      user_id:     currentUser.id,
+      user_name:   currentMember.full_name,
+      user_role:   currentMember.role,
+      action,
+      target_id:   targetId || null,
+      target_name: targetName || null,
+      details:     { ...details, camp: allCamps.find(c=>c.id===currentMember.camp_id)?.name || null },
+      created_at:  new Date().toISOString()
+    })
+  } catch(e) {}
+}
+
+
+// ══ AUDIT LOG PAGE ══
+async function loadAuditLog() {
+  const container = document.getElementById('auditList')
+  if (!container) return
+  container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
+
+  if (!navigator.onLine) { container.innerHTML='<div class="empty"><div class="empty-icon">📴</div>يحتاج اتصالاً</div>'; return }
+
+  const action = document.getElementById('auditFilterAction')?.value || ''
+  const userId = document.getElementById('auditFilterUser')?.value || ''
+
+  let q = db.from('audit_logs').select('*').eq('org_id', ORG_ID).order('created_at', { ascending: false }).limit(100)
+  if (action) q = q.eq('action', action)
+  if (userId) q = q.eq('user_id', userId)
+
+  const { data: logs, error } = await q
+  if (error) { container.innerHTML=`<div style="color:var(--red);padding:12px;">${error.message}</div>`; return }
+  if (!logs?.length) { container.innerHTML='<div class="empty"><div class="empty-icon">📋</div>لا توجد سجلات</div>'; return }
+
+  // ملء فلتر المستخدمين
+  const userSel = document.getElementById('auditFilterUser')
+  if (userSel && userSel.options.length === 1) {
+    const users = [...new Map(logs.map(l => [l.user_id, l.user_name])).entries()]
+    users.forEach(([id, name]) => {
+      const opt = document.createElement('option'); opt.value = id; opt.textContent = name
+      userSel.appendChild(opt)
+    })
+  }
+
+  const actionIcon = { 'إضافة أسرة':'➕', 'تعديل أسرة':'✏️', 'حذف أسرة':'🗑️', 'إضافة مخيم':'⛺', 'تعديل مخيم':'✏️', 'حذف مخيم':'🗑️', 'إضافة مستخدم':'👤', 'حذف مستخدم':'🗑️', 'إيقاف مستخدم':'🚫', 'تفعيل مستخدم':'✅', 'تعديل مستخدم':'✏️', 'إعادة كلمة مرور':'🔑', 'تسجيل توزيع':'📦', 'إنشاء جولة':'📋', 'إنشاء دفعة':'📦', 'تسجيل دخول':'🔐', 'تسجيل خروج':'🚪' }
+  const roleLabel = { platform_owner:'👑 مالك', super_admin:'🔴 مدير إيواء', camp_delegate:'🟠 مندوب', assistant:'🟡 مساعد' }
+
+  container.innerHTML = logs.map(l => {
+    const date = new Date(l.created_at).toLocaleDateString('ar-EG')
+    const time = new Date(l.created_at).toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'})
+    const icon = actionIcon[l.action] || '📝'
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:700;">${icon} ${l.action}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">${l.target_name||'—'}</div>
+        </div>
+        <div style="text-align:left;flex-shrink:0;">
+          <div style="font-size:10px;color:var(--accent);">${date} ${time}</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:11px;color:var(--muted);">
+        <span>👤 ${l.user_name} • ${roleLabel[l.user_role]||l.user_role}</span>
+        ${l.details?.camp?`<span>⛺ ${l.details.camp}</span>`:''}
+      </div>
+    </div>`
+  }).join('')
 }
 
 // ══ TOAST ══
