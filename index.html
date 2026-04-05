@@ -5991,7 +5991,7 @@ async function loadAuditLog() {
 
   const { data: logs, error } = await q
   if (error) { container.innerHTML=`<div style="color:var(--red);padding:12px;">${error.message}</div>`; return }
-  if (!logs?.length) { container.innerHTML='<div class="empty"><div class="empty-icon">📋</div>لا توجد سجلات</div>'; return }
+  if (!logs?.length) { container.innerHTML=`<div class="empty"><div class="empty-icon">📋</div>لا توجد سجلات<br><small style="color:var(--muted)">تأكد من وجود RLS policy على جدول audit_logs</small></div>`; return }
 
   // ملء فلتر المستخدمين
   const userSel = document.getElementById('auditFilterUser')
