@@ -848,6 +848,7 @@ let currentUser   = null
 let currentMember = null
 let allCamps      = []
 let allFamilies   = []
+let skipFamiliesServerFetch = false  // يمنع إعادة الجلب من السيرفر مباشرة بعد الحذف
 let formMembers   = []
 let editingCampId = null
 let editingFamilyId = null
@@ -1829,6 +1830,9 @@ async function loadFamilies() {
     return
   }
   try {
+    // إذا تم حذف للتو — تخطَّ جلب السيرفر لتجنب إعادة الأسرة
+    if (skipFamiliesServerFetch) { skipFamiliesServerFetch = false; return }
+
     let q = db.from('families')
       .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
       .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
@@ -2013,46 +2017,20 @@ async function deleteFamily(id) {
   const name = fam.head_name || 'هذه الأسرة'
   if (!confirm(`هل تريد حذف أسرة ${name}؟`)) return
 
-  // ① احذف من المحلي فوراً وحدّث العرض
+  // ① احذف محلياً وحدّث allFamilies
   await localDB.families.delete(id)
   await localDB.family_members.where('family_id').equals(id).delete()
   allFamilies = allFamilies.filter(f => f.id !== id)
-  closeDrawer()
 
-  // أعد العرض من allFamilies مباشرة بدون جلب من السيرفر
-  const tbody = document.getElementById('familiesTable')
-  if (tbody) {
-    if (!allFamilies.length) {
-      tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">👨‍👩‍👧</div>لا توجد أسر</div></td></tr>'
-    } else {
-      const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
-      tbody.innerHTML = allFamilies.map((f, i) => {
-        const statusDot = { ok:'🟢', need:'🟡', urgent:'🔴' }[f.status] || '⚪'
-        return `<tr>
-          <td style="color:var(--muted);font-size:11px;width:28px;" onclick="openFamily('${f.id}')">${i+1}</td>
-          <td onclick="openFamily('${f.id}')" style="max-width:160px;">
-            <div style="font-size:13px;font-weight:700;">${f.head_name}</div>
-            ${f.head_id?`<div style="font-size:10px;color:var(--muted);" dir="ltr">${f.head_id}</div>`:''}
-          </td>
-          <td onclick="openFamily('${f.id}')" style="font-size:12px;color:var(--muted);">${campMap[f.camp_id]||'—'}</td>
-          <td style="text-align:center;font-size:13px;font-weight:700;color:var(--accent);" onclick="openFamily('${f.id}')">${(f.members_count||0)+1}</td>
-          <td class="col-landscape" dir="ltr" style="font-size:11px;color:var(--blue);" onclick="openFamily('${f.id}')">${f.phone1||'<span style="color:var(--red)">📵</span>'}</td>
-          <td class="col-landscape" onclick="openFamily('${f.id}')">${statusDot}</td>
-          <td>
-            <div style="display:flex;gap:5px;">
-              <button onclick="startEditFamily('${f.id}')" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;">✏️</button>
-              ${canDelete()?`<button onclick="deleteFamily('${f.id}')" style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;">🗑️</button>`:''}
-            </div>
-          </td>
-        </tr>`
-      }).join('')
-    }
-  }
+  // ② أعد العرض من المحلي مباشرة (بدون جلب السيرفر)
+  closeDrawer()
+  skipFamiliesServerFetch = true
+  loadFamilies()
   loadDashboard()
   showToast('✅ تم حذف: ' + name)
   logAction('حذف أسرة', id, name)
 
-  // ② احذف من السيرفر في الخلفية (لا يؤثر على العرض)
+  // ③ احذف من السيرفر في الخلفية
   if (navigator.onLine) {
     try {
       await db.from('family_members').delete().eq('family_id', id)
@@ -2484,11 +2462,14 @@ async function doSaveFamily() {
       version:     1,
     }
 
+    let savedFamilyId = null
+
     if (navigator.onLine) {
       const { data: family, error } = await db.from('families').insert(familyData).select('id,org_id,camp_id,head_name,head_id,head_dob,head_gender,head_marital,phone1,phone2,notes,status,updated_at').single()
       if (error) throw error
       await localDB.families.put(family)
       await saveMembers(family.id)
+      savedFamilyId = family.id
     } else {
       // حفظ محلي بـ UUID مؤقت
       const localId = 'local_' + Date.now()
@@ -2500,7 +2481,7 @@ async function doSaveFamily() {
       clearFamilyForm(); showPage('page-families'); loadDashboard()
       return
     }
-    logAction('إضافة أسرة', family.id, familyData.head_name, { camp_id: familyData.camp_id })
+    logAction('إضافة أسرة', savedFamilyId, familyData.head_name, { camp_id: familyData.camp_id })
     showToast('✅ تم حفظ الأسرة')
     clearFamilyForm(); showPage('page-families'); loadDashboard()
   } catch(err) { showToast('خطأ: '+err.message, true) }
