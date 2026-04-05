@@ -2013,26 +2013,30 @@ async function deleteFamily(id) {
   const name = fam.head_name || 'هذه الأسرة'
   if (!confirm(`هل تريد حذف أسرة ${name}؟`)) return
 
-  // ① إذا متصل — احذف من السيرفر أولاً قبل أي شيء
+  showToast('⏳ جارٍ الحذف...')
+
   if (navigator.onLine) {
+    showToast('🌐 متصل — يحذف من السيرفر')
     const { error: e1 } = await db.from('family_members').delete().eq('family_id', id)
+    if (e1) showToast('⚠️ أفراد: ' + e1.message, true)
+
     const { error: e2 } = await db.from('families').delete().eq('id', id)
-    if (e2) { showToast('❌ فشل الحذف: ' + e2.message, true); return }
+    if (e2) { showToast('❌ فشل السيرفر: ' + e2.message, true); return }
+    showToast('✅ حُذف من السيرفر')
   } else {
-    // أوفلاين — أضف لطابور المزامنة
+    showToast('📴 أوفلاين — سيُزامن لاحقاً')
     await localDB.sync_queue.add({ action:'delete_family', record_id:id, status:'pending', created_at: new Date().toISOString() })
   }
 
-  // ② بعد نجاح السيرفر — احذف محلياً
   await localDB.families.delete(id)
   await localDB.family_members.where('family_id').equals(id).delete()
+  showToast('✅ حُذف محلياً')
 
-  // ③ حدّث العرض
   closeDrawer()
   loadFamilies()
   loadDashboard()
   logAction('حذف أسرة', id, name)
-  showToast('✅ تم حذف أسرة ' + name)
+  showToast('✅ تم حذف: ' + name)
 }
 
 async function startEditFamily(id) {
