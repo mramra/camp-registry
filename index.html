@@ -1097,10 +1097,11 @@ function buildSidebar() {
   if (canAdmin()) {
     html += '<div class="nav-section">الإدارة</div>'
     html += navItem('👥', 'المستخدمون', 'page-users')
+    if (['platform_owner','super_admin'].includes(currentMember.role)) {
+      html += navItem('📋', 'سجل النشاط', 'page-audit')
+    }
     if (currentMember.role === 'platform_owner') {
       html += navItem('📱', 'الأجهزة', 'page-devices')
-      html += navItem('📋', 'سجل النشاط', 'page-audit')
-      html += navItem('📋', 'سجل النشاط', 'page-audit')
       html += navItem('⚙️', 'الإعدادات', 'page-settings')
     }
   }
@@ -1185,9 +1186,7 @@ function showPage(pageId) {
   if (pageId === 'page-analysis')   initReportsPage()
   if (pageId === 'page-analysis2')  loadAnalysis()
   if (pageId === 'page-data')        loadDataPage()
-  if (pageId === 'page-audit')     loadAuditLog()
-    if (pageId === 'page-audit')     loadAuditLog()
-  if (pageId === 'page-audit') loadAuditLog()
+  if (pageId === 'page-audit')       loadAuditLog()
   if (pageId === 'page-settings') {
     const cc = document.getElementById('cleanupCard')
     if (cc) cc.style.display = currentMember.role === 'platform_owner' ? 'block' : 'none'
