@@ -195,6 +195,7 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <div class="form-group"><label>كلمة المرور الجديدة</label><input type="password" id="newPassword" placeholder="8 أحرف على الأقل" style="direction:ltr;"></div>
       <div class="form-group"><label>تأكيد كلمة المرور</label><input type="password" id="confirmPassword" placeholder="أعد الكتابة" style="direction:ltr;"></div>
       <button class="btn btn-success" onclick="doChangePassword()" id="changePassBtn" style="width:100%;padding:13px;justify-content:center;">💾 تغيير كلمة المرور</button>
+      <button onclick="skipChangePassword()" style="width:100%;padding:11px;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;cursor:pointer;">تخطي الآن →</button>
       <div id="changePassError" style="display:none;margin-top:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);border-radius:8px;padding:10px;font-size:12px;text-align:center;"></div>
     </div>
   </div>
@@ -1030,6 +1031,18 @@ async function doLogin() {
   await loadMember()
   // سجّل الجهاز في الخلفية
   registerDevice().catch(()=>{})
+}
+
+function skipChangePassword() {
+  document.getElementById('changePassSection').style.display = 'none'
+  document.getElementById('loginFormSection').style.display = 'block'
+  hideLoginScreen()
+  buildSidebar()
+  checkOnlineStatus()
+  loadCampsFromServer().then(() => {
+    showPage('page-dashboard')
+    loadDashboard()
+  })
 }
 
 async function doChangePassword() {
