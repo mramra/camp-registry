@@ -2914,11 +2914,16 @@ async function deleteUser(id, name) {
   if (!navigator.onLine) { showToast('📴 حذف المستخدم يحتاج اتصالاً', true); return }
   if (!confirm(`حذف المستخدم "${name}"؟ لا يمكن التراجع`)) return
   try {
-    // حذف من org_members
-    const { error } = await db.from('org_members').delete().eq('id', id)
-    if (error) throw error
-    // حذف من localDB
+    const { data: member } = await db.from('org_members').select('user_id').eq('id', id).single()
+    await db.from('org_members').delete().eq('id', id)
     await localDB.org_members.delete(id)
+    if (member?.user_id) {
+      const SVC_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qY2xwa2VuZWNpY3Vqa3FoaGx1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDIxMTMzMSwiZXhwIjoyMDg5Nzg3MzMxfQ.nm_rtTCvdxTiMc9ciyapgEq2c5k6pcMVFc_F-tN6_ro'
+      await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${member.user_id}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SVC_KEY, 'Authorization': `Bearer ${SVC_KEY}` }
+      })
+    }
     logAction('حذف مستخدم', id, name)
     showToast('✅ تم حذف المستخدم')
     loadUsers()
