@@ -1850,9 +1850,8 @@ async function loadFamilies() {
     }
     const { data: srv, error: srvErr } = await q
     if (srvErr) { showToast('❌ ' + srvErr.message, true); return }
-    if (!srv?.length) { showToast('⚠️ لا أسر من السيرفر', true); return }
-    showToast('✅ ' + srv.length + ' أسرة')
     if (!srv?.length) return
+
     await localDB.families.bulkPut(srv)
 
     // مزامنة الأفراد — مع فلتر الأسر المجلوبة
