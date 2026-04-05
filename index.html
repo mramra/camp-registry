@@ -1832,8 +1832,13 @@ async function loadFamilies() {
     return
   }
   try {
-    // إذا تم حذف للتو — تخطَّ جلب السيرفر لتجنب إعادة الأسرة
-    if (skipFamiliesServerFetch) { skipFamiliesServerFetch = false; return }
+    // إذا تم حذف للتو — اعرض من المحلي بدل السيرفر
+    if (skipFamiliesServerFetch) {
+      skipFamiliesServerFetch = false
+      const local = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+      await render(local)
+      return
+    }
 
     let q = db.from('families')
       .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
@@ -1849,8 +1854,18 @@ async function loadFamilies() {
       q = q.eq('camp_id', currentMember.camp_id)
     }
     const { data: srv, error: srvErr } = await q
-    if (srvErr) { showToast('❌ ' + srvErr.message, true); return }
-    if (!srv?.length) return
+    if (srvErr) {
+      showToast('❌ خطأ: ' + srvErr.message, true)
+      // اعرض المحلي كـ fallback
+      const local = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+      if (local.length) await render(local)
+      else tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">⚠️</div>' + srvErr.message + '</div></td></tr>'
+      return
+    }
+    if (!srv?.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">👨‍👩‍👧</div>لا توجد أسر</div></td></tr>'
+      return
+    }
 
     await localDB.families.bulkPut(srv)
 
