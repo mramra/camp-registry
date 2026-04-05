@@ -27,7 +27,7 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--text);min-h
 .header{background:linear-gradient(135deg,#1a2332,#0d1117);border-bottom:2px solid var(--accent);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 4px 20px rgba(245,158,11,0.15);}
 .btn-menu{width:40px;height:40px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;flex-shrink:0;color:var(--text);}
 .online-badge{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700;}
-.online-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+.online-dot{width:8px;height:8px;border-radius:50%;background:var(--green);transition:background .3s;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
 
 /* Sidebar */
@@ -2404,12 +2404,12 @@ async function updateFamily(id) {
   const errs = runFormValidation()
   if (errs.length) { showToast('❌ ' + errs[0], true); return }
 
-  // فحص التكرار قبل التعديل (نستثني السجل الحالي)
+  // عند التعديل — نفحص التكرار برقم الهوية والجوال فقط (بدون اسم مشابه)
   {
     const headId  = document.getElementById('headId').value.trim()
     const phone   = document.getElementById('phone1').value.trim()
     const headDob = buildDob('headDobY','headDobM','headDobD')
-    const dups    = await runDuplicateChecks(headId, phone, headName, headDob, id)
+    const dups    = await runDuplicateChecks(headId, phone, null, headDob, id)
     if (dups.length) {
       showDupModal(dups, () => doUpdateFamily(id))
       return
@@ -5832,6 +5832,23 @@ document.addEventListener('keydown', e => {
   }
 })
 
+
+function setSyncing() {
+  const dot = document.getElementById('onlineDot')
+  const txt = document.getElementById('onlineText')
+  if (!dot||!txt) return
+  dot.style.background = 'var(--accent)'
+  txt.textContent = '🔄 مزامنة'
+  txt.style.color = 'var(--accent)'
+}
+function clearSyncing() {
+  const dot = document.getElementById('onlineDot')
+  const txt = document.getElementById('onlineText')
+  if (!dot||!txt) return
+  dot.style.background = navigator.onLine ? 'var(--green)' : 'var(--red)'
+  txt.textContent = navigator.onLine ? 'متصل' : 'غير متصل'
+  txt.style.color = navigator.onLine ? 'var(--green)' : 'var(--red)'
+}
 // ══ START ══
 init()
 </script>
