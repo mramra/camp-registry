@@ -1798,7 +1798,7 @@ async function loadFamilies() {
           <div style="display:flex;gap:5px;">
             <button onclick="startEditFamily('${f.id}')" title="تعديل"
               style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;">✏️</button>
-            ${canDelete() ? `<button onclick="deleteFamily('${f.id}','${f.head_name}')" title="حذف"
+            ${canDelete() ? `<button onclick="deleteFamily('${f.id}')" title="حذف"
               style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;">🗑️</button>` : ''}
           </div>
         </td>
@@ -1998,7 +1998,7 @@ async function openFamily(id) {
       <button class="btn btn-primary" onclick="startEditFamily('${f.id}')" style="flex:1;">✏️ تعديل</button>
       ${f.phone1 ? `<button class="btn btn-success" onclick="smsSendOne('${f.id}')">📨 SMS</button>` : ''}
       <button class="btn" style="background:var(--surface2);border:1px solid var(--border);" onclick="printFamily('${f.id}')">🖨️ طباعة</button>
-      ${canDelete()?`<button class="btn" style="background:transparent;border:1px solid var(--red);color:var(--red);" onclick="deleteFamily('${f.id}','${f.head_name}')">🗑️ حذف</button>`:''}
+      ${canDelete()?`<button class="btn" style="background:transparent;border:1px solid var(--red);color:var(--red);" onclick="deleteFamily('${f.id}')">🗑️ حذف</button>`:''}
     </div>`:''}
   `
 }
@@ -2008,7 +2008,9 @@ function closeDrawer() {
   document.getElementById('drawerOverlay').style.display = 'none'
 }
 
-async function deleteFamily(id, name) {
+async function deleteFamily(id) {
+  const fam  = allFamilies.find(f => f.id === id) || {}
+  const name = fam.head_name || 'هذه الأسرة'
   if (!confirm(`هل تريد حذف أسرة ${name}؟`)) return
   // احذف من الذاكرة المحلية فوراً
   await localDB.families.delete(id)
