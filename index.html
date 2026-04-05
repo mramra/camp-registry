@@ -918,6 +918,7 @@ async function loadMember() {
 
   // مزامنة فورية بعد الدخول
   if (navigator.onLine) {
+    setSyncing()
     try {
       let q = db.from('families')
         .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
@@ -934,6 +935,7 @@ async function loadMember() {
         }
       }
     } catch(e) {}
+    clearSyncing()
   }
 
   showPage('page-dashboard')
@@ -1179,7 +1181,7 @@ function checkOnlineStatus() {
   }
   update()
   window.addEventListener('online', async () => {
-    update()
+    setSyncing()
     showToast('🔄 جارٍ التحديث...')
     // ① مزامنة الطابور المعلّق
     await processSyncQueue()
@@ -2451,6 +2453,7 @@ async function doUpdateFamily(id) {
     await saveMembers(id)
 
     if (navigator.onLine) {
+      setSyncing()
       const { data: cur } = await db.from('families').select('version').eq('id', id).single()
       const { error } = await db.from('families').update({ ...updateData, updated_by: currentUser.id, version: (cur?.version||1)+1 }).eq('id', id)
       if (error) throw error
@@ -2476,6 +2479,7 @@ async function doUpdateFamily(id) {
       return
     }
 
+    clearSyncing()
     showToast('✅ تم حفظ التعديلات')
     clearFamilyForm()
     document.getElementById('btnSaveFamily').textContent = '💾 حفظ الأسرة'
@@ -2658,6 +2662,10 @@ async function createUser() {
   const btn        = document.getElementById('btnCreateUser')
 
   errEl.style.display = 'none'
+  if (!navigator.onLine) {
+    errEl.innerHTML = '📴 إضافة المستخدمين تحتاج اتصالاً بالإنترنت<br><small style="color:var(--muted)">السبب: إنشاء الحساب يتطلب Admin API</small>'
+    errEl.style.display = 'block'; return
+  }
   if (!fullName)   { errEl.textContent='يرجى إدخال الاسم'; errEl.style.display='block'; return }
   if (!nationalId||nationalId.length<9) { errEl.textContent='رقم الهوية 9 أرقام'; errEl.style.display='block'; return }
   if (!phone)      { errEl.textContent='يرجى إدخال رقم الجوال'; errEl.style.display='block'; return }
@@ -2712,6 +2720,18 @@ async function loadUsers() {
   const container = document.getElementById('usersList'); if(!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
 
+  // Offline-First
+  if (!navigator.onLine) {
+    try {
+      const local = await localDB.org_members.where('org_id').equals(ORG_ID).toArray()
+      const filtered = currentMember.role === 'platform_owner'
+        ? local.filter(u => u.role !== 'platform_owner')
+        : local.filter(u => u.created_by === currentMember.id)
+      if (filtered.length) { renderUsersList(filtered, container); return }
+    } catch(e) {}
+    container.innerHTML = '<div class="empty"><div class="empty-icon">📴</div>لا توجد بيانات محلية</div>'
+    return
+  }
   let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
 
   if (currentMember.role === 'platform_owner') {
@@ -2722,6 +2742,13 @@ async function loadUsers() {
   }
   const { data: users } = await usersQ.order('created_at', { ascending: false })
   if (!users?.length) { container.innerHTML='<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'; return }
+  try { await localDB.org_members.bulkPut(users) } catch(e) {}
+  const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
+  renderUsersList(users, container)
+}
+
+function renderUsersList(users, container) {
+  if (!users?.length) return
   const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
   container.innerHTML = users.map(u => `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;">
@@ -2832,6 +2859,20 @@ async function saveEditUser(id) {
   loadUsers()
 }
 
+async function deleteUser(id, name) {
+  if (!navigator.onLine) { showToast('📴 حذف المستخدم يحتاج اتصالاً', true); return }
+  if (!confirm(`حذف المستخدم "${name}"؟ لا يمكن التراجع`)) return
+  try {
+    // حذف من org_members
+    const { error } = await db.from('org_members').delete().eq('id', id)
+    if (error) throw error
+    // حذف من localDB
+    await localDB.org_members.delete(id)
+    showToast('✅ تم حذف المستخدم')
+    loadUsers()
+  } catch(e) { showToast('خطأ: ' + e.message, true) }
+}
+
 async function toggleUserStatus(id, isActive) {
   await db.from('org_members').update({ is_active: !isActive }).eq('id', id)
   showToast(isActive?'🚫 تم الإيقاف':'✅ تم التفعيل'); loadUsers()
@@ -2905,6 +2946,7 @@ async function saveCamp() {
         const idx = allCamps.findIndex(c => c.id === editingCampId)
         if (idx >= 0) allCamps[idx] = { ...allCamps[idx], ...campData }
         await localDB.camps.put({ ...campData })
+        await localDB.sync_queue.add({ action:'update_camp', record_id:editingCampId, data: JSON.stringify(campData), status:'pending', created_at: new Date().toISOString() })
         showToast('✅ تم تعديل المخيم محلياً — سيُزامن عند الاتصال')
       } else {
         campData.id = 'local_camp_' + Date.now()
@@ -2966,12 +3008,27 @@ async function saveCamp() {
 }
 
 async function deleteCamp(id, name) {
-  const { count } = await db.from('families').select('*',{count:'exact',head:true}).eq('camp_id',id)
-  if (count>0) { showToast(`لا يمكن حذف المخيم — يحتوي ${count} أسرة`,true); return }
+  // تحقق من عدد الأسر محلياً أولاً
+  let count = 0
+  if (navigator.onLine) {
+    const res = await db.from('families').select('*',{count:'exact',head:true}).eq('camp_id',id)
+    count = res.count || 0
+  } else {
+    const local = await localDB.families.where('camp_id').equals(id).count()
+    count = local
+  }
+  if (count > 0) { showToast(`لا يمكن حذف المخيم — يحتوي ${count} أسرة`, true); return }
   if (!confirm(`حذف مخيم "${name}"؟`)) return
-  await db.from('camps').delete().eq('id',id)
-  allCamps = allCamps.filter(c => c.id!==id)
+
+  allCamps = allCamps.filter(c => c.id !== id)
   await localDB.camps.delete(id)
+
+  if (navigator.onLine) {
+    await db.from('camps').delete().eq('id', id)
+  } else {
+    await localDB.sync_queue.add({ action:'delete_camp', record_id:id, data: JSON.stringify({id}), status:'pending', created_at: new Date().toISOString() })
+    showToast('✅ تم حذف المخيم محلياً — سيُزامن عند الاتصال')
+  }
   // تحديث كل الـ selects
   fillCampSelect('filterCamp', true)
   fillCampSelect('familyCamp')
@@ -3364,6 +3421,12 @@ async function processSyncQueue() {
         } else if (item.action === 'delete_family') {
           await db.from('family_members').delete().eq('family_id', item.record_id)
           await db.from('families').delete().eq('id', item.record_id)
+        } else if (item.action === 'delete_camp') {
+          await db.from('camps').delete().eq('id', item.record_id)
+        } else if (item.action === 'update_camp') {
+          const data = JSON.parse(item.data)
+          const { id, ...updateFields } = data
+          await db.from('camps').update(updateFields).eq('id', item.record_id)
         } else if (item.action === 'insert_camp') {
           const data = JSON.parse(item.data)
           const localId = data.id; delete data.id
