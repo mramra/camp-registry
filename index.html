@@ -2497,19 +2497,14 @@ async function doUpdateFamily(id) {
       const { error } = await db.from('families').update({ ...updateData, updated_by: currentUser.id, version: (cur?.version||1)+1 }).eq('id', id)
       if (error) throw error
       await db.from('family_members').delete().eq('family_id', id)
-      // أعد إدخال الأفراد للسيرفر (بدون IDs المحلية)
       const localMems = await localDB.family_members.where('family_id').equals(id).toArray()
       if (localMems.length) {
-        const memsToInsert = localMems
-          .filter(m => !String(m.id).startsWith('local_m_'))
-          .map(({ id: _id, ...m }) => m)
-        const newMems = localMems
-          .filter(m => String(m.id).startsWith('local_m_'))
-          .map(({ id: _id, ...m }) => m)
-        if (newMems.length) await db.from('family_members').insert(newMems)
+        const memsToInsert = localMems.map(({ id: _id, ...m }) => m)
+        if (memsToInsert.length) await db.from('family_members').insert(memsToInsert)
       }
     } else {
       await localDB.sync_queue.add({ action:'update_family', record_id:id, data: JSON.stringify(updateData), status:'pending', created_at: new Date().toISOString() })
+      logAction('تعديل أسرة', id, updateData.head_name)
       showToast('✅ تم الحفظ محلياً — سيُزامن عند الاتصال')
       clearFamilyForm()
       document.getElementById('btnSaveFamily').textContent = '💾 حفظ الأسرة'
@@ -5481,14 +5476,16 @@ function updateSelCount() {
 
 // ══ CAMP MANAGER ══
 async function getCreatedBy(role, campId) {
-  // platform_owner ينشئ مندوب → created_by = مدير الإيواء المسؤول عن المخيم
+  // created_by دائماً = auth.users.id (وليس org_members.id)
   if (currentMember.role === 'platform_owner' && role === 'camp_delegate' && campId) {
     const camp = allCamps.find(c => c.id === campId)
-    if (camp?.manager_id) return camp.manager_id
+    if (camp?.manager_id) {
+      // نجلب user_id للمدير من org_members
+      const { data: mgr } = await db.from('org_members').select('user_id').eq('id', camp.manager_id).single()
+      if (mgr?.user_id) return mgr.user_id
+    }
   }
-  // super_admin ينشئ → هو نفسه
-  if (currentMember.role === 'super_admin') return currentMember.id
-  // platform_owner ينشئ مدير إيواء → created_by = platform_owner
+  // الباقي = auth.users.id للمستخدم الحالي دائماً
   return currentUser.id
 }
 async function assignCampManager(campId, campName) {
