@@ -1172,7 +1172,7 @@ function canDelete()      { return hasPermission('delete') }
 function isOwner()        { return hasPermission('owner') }
 
 // ══ NAVIGATION ══
-function showPage(pageId) {
+async function showPage(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
   document.getElementById(pageId)?.classList.add('active')
 
@@ -1218,7 +1218,16 @@ function showPage(pageId) {
     buildAllDateSelects()
     clearFamilyForm()
     renderMemberForms()
+    // إذا كانت المخيمات فارغة — أعد التحميل أولاً
+    if (!allCamps.length) {
+      await loadCampsFromServer()
+    }
     fillCampSelect('familyCamp')
+    // إذا مندوب — اختر مخيمه تلقائياً
+    if (currentMember.camp_id) {
+      const sel = document.getElementById('familyCamp')
+      if (sel) sel.value = currentMember.camp_id
+    }
   }
 }
 
@@ -1270,11 +1279,16 @@ async function loadCampsFromServer() {
     } else if (currentMember?.role === 'camp_delegate' && currentMember.camp_id) {
       q = q.eq('id', currentMember.camp_id)
     }
-    const { data: camps } = await q
-    if (camps) {
+    const { data: camps, error: campsErr } = await q
+    if (camps?.length) {
       allCamps = camps
       await localDB.camps.clear()
       await localDB.camps.bulkPut(camps)
+    } else {
+      // fallback من localDB إذا فشل السيرفر أو رجع فارغاً
+      const local = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
+      if (local.length) allCamps = local
+      if (campsErr) console.warn('camps error:', campsErr.message)
     }
   } else {
     allCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
