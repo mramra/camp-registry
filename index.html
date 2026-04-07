@@ -176,6 +176,12 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
     <div style="text-align:center;font-size:20px;font-weight:900;color:var(--accent);margin-bottom:4px">سجل أسر المخيم</div>
     <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:24px">نظام إدارة المخيمات الإنسانية</div>
 
+    <!-- تبويب اختيار نوع الدخول -->
+    <div style="display:flex;background:var(--surface2);border-radius:8px;padding:3px;margin-bottom:20px;gap:3px;">
+      <button id="tabStaff" onclick="switchLoginTab('staff')" style="flex:1;border:none;border-radius:6px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:var(--accent);color:#000;">👤 موظف</button>
+      <button id="tabFamily" onclick="switchLoginTab('family')" style="flex:1;border:none;border-radius:6px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:var(--muted);">🏠 أسرة</button>
+    </div>
+
     <div id="loginFormSection">
       <div class="form-group">
         <label>رقم الهوية</label>
@@ -190,6 +196,23 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <div id="loginError" style="display:none;margin-top:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);border-radius:8px;padding:10px;font-size:12px;text-align:center;"></div>
     </div>
 
+    <!-- دخول الأسرة -->
+    <div id="familyLoginSection" style="display:none;">
+      <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:10px;margin-bottom:16px;font-size:11px;color:var(--green);text-align:center;">
+        🏠 بوابة الأسرة — اطلع على بياناتك وتوزيعاتك
+      </div>
+      <div class="form-group">
+        <label>رقم هوية رب الأسرة</label>
+        <input type="tel" id="familyLoginId" placeholder="9 أرقام" maxlength="9" dir="ltr" style="text-align:center;letter-spacing:3px;font-size:15px;">
+      </div>
+      <div class="form-group">
+        <label>تاريخ الميلاد</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;" id="familyDobContainer"></div>
+      </div>
+      <button class="btn btn-success" onclick="doFamilyLogin()" id="familyLoginBtn" style="width:100%;padding:13px;font-size:15px;justify-content:center;">🔑 دخول</button>
+      <div id="familyLoginError" style="display:none;margin-top:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);border-radius:8px;padding:10px;font-size:12px;text-align:center;"></div>
+    </div>
+
     <div id="changePassSection" style="display:none;">
       <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px;color:var(--accent);text-align:center;">⚠️ يجب تغيير كلمة المرور</div>
       <div class="form-group"><label>كلمة المرور الجديدة</label><input type="password" id="newPassword" placeholder="8 أحرف على الأقل" style="direction:ltr;"></div>
@@ -198,6 +221,21 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <button onclick="skipChangePassword()" style="width:100%;padding:11px;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;cursor:pointer;">تخطي الآن →</button>
       <div id="changePassError" style="display:none;margin-top:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);border-radius:8px;padding:10px;font-size:12px;text-align:center;"></div>
     </div>
+  </div>
+</div>
+
+<!-- بوابة الأسرة - شاشة منفصلة -->
+<div id="familyPortal" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:998;overflow-y:auto;">
+  <div style="background:linear-gradient(135deg,#1a2332,#0d1117);border-bottom:2px solid var(--green);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;">
+    <button onclick="familyPortalLogout()" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:8px;padding:6px 14px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">خروج 🚪</button>
+    <div style="text-align:center;">
+      <div style="font-size:14px;font-weight:900;color:var(--green);">🏠 بوابة الأسرة</div>
+      <div style="font-size:10px;color:var(--muted);" id="portalFamilyName">—</div>
+    </div>
+    <div style="width:60px;"></div>
+  </div>
+  <div style="max-width:600px;margin:0 auto;padding:16px;" id="familyPortalContent">
+    <div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>
   </div>
 </div>
 
@@ -514,6 +552,14 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   <div class="page" id="page-data">
     <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px;">📁 استيراد وتصدير البيانات</div>
     <div id="dataPageContent"></div>
+  </div>
+
+  <!-- Subscriptions -->
+  <div class="page" id="page-subscription">
+    <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px;">💳 الاشتراكات</div>
+    <div id="subscriptionContent">
+      <div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>
+    </div>
   </div>
 
 
@@ -883,29 +929,53 @@ const statusNames = {
 async function init() {
   showLoginScreen()
 
-  const cachedMember = localStorage.getItem('current_member') || sessionStorage.getItem('current_member')
-  const cachedUser   = localStorage.getItem('current_user') || sessionStorage.getItem('current_user')
+  let cachedMember, cachedUser
+  try {
+    const cm = localStorage.getItem('current_member') || sessionStorage.getItem('current_member')
+    const cu = localStorage.getItem('current_user')   || sessionStorage.getItem('current_user')
+    if (cm && cu) { cachedMember = JSON.parse(cm); cachedUser = JSON.parse(cu) }
+  } catch(e) {
+    // كاش تالف — امسحه وابدأ من جديد
+    localStorage.removeItem('current_member'); localStorage.removeItem('current_user')
+    sessionStorage.removeItem('current_member'); sessionStorage.removeItem('current_user')
+  }
 
   if (cachedMember && cachedUser) {
-    currentUser   = JSON.parse(cachedUser)
-    currentMember = JSON.parse(cachedMember)
+    currentUser   = cachedUser
+    currentMember = cachedMember
+
+    // تحقق من is_active في الكاش أولاً
+    if (cachedMember.is_active === false) {
+      localStorage.removeItem('current_member'); localStorage.removeItem('current_user')
+      sessionStorage.removeItem('current_member'); sessionStorage.removeItem('current_user')
+      showLoginScreen()
+      return
+    }
+
     hideLoginScreen()
     buildSidebar()
     checkOnlineStatus()
 
     if (navigator.onLine) {
-      // جلب المخيمات والبيانات أولاً ثم عرض الداشبورد
       const { data: { session } } = await db.auth.getSession()
       if (!session) {
-        localStorage.removeItem('current_member')
-        localStorage.removeItem('current_user')
-        sessionStorage.removeItem('current_member')
-        sessionStorage.removeItem('current_user')
-        showLoginScreen()
-        return
+        localStorage.removeItem('current_member'); localStorage.removeItem('current_user')
+        sessionStorage.removeItem('current_member'); sessionStorage.removeItem('current_user')
+        showLoginScreen(); return
       }
+      // تحقق من is_active من السيرفر مباشرة
+      const { data: freshMember } = await db.from('org_members')
+        .select('*').eq('user_id', currentUser.id).eq('is_active', true).single()
+      if (!freshMember) {
+        localStorage.removeItem('current_member'); localStorage.removeItem('current_user')
+        sessionStorage.removeItem('current_member'); sessionStorage.removeItem('current_user')
+        showLoginScreen(); return
+      }
+      currentMember = freshMember
+      localStorage.setItem('current_member', JSON.stringify(freshMember))
+      sessionStorage.setItem('current_member', JSON.stringify(freshMember))
+
       await loadCampsFromServer()
-      // مزامنة الأسر والأفراد
       try {
         let q = db.from('families')
           .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
@@ -914,7 +984,6 @@ async function init() {
         const { data: fams } = await q
         if (fams?.length) {
           await localDB.families.bulkPut(fams)
-          // احذف من المحلي أي أسرة محذوفة من السيرفر
           const srvIds2 = new Set(fams.map(f => f.id))
           const locals2 = await localDB.families.where('org_id').equals(ORG_ID).toArray()
           const toDel2  = locals2.filter(f => {
@@ -923,10 +992,10 @@ async function init() {
           }).map(f => f.id)
           if (toDel2.length) await localDB.families.bulkDelete(toDel2)
           const { data: mems } = await db.from('family_members')
-            .select('id,family_id,national_id,name,dob,relation,gender,health').limit(2000)
+            .select('id,family_id,national_id,name,dob,relation,gender,health')
+            .in('family_id', fams.map(f => f.id)).limit(2000)
           if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems) }
         } else {
-          // لا أسر في السيرفر — امسح المحلي للمخيم الحالي
           if (currentMember.camp_id) {
             const oldFams = await localDB.families.where('camp_id').equals(currentMember.camp_id).toArray()
             if (oldFams.length) await localDB.families.bulkDelete(oldFams.map(f => f.id))
@@ -934,7 +1003,6 @@ async function init() {
         }
       } catch(e) {}
     } else {
-      // Offline — اجلب من localDB
       const localCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
       if (localCamps.length) {
         allCamps = localCamps
@@ -987,7 +1055,8 @@ async function loadMember() {
       if (fams?.length) {
         await localDB.families.bulkPut(fams)
         const { data: mems } = await db.from('family_members')
-          .select('id,family_id,national_id,name,dob,relation,gender,health').limit(2000)
+          .select('id,family_id,national_id,name,dob,relation,gender,health')
+          .in('family_id', fams.map(f => f.id)).limit(2000)
         if (mems?.length) {
           await localDB.family_members.clear()
           await localDB.family_members.bulkPut(mems)
@@ -1063,13 +1132,8 @@ async function doLogin() {
 function skipChangePassword() {
   document.getElementById('changePassSection').style.display = 'none'
   document.getElementById('loginFormSection').style.display = 'block'
-  hideLoginScreen()
-  buildSidebar()
-  checkOnlineStatus()
-  loadCampsFromServer().then(() => {
-    showPage('page-dashboard')
-    loadDashboard()
-  })
+  // loadMember تتولى كل شيء — بناء sidebar وتحميل البيانات
+  loadMember()
 }
 
 async function doChangePassword() {
@@ -1144,6 +1208,7 @@ function buildSidebar() {
     }
     if (currentMember.role === 'platform_owner') {
       html += navItem('📱', 'الأجهزة', 'page-devices')
+      html += navItem('💳', 'الاشتراكات', 'page-subscription')
     }
   }
 
@@ -1175,6 +1240,9 @@ function hasPermission(action) {
     case 'write':
       if (role === 'assistant') return currentMember.can_add === true
       return ['platform_owner','super_admin','camp_delegate','assistant'].includes(role)
+    case 'edit':
+      if (role === 'assistant') return currentMember.can_edit === true
+      return ['platform_owner','super_admin','camp_delegate'].includes(role)
     case 'delete':
       if (role === 'assistant') return currentMember.can_delete === true
       return ['platform_owner','super_admin','camp_delegate'].includes(role)
@@ -1193,6 +1261,7 @@ function hasPermission(action) {
 }
 // دوال الاختصار (للتوافق مع الكود الحالي)
 function canWrite()       { return hasPermission('write') }
+function canEdit()        { return hasPermission('edit') }
 function canViewReports() { return hasPermission('reports') }
 function canAdmin()       { return hasPermission('admin') }
 function canDelete()      { return hasPermission('delete') }
@@ -1216,6 +1285,7 @@ async function showPage(pageId) {
     'page-data':       ['📁 استيراد / تصدير', ''],
     'page-audit':      ['📋 سجل النشاط', ''],
     'page-settings':   ['⚙️ الإعدادات', ''],
+    'page-subscription': ['💳 الاشتراكات', 'إدارة خطط الاشتراك'],
   }
 
   const [title, sub] = titles[pageId] || ['سجل أسر المخيم', '']
@@ -1237,6 +1307,7 @@ async function showPage(pageId) {
     if (cc) cc.style.display = currentMember.role === 'platform_owner' ? 'block' : 'none'
   }
   if (pageId === 'page-sms')         loadSmsPage()
+  if (pageId === 'page-subscription') loadSubscriptionPage()
   if (pageId === 'page-add-family') {
     editingFamilyId = null
     document.getElementById('addFamilyTitle').textContent = '➕ إضافة أسرة جديدة'
@@ -1650,14 +1721,19 @@ async function loadDashboard() {
           }).map(f => f.id)
           if (toDel.length) await localDB.families.bulkDelete(toDel)
           fams = srv
-          const { data: mems } = await db.from('family_members').select('id,family_id,national_id,name,dob,relation,gender,health').limit(2000)
+          const { data: mems } = await db.from('family_members')
+            .select('id,family_id,national_id,name,dob,relation,gender,health')
+            .in('family_id', srv.map(f => f.id)).limit(2000)
           if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems); members = mems }
         }
       } catch(e) { console.warn('dashboard sync:', e.message) }
     }
 
     const urgent  = fams.filter(f => f.status === 'urgent').length
-    const incompleteCount = fams.filter(f => isIncomplete(f)).length
+    // بناء خريطة الأفراد لحساب النواقص بدقة
+    const mByFam  = {}
+    members.forEach(m => { if (!mByFam[m.family_id]) mByFam[m.family_id]=[]; mByFam[m.family_id].push(m) })
+    const incompleteCount = fams.filter(f => checkFamilyIssues(f, mByFam[f.id]||[]).length > 0).length
 
     document.getElementById('statFamilies').textContent   = fams.length || '—'
     document.getElementById('statUrgent').textContent     = urgent || 0
@@ -1839,8 +1915,8 @@ async function loadFamilies() {
         <td class="col-landscape" onclick="openFamily('${f.id}')">${statusDot} ${f.status==='ok'?'مستقر':f.status==='need'?'يحتاج':'عاجل'}</td>
         <td style="white-space:nowrap;">
           <div style="display:flex;gap:5px;">
-            <button onclick="startEditFamily('${f.id}')" title="تعديل"
-              style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;">✏️</button>
+            ${canEdit() ? `<button onclick="startEditFamily('${f.id}')" title="تعديل"
+              style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;">✏️</button>` : ''}
             ${canDelete() ? `<button onclick="deleteFamily('${f.id}')" title="حذف"
               style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;">🗑️</button>` : ''}
           </div>
@@ -1917,9 +1993,11 @@ async function loadFamilies() {
     }).map(f => f.id)
     if (toDelete.length) await localDB.families.bulkDelete(toDelete)
 
-    // مزامنة الأفراد — مع فلتر الأسر المجلوبة
+    // مزامنة الأفراد — فقط للأسر المجلوبة
+    const srvFamIds = srv.map(f => f.id)
     const { data: mems } = await db.from('family_members')
       .select('id,family_id,national_id,name,dob,relation,gender,health')
+      .in('family_id', srvFamIds)
       .limit(2000)
     if (mems?.length) {
       try {
@@ -2062,8 +2140,8 @@ async function openFamily(id) {
         </div>`
       }).join('')}
     </div>
-    ${canWrite()?`<div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn btn-primary" onclick="startEditFamily('${f.id}')" style="flex:1;">✏️ تعديل</button>
+    ${(canWrite()||canEdit())?`<div style="display:flex;gap:8px;flex-wrap:wrap;">
+      ${canEdit()?`<button class="btn btn-primary" onclick="startEditFamily('${f.id}')" style="flex:1;">✏️ تعديل</button>`:''}
       ${f.phone1 ? `<button class="btn btn-success" onclick="smsSendOne('${f.id}')">📨 SMS</button>` : ''}
       <button class="btn" style="background:var(--surface2);border:1px solid var(--border);" onclick="printFamily('${f.id}')">🖨️ طباعة</button>
       ${canDelete()?`<button class="btn" style="background:transparent;border:1px solid var(--red);color:var(--red);" onclick="deleteFamily('${f.id}')">🗑️ حذف</button>`:''}
@@ -2954,7 +3032,17 @@ async function editUser(id) {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;'
   modal.innerHTML = `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;">
-      <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:16px;">✏️ تعديل: ${u.full_name}</div>
+      <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:16px;">✏️ تعديل: ${esc(u.full_name)}</div>
+
+      <div class="form-group">
+        <label>الاسم الكامل *</label>
+        <input type="text" id="euFullName" value="${esc(u.full_name)}" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
+      </div>
+
+      <div class="form-group">
+        <label>رقم الجوال</label>
+        <input type="tel" id="euPhone" value="${esc(u.phone)}" dir="ltr" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;text-align:center;">
+      </div>
 
       <div class="form-group"><label>الدور</label>
         <select id="euRole" onchange="euRoleChange()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
@@ -2999,11 +3087,15 @@ function euRoleChange() {
 }
 
 async function saveEditUser(id) {
-  const role    = document.getElementById('euRole').value
-  const campId  = document.getElementById('euCamp')?.value || null
-  const canAdd  = document.getElementById('euCanAdd')?.checked ?? true
-  const canEdit = document.getElementById('euCanEdit')?.checked ?? true
-  const canDel  = document.getElementById('euCanDelete')?.checked ?? false
+  const fullName = document.getElementById('euFullName')?.value.trim()
+  const phone    = document.getElementById('euPhone')?.value.trim()
+  const role     = document.getElementById('euRole').value
+  const campId   = document.getElementById('euCamp')?.value || null
+  const canAdd   = document.getElementById('euCanAdd')?.checked ?? true
+  const canEdit  = document.getElementById('euCanEdit')?.checked ?? true
+  const canDel   = document.getElementById('euCanDelete')?.checked ?? false
+
+  if (!fullName) { showToast('يرجى إدخال الاسم', true); return }
 
   // حماية: المندوب لا يستطيع حفظ دور أعلى من مساعد
   if (currentMember.role === 'camp_delegate' && role !== 'assistant') {
@@ -3011,6 +3103,8 @@ async function saveEditUser(id) {
   }
 
   const { error } = await db.from('org_members').update({
+    full_name:  fullName,
+    phone:      phone || null,
     role,
     camp_id:    ['camp_delegate','assistant'].includes(role) ? campId : null,
     can_add:    role==='assistant' ? canAdd  : true,
@@ -3021,7 +3115,7 @@ async function saveEditUser(id) {
   }).eq('id', id)
 
   if (error) { showToast('خطأ: '+error.message, true); return }
-  logAction('تعديل مستخدم', id, '')
+  logAction('تعديل مستخدم', id, fullName)
   showToast('✅ تم حفظ التعديلات')
   document.getElementById('editUserModal')?.remove()
   loadUsers()
@@ -3316,7 +3410,12 @@ async function registerDevice() {
       .single()
 
     if (existing) {
-      // حدّث آخر ظهور
+      if (existing.is_blocked) {
+        // جهاز محظور — أجبر تسجيل الخروج
+        showToast('🚫 هذا الجهاز محظور من الوصول', true)
+        setTimeout(() => logout(), 2000)
+        return
+      }
       await db.from('devices').update({ last_seen: new Date().toISOString() }).eq('id', existing.id)
     } else {
       // سجّل جهاز جديد
@@ -3576,7 +3675,9 @@ function smsCopyNums() {
 // └──────────────────────────────────────────────────────┘
 async function processSyncQueue() {
   try {
-    const queue = await localDB.sync_queue.where('status').equals('pending').toArray()
+    // نشغّل الـ pending وكذلك الـ error (retry)
+    const queue = await localDB.sync_queue
+      .where('status').anyOf(['pending','error']).toArray()
     if (!queue.length) return
     let done = 0
     for (const item of queue) {
@@ -3587,13 +3688,12 @@ async function processSyncQueue() {
           delete data.id
           const { data: srv } = await db.from('families').insert(data).select('id').single()
           if (srv?.id) {
-            // حدّث ID في المحلي
             const localFam = await localDB.families.get(localId)
             if (localFam) {
               await localDB.families.delete(localId)
               await localDB.families.put({ ...localFam, id: srv.id })
             }
-            // ④ زامن الأفراد المرتبطين بالأسرة المحلية
+            // زامن الأفراد
             try {
               const localMembers = await localDB.family_members
                 .where('family_id').equals(localId).toArray()
@@ -3602,7 +3702,6 @@ async function processSyncQueue() {
                   ...m, family_id: srv.id
                 }))
                 await db.from('family_members').insert(serverMembers)
-                // حدّث family_id في المحلي
                 for (const m of localMembers) {
                   await localDB.family_members.update(m.id, { family_id: srv.id })
                 }
@@ -3612,6 +3711,16 @@ async function processSyncQueue() {
         } else if (item.action === 'update_family') {
           const data = JSON.parse(item.data)
           await db.from('families').update(data).eq('id', item.record_id)
+          // زامن الأفراد مع التعديل
+          try {
+            const localMems = await localDB.family_members
+              .where('family_id').equals(item.record_id).toArray()
+            await db.from('family_members').delete().eq('family_id', item.record_id)
+            if (localMems.length) {
+              const toInsert = localMems.map(({ id: _id, ...m }) => m)
+              if (toInsert.length) await db.from('family_members').insert(toInsert)
+            }
+          } catch(me) { console.warn('update members sync:', me.message) }
         } else if (item.action === 'delete_family') {
           await db.from('family_members').delete().eq('family_id', item.record_id)
           await db.from('families').delete().eq('id', item.record_id)
@@ -3643,7 +3752,16 @@ async function processSyncQueue() {
         } else if (item.action === 'insert_camp') {
           const data = JSON.parse(item.data)
           const localId = data.id; delete data.id
-          await db.from('camps').insert(data)
+          const { data: srv } = await db.from('camps').insert(data).select('id').single()
+          // حدّث ID في المحلي
+          if (srv?.id) {
+            const local = await localDB.camps.get(localId)
+            if (local) {
+              await localDB.camps.delete(localId)
+              await localDB.camps.put({ ...local, id: srv.id })
+              allCamps = allCamps.map(c => c.id === localId ? { ...c, id: srv.id } : c)
+            }
+          }
         }
         await localDB.sync_queue.update(item.id, { status: 'done' })
         done++
@@ -6210,6 +6328,357 @@ function clearSyncing() {
   txt.textContent = navigator.onLine ? 'متصل' : 'غير متصل'
   txt.style.color = navigator.onLine ? 'var(--green)' : 'var(--red)'
 }
+// ══ FAMILY PORTAL ══
+// بوابة الأسرة — دخول برقم الهوية + تاريخ الميلاد
+
+function switchLoginTab(tab) {
+  const staffBtn  = document.getElementById('tabStaff')
+  const familyBtn = document.getElementById('tabFamily')
+  const staffForm = document.getElementById('loginFormSection')
+  const famForm   = document.getElementById('familyLoginSection')
+
+  if (tab === 'staff') {
+    staffBtn.style.background  = 'var(--accent)'; staffBtn.style.color = '#000'
+    familyBtn.style.background = 'transparent';   familyBtn.style.color = 'var(--muted)'
+    staffForm.style.display = 'block'; famForm.style.display = 'none'
+  } else {
+    familyBtn.style.background = 'var(--green)'; familyBtn.style.color = '#fff'
+    staffBtn.style.background  = 'transparent';  staffBtn.style.color  = 'var(--muted)'
+    famForm.style.display = 'block'; staffForm.style.display = 'none'
+    // بناء قوائم التاريخ
+    buildFamilyDobSelect()
+  }
+}
+
+function buildFamilyDobSelect() {
+  const c = document.getElementById('familyDobContainer')
+  if (!c || c.children.length > 0) return
+  const s = 'background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 4px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;width:100%;'
+  let days='<option value="">يوم</option>'
+  let mons='<option value="">شهر</option>'
+  let years='<option value="">سنة</option>'
+  for(let i=1;i<=31;i++) days+=`<option value="${String(i).padStart(2,'0')}">${i}</option>`
+  ;['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'].forEach((m,i)=>mons+=`<option value="${String(i+1).padStart(2,'0')}">${m}</option>`)
+  for(let y=2025;y>=1924;y--) years+=`<option value="${y}">${y}</option>`
+  c.innerHTML = `<select id="famDobD" style="${s}">${days}</select><select id="famDobM" style="${s}">${mons}</select><select id="famDobY" style="${s}">${years}</select>`
+}
+
+async function doFamilyLogin() {
+  const nationalId = document.getElementById('familyLoginId').value.trim()
+  const d = document.getElementById('famDobD')?.value
+  const m = document.getElementById('famDobM')?.value
+  const y = document.getElementById('famDobY')?.value
+  const btn   = document.getElementById('familyLoginBtn')
+  const errEl = document.getElementById('familyLoginError')
+
+  errEl.style.display = 'none'
+  if (!nationalId || nationalId.length < 9) { errEl.textContent = 'يرجى إدخال رقم الهوية'; errEl.style.display='block'; return }
+  if (!d || !m || !y) { errEl.textContent = 'يرجى إدخال تاريخ الميلاد كاملاً'; errEl.style.display='block'; return }
+
+  btn.disabled = true; btn.textContent = 'جارٍ التحقق...'
+  const dob = `${y}-${m}-${d}`
+
+  try {
+    // البحث عن الأسرة
+    const { data: families, error } = await db.from('families')
+      .select('*').eq('head_id', nationalId).eq('org_id', ORG_ID).limit(1)
+
+    if (error || !families?.length) {
+      errEl.textContent = '❌ لم يتم العثور على أسرة بهذا الرقم'
+      errEl.style.display = 'block'; return
+    }
+
+    const family = families[0]
+    // التحقق من تاريخ الميلاد
+    if (!family.head_dob || family.head_dob !== dob) {
+      errEl.textContent = '❌ تاريخ الميلاد غير صحيح'
+      errEl.style.display = 'block'; return
+    }
+
+    // نجح الدخول
+    await showFamilyPortal(family)
+  } catch(e) {
+    errEl.textContent = 'خطأ: ' + e.message; errEl.style.display='block'
+  } finally {
+    btn.disabled = false; btn.textContent = '🔑 دخول'
+  }
+}
+
+async function showFamilyPortal(family) {
+  document.getElementById('loginScreen').style.display = 'none'
+  document.getElementById('familyPortal').style.display = 'block'
+  document.getElementById('portalFamilyName').textContent = family.head_name
+
+  const content = document.getElementById('familyPortalContent')
+  content.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
+
+  try {
+    // جلب الأفراد
+    const { data: members } = await db.from('family_members')
+      .select('*').eq('family_id', family.id)
+
+    // جلب التوزيعات
+    const { data: dists } = await db.from('camp_dist_families')
+      .select('*, camp_distributions(name, type, created_at, dist_rounds(name, status))')
+      .eq('family_id', family.id).order('created_at', { ascending: false }).limit(20)
+
+    // جلب الرسائل
+    const { data: msgs } = await db.from('sms_messages')
+      .select('*').eq('family_id', family.id)
+      .order('created_at', { ascending: false }).limit(10)
+
+    const camp   = await getCampName(family.camp_id)
+    const sLabel = { ok:'✅ مستقر', need:'⚠️ يحتاج مساعدة', urgent:'🚨 عاجل' }
+    const gLabel = { ذكر:'👨', أنثى:'👩' }
+
+    content.innerHTML = `
+      <!-- بطاقة رب الأسرة -->
+      <div class="card" style="border-color:rgba(16,185,129,0.3);margin-bottom:14px;">
+        <div class="card-title" style="color:var(--green);">👤 بيانات رب الأسرة</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          ${[
+            ['الاسم', esc(family.head_name)],
+            ['رقم الهوية', esc(family.head_id)],
+            ['الجنس', esc(family.head_gender)],
+            ['الحالة الاجتماعية', esc(family.head_marital)],
+            ['الجوال', esc(family.phone1)],
+            ['المخيم', esc(camp)],
+            ['الحالة', sLabel[family.status]||'—'],
+            ['عدد الأفراد', (members?.length||0)+1],
+          ].map(([l,v])=>`<div style="background:var(--surface2);border-radius:8px;padding:10px;">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">${l}</div>
+            <div style="font-size:13px;font-weight:700;">${v}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- الأفراد -->
+      ${members?.length ? `
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">👨‍👩‍👧 أفراد الأسرة (${members.length})</div>
+        ${members.map((m,i)=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+            <div style="width:32px;height:32px;background:var(--surface2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;">${gLabel[m.gender]||'👤'}</div>
+            <div>
+              <div style="font-size:13px;font-weight:700;">${esc(m.name)}</div>
+              <div style="font-size:10px;color:var(--muted);">${esc(m.relation)||'—'} ${m.dob?'• '+m.dob:''}</div>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <!-- التوزيعات -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">📦 التوزيعات المستلمة</div>
+        ${dists?.length ? dists.map(d=>`
+          <div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-size:13px;font-weight:700;">${esc(d.camp_distributions?.name||'توزيع')}</div>
+              <span style="background:rgba(16,185,129,0.15);color:var(--green);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;">✅ مستلم</span>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+              📋 ${esc(d.camp_distributions?.dist_rounds?.name||'—')} •
+              📅 ${d.received_at ? new Date(d.received_at).toLocaleDateString('ar-SA') : '—'}
+            </div>
+          </div>`).join('')
+        : '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px;">لا توجد توزيعات مسجلة بعد</div>'}
+      </div>
+
+      <!-- الرسائل -->
+      ${msgs?.length ? `
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title" style="color:var(--blue);">💬 الإشعارات</div>
+        ${msgs.map(msg=>`
+          <div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:8px;">
+            <div style="font-size:13px;">${esc(msg.message)}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px;">${new Date(msg.created_at).toLocaleDateString('ar-SA')}</div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <!-- تذييل -->
+      <div style="text-align:center;color:var(--muted);font-size:11px;padding:20px 0;">
+        🔒 هذه البيانات سرية — لا تشاركها مع أحد
+      </div>
+    `
+  } catch(e) {
+    content.innerHTML = `<div style="text-align:center;color:var(--red);padding:40px;">${e.message}</div>`
+  }
+}
+
+async function getCampNameById(id) {
+  const camp = allCamps.find(c => c.id === id)
+  if (camp) return camp.name
+  try {
+    const { data } = await db.from('camps').select('name').eq('id', id).single()
+    return data?.name || '—'
+  } catch { return '—' }
+}
+
+function familyPortalLogout() {
+  document.getElementById('familyPortal').style.display = 'none'
+  document.getElementById('familyLoginId').value = ''
+  const c = document.getElementById('familyDobContainer')
+  if (c) c.innerHTML = ''
+  document.getElementById('loginScreen').style.display = 'flex'
+  switchLoginTab('family')
+}
+
+// ══ SUBSCRIPTIONS (Stripe) ══
+const STRIPE_PLANS = [
+  {
+    id:    'plan_basic',
+    name:  'الأساسية',
+    price: 99,
+    currency: 'SAR',
+    period: 'شهرياً',
+    features: ['مخيم واحد', 'حتى 500 أسرة', 'مندوب واحد', '5 مساعدين', 'دعم فني'],
+    color: 'var(--blue)',
+    icon:  '🌱',
+    priceId: 'price_basic_monthly',
+  },
+  {
+    id:    'plan_pro',
+    name:  'الاحترافية',
+    price: 249,
+    currency: 'SAR',
+    period: 'شهرياً',
+    features: ['5 مخيمات', 'حتى 2000 أسرة', '5 مناديب', 'مساعدين غير محدودين', 'تقارير متقدمة', 'SMS API', 'دعم أولوية'],
+    color: 'var(--accent)',
+    icon:  '⭐',
+    popular: true,
+    priceId: 'price_pro_monthly',
+  },
+  {
+    id:    'plan_enterprise',
+    name:  'المؤسسية',
+    price: 0,
+    currency: 'SAR',
+    period: 'تواصل معنا',
+    features: ['مخيمات غير محدودة', 'أسر غير محدودة', 'API مخصص', 'نشر خاص', 'عقد مخصص', 'دعم 24/7'],
+    color: 'var(--purple)',
+    icon:  '🏢',
+    priceId: null,
+  },
+]
+
+async function loadSubscriptionPage() {
+  if (currentMember?.role !== 'platform_owner') {
+    document.getElementById('subscriptionContent').innerHTML =
+      '<div class="empty"><div class="empty-icon">🔒</div>هذه الصفحة للمالك فقط</div>'
+    return
+  }
+
+  const content = document.getElementById('subscriptionContent')
+
+  // جلب الاشتراك الحالي إن وجد
+  let currentSub = null
+  try {
+    const { data } = await db.from('subscriptions')
+      .select('*').eq('org_id', ORG_ID).eq('status','active').single()
+    currentSub = data
+  } catch(e) {}
+
+  const currentPlanId = currentSub?.plan_id || null
+  const trialEnd = currentSub?.trial_end ? new Date(currentSub.trial_end) : null
+  const isInTrial = trialEnd && trialEnd > new Date()
+
+  content.innerHTML = `
+    <!-- الحالة الحالية -->
+    ${currentSub ? `
+    <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:14px;margin-bottom:20px;">
+      <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:6px;">✅ اشتراكك الحالي</div>
+      <div style="font-size:15px;font-weight:900;">${STRIPE_PLANS.find(p=>p.id===currentSub.plan_id)?.name || currentSub.plan_id}</div>
+      ${isInTrial ? `<div style="font-size:11px;color:var(--accent);margin-top:4px;">⏳ فترة تجريبية تنتهي ${trialEnd.toLocaleDateString('ar-SA')}</div>` : ''}
+      ${currentSub.next_billing ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">📅 التجديد: ${new Date(currentSub.next_billing).toLocaleDateString('ar-SA')}</div>` : ''}
+      <button onclick="manageSubscription()" style="margin-top:10px;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:8px;padding:7px 16px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">⚙️ إدارة الاشتراك</button>
+    </div>` : `
+    <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:12px;padding:14px;margin-bottom:20px;text-align:center;">
+      <div style="font-size:14px;font-weight:700;color:var(--accent);margin-bottom:4px;">🎁 جرّب مجاناً 14 يوم</div>
+      <div style="font-size:12px;color:var(--muted);">بدون بطاقة ائتمان — ابدأ الآن</div>
+    </div>`}
+
+    <!-- الخطط -->
+    <div style="font-size:14px;font-weight:700;margin-bottom:14px;">📋 خطط الاشتراك</div>
+    ${STRIPE_PLANS.map(plan => `
+      <div style="background:var(--surface);border:2px solid ${currentPlanId===plan.id ? plan.color : plan.popular?'rgba(245,158,11,0.4)':'var(--border)'};border-radius:16px;padding:18px;margin-bottom:14px;position:relative;">
+        ${plan.popular ? '<div style="position:absolute;top:-10px;right:16px;background:var(--accent);color:#000;border-radius:20px;padding:2px 12px;font-size:10px;font-weight:900;">الأكثر شيوعاً</div>' : ''}
+        ${currentPlanId===plan.id ? '<div style="position:absolute;top:-10px;left:16px;background:var(--green);color:#fff;border-radius:20px;padding:2px 12px;font-size:10px;font-weight:900;">✅ مشترك</div>' : ''}
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <span style="font-size:24px;">${plan.icon}</span>
+          <div>
+            <div style="font-size:16px;font-weight:900;color:${plan.color};">${plan.name}</div>
+            <div style="font-size:11px;color:var(--muted);">${plan.period}</div>
+          </div>
+          <div style="margin-right:auto;text-align:left;">
+            ${plan.price > 0
+              ? `<div style="font-size:22px;font-weight:900;color:${plan.color};">${plan.price} <span style="font-size:12px;">ر.س</span></div>`
+              : `<div style="font-size:14px;font-weight:700;color:${plan.color};">تواصل معنا</div>`
+            }
+          </div>
+        </div>
+        <div style="display:grid;gap:6px;margin-bottom:14px;">
+          ${plan.features.map(f=>`
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px;">
+              <span style="color:${plan.color};">✓</span> ${f}
+            </div>`).join('')}
+        </div>
+        ${currentPlanId === plan.id
+          ? `<button disabled style="width:100%;padding:11px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:not-allowed;">الخطة الحالية</button>`
+          : plan.priceId
+            ? `<button onclick="subscribePlan('${plan.priceId}','${plan.id}')" style="width:100%;padding:11px;background:${plan.color};color:${plan.color==='var(--accent)'?'#000':'#fff'};border:none;border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">${currentSub?'ترقية للخطة':'اشترك الآن'} →</button>`
+            : `<button onclick="contactSales()" style="width:100%;padding:11px;background:transparent;border:2px solid ${plan.color};color:${plan.color};border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">📞 تواصل معنا</button>`
+        }
+      </div>`).join('')}
+
+    <!-- ملاحظة -->
+    <div style="text-align:center;font-size:11px;color:var(--muted);padding:10px 0;">
+      🔒 المدفوعات محمية بـ Stripe • يمكن الإلغاء في أي وقت
+    </div>
+  `
+}
+
+async function subscribePlan(priceId, planId) {
+  if (!navigator.onLine) { showToast('📴 يحتاج اتصالاً بالإنترنت', true); return }
+  showToast('⏳ جارٍ التحويل لصفحة الدفع...')
+
+  try {
+    // استدعاء Edge Function لإنشاء Stripe Checkout Session
+    const { data: { session } } = await db.auth.getSession()
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${session.access_token}` },
+      body: JSON.stringify({ priceId, planId, orgId: ORG_ID, successUrl: window.location.href, cancelUrl: window.location.href }),
+    })
+    const data = await res.json()
+    if (data.url) {
+      window.location.href = data.url
+    } else {
+      showToast('❌ ' + (data.error || 'فشل إنشاء جلسة الدفع'), true)
+    }
+  } catch(e) {
+    showToast('❌ ' + e.message, true)
+  }
+}
+
+async function manageSubscription() {
+  showToast('⏳ جارٍ فتح بوابة الإدارة...')
+  try {
+    const { data: { session } } = await db.auth.getSession()
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-portal`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${session.access_token}` },
+      body: JSON.stringify({ orgId: ORG_ID, returnUrl: window.location.href }),
+    })
+    const data = await res.json()
+    if (data.url) window.location.href = data.url
+    else showToast('❌ ' + (data.error||'فشل'), true)
+  } catch(e) { showToast('❌ '+e.message, true) }
+}
+
+function contactSales() {
+  const msg = encodeURIComponent('السلام عليكم، أرغب في الاستفسار عن خطة المؤسسات لنظام سجل أسر المخيم.')
+  window.open('https://wa.me/966XXXXXXXXX?text='+msg, '_blank')
+}
+
 // ══ START ══
 init()
 </script>
