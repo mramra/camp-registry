@@ -1608,26 +1608,40 @@ async function loadDashboard() {
       members = members.filter(m => fams.some(f => f.id === m.family_id))
     }
 
-    // لو localDB فارغة واتصال موجود — اجلب من السيرفر مباشرة
-    if (!fams.length && navigator.onLine) {
-      let q = db.from('families')
-        .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
-        .eq('org_id', ORG_ID).limit(1000)
-      if (currentMember.role === 'super_admin') {
-        const { data: mc } = await db.from('camps').select('id').eq('org_id',ORG_ID).eq('manager_id',currentMember.id)
-        const ids = mc?.map(x=>x.id)||[]
-        if (ids.length===1) q=q.eq('camp_id',ids[0])
-        else if (ids.length>1) q=q.in('camp_id',ids)
-      } else if (currentMember.camp_id) {
-        q = q.eq('camp_id', currentMember.camp_id)
-      }
-      const { data: srv } = await q
-      if (srv?.length) {
-        await localDB.families.bulkPut(srv)
-        fams = srv
-        const { data: mems } = await db.from('family_members').select('id,family_id,national_id,name,dob,relation,gender,health').limit(2000)
-        if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems); members = mems }
-      }
+    // اعرض الأرقام المحلية فوراً (سريع)
+    document.getElementById('statFamilies').textContent   = fams.length || '0'
+    document.getElementById('statMembers').textContent    = fams.length + members.length || '0'
+
+    // ثم جلب من السيرفر دائماً للتحديث الدقيق
+    if (navigator.onLine) {
+      try {
+        let q = db.from('families')
+          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+          .eq('org_id', ORG_ID).limit(1000)
+        if (currentMember.role === 'super_admin') {
+          const { data: mc } = await db.from('camps').select('id').eq('org_id',ORG_ID).eq('manager_id',currentMember.id)
+          const ids = mc?.map(x=>x.id)||[]
+          if (ids.length===1) q=q.eq('camp_id',ids[0])
+          else if (ids.length>1) q=q.in('camp_id',ids)
+        } else if (currentMember.camp_id) {
+          q = q.eq('camp_id', currentMember.camp_id)
+        }
+        const { data: srv } = await q
+        if (srv) {
+          // مزامنة محلية
+          await localDB.families.bulkPut(srv)
+          const srvIds = new Set(srv.map(f => f.id))
+          const allLocal = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+          const toDel = allLocal.filter(f => {
+            if (currentMember.camp_id && f.camp_id !== currentMember.camp_id) return false
+            return !srvIds.has(f.id)
+          }).map(f => f.id)
+          if (toDel.length) await localDB.families.bulkDelete(toDel)
+          fams = srv
+          const { data: mems } = await db.from('family_members').select('id,family_id,national_id,name,dob,relation,gender,health').limit(2000)
+          if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems); members = mems }
+        }
+      } catch(e) { console.warn('dashboard sync:', e.message) }
     }
 
     const urgent  = fams.filter(f => f.status === 'urgent').length
