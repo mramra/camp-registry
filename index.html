@@ -618,6 +618,26 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
     <div id="analysisContent"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحليل...</div></div></div>
   </div>
 
+  <!-- حركات الأسر -->
+  <div class="page" id="page-movements">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+      <div style="font-size:15px;font-weight:700;color:var(--purple);">🚶 حركات الأسر</div>
+    </div>
+    <!-- فلاتر -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select id="mvFilterType" onchange="loadMovementsPage()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+        <option value="">كل الحركات</option>
+        <option value="entry">🟢 دخول</option>
+        <option value="exit">🔴 خروج</option>
+        <option value="transfer">🔵 نقل</option>
+      </select>
+      <select id="mvFilterCamp" onchange="loadMovementsPage()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+        <option value="">كل المخيمات</option>
+      </select>
+    </div>
+    <div id="movementsPageList"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div></div>
+  </div>
+
   <div class="page" id="page-sms">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--green);">💬 إرسال رسائل SMS</div>
@@ -879,16 +899,17 @@ localDB.version(5).stores({
   camp_distributions: 'id, camp_id, org_id, status, round_id',
   camp_dist_families: 'id, distribution_id, family_id'
 })
-localDB.version(6).stores({
-  families:       'id, camp_id, org_id, status, updated_at',
-  family_members: 'id, family_id, national_id',
-  camps:          'id, org_id',
-  sync_queue:     '++id, status',
-  meta:           'key',
+localDB.version(7).stores({
+  families:           'id, camp_id, org_id, status, updated_at',
+  family_members:     'id, family_id, national_id',
+  camps:              'id, org_id',
+  sync_queue:         '++id, status',
+  meta:               'key',
   dist_rounds:        'id, camp_id, org_id, status',
   camp_distributions: 'id, camp_id, org_id, status, round_id',
   camp_dist_families: 'id, distribution_id, family_id',
-  org_members:    'id, org_id, role, camp_id, created_by, user_id'
+  org_members:        'id, org_id, role, camp_id, created_by, user_id',
+  family_movements:   'id, family_id, org_id, type, date'
 })
 localDB.version(7).stores({
   families:       'id, camp_id, org_id, status, updated_at',
@@ -1202,6 +1223,7 @@ function buildSidebar() {
   if (canWrite()) html += navItem('📦', 'توزيع المساعدات', 'page-dist')
   if (canViewReports()) html += navItem('📊', 'التقارير', 'page-analysis')
   if (canViewReports()) html += navItem('📈', 'تحليل البيانات', 'page-analysis2')
+  if (canViewReports()) html += navItem('🚶', 'حركات الأسر', 'page-movements')
   if (canViewReports()) html += navItem('📁', 'استيراد/تصدير', 'page-data')
   if (canWrite()) html += navItem('💬', 'إرسال رسائل', 'page-sms')
   const canAddFam = currentMember.role !== 'assistant' || currentMember.can_add === true
@@ -1298,6 +1320,7 @@ async function showPage(pageId) {
     'page-audit':      ['📋 سجل النشاط', ''],
     'page-settings':   ['⚙️ الإعدادات', ''],
     'page-subscription': ['💳 الاشتراكات', 'إدارة خطط الاشتراك'],
+    'page-movements':  ['🚶 حركات الأسر', 'سجل الدخول والخروج والنقل'],
   }
 
   const [title, sub] = titles[pageId] || ['سجل أسر المخيم', '']
@@ -1320,6 +1343,7 @@ async function showPage(pageId) {
   }
   if (pageId === 'page-sms')         loadSmsPage()
   if (pageId === 'page-subscription') loadSubscriptionPage()
+  if (pageId === 'page-movements')   loadMovementsPage()
   if (pageId === 'page-add-family') {
     editingFamilyId = null
     document.getElementById('addFamilyTitle').textContent = '➕ إضافة أسرة جديدة'
@@ -2848,7 +2872,7 @@ function buildDateSelect(dId, mId, yId, containerId, bg) {
   let days='<option value="">يوم</option>', mons='<option value="">شهر</option>', years='<option value="">سنة</option>'
   for(let i=1;i<=31;i++) days+=`<option value="${String(i).padStart(2,'0')}">${i}</option>`
   ;['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'].forEach((m,i)=>mons+=`<option value="${String(i+1).padStart(2,'0')}">${m}</option>`)
-  for(let y=2025;y>=1926;y--) years+=`<option value="${y}">${y}</option>`
+  for(let y=new Date().getFullYear();y>=1926;y--) years+=`<option value="${y}">${y}</option>`
   const c = document.getElementById(containerId); if(!c) return
   c.innerHTML = `<select id="${dId}" style="${s}">${days}</select><select id="${mId}" style="${s}">${mons}</select><select id="${yId}" style="${s}">${years}</select>`
 }
@@ -3778,6 +3802,10 @@ async function processSyncQueue() {
         } else if (item.action === 'insert_dist') {
           const records = JSON.parse(item.data)
           await db.from('camp_dist_families').insert(records)
+        } else if (item.action === 'insert_movement') {
+          const data = JSON.parse(item.data)
+          const { id: _id, ...mvData } = data
+          await db.from('family_movements').insert(mvData)
         } else if (item.action === 'insert_camp') {
           const data = JSON.parse(item.data)
           const localId = data.id; delete data.id
@@ -6357,7 +6385,166 @@ function clearSyncing() {
   txt.textContent = navigator.onLine ? 'متصل' : 'غير متصل'
   txt.style.color = navigator.onLine ? 'var(--green)' : 'var(--red)'
 }
-// ══ FAMILY PORTAL ══
+// ══ FAMILY MOVEMENTS ══
+const mvTypeLabel = { entry:'🟢 دخول', exit:'🔴 خروج', transfer:'🔵 نقل' }
+const mvTypeColor = { entry:'var(--green)', exit:'var(--red)', transfer:'var(--blue)' }
+
+// ── نافذة تسجيل الحركة ──
+function showMovementModal(familyId, familyName, currentCampId) {
+  const existing = document.getElementById('movementModal')
+  if (existing) existing.remove()
+
+  const today = new Date().toISOString().split('T')[0]
+  const campOpts = allCamps.map(c =>
+    `<option value="${c.id}" ${c.id===currentCampId?'selected':''}>${esc(c.name)}</option>`
+  ).join('')
+  const otherCampOpts = allCamps.filter(c=>c.id!==currentCampId).map(c =>
+    `<option value="${c.id}">${esc(c.name)}</option>`
+  ).join('')
+
+  const modal = document.createElement('div')
+  modal.id = 'movementModal'
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;'
+  modal.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;">
+      <div style="font-size:15px;font-weight:700;color:var(--purple);margin-bottom:4px;">🚶 تسجيل حركة</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">${esc(familyName)}</div>
+
+      <div class="form-group"><label>نوع الحركة *</label>
+        <select id="mvType" onchange="mvTypeChange('${currentCampId}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
+          <option value="">اختر النوع</option>
+          <option value="entry">🟢 دخول للمخيم</option>
+          <option value="exit">🔴 خروج من المخيم</option>
+          <option value="transfer">🔵 نقل لمخيم آخر</option>
+        </select>
+      </div>
+
+      <div class="form-group"><label>التاريخ *</label>
+        <input type="date" id="mvDate" value="${today}" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
+      </div>
+
+      <!-- دخول: المخيم المقصود -->
+      <div id="mvEntrySection" style="display:none;">
+        <div class="form-group"><label>المخيم *</label>
+          <select id="mvToCamp" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
+            <option value="">اختر المخيم</option>${campOpts}
+          </select>
+        </div>
+      </div>
+
+      <!-- خروج -->
+      <div id="mvExitSection" style="display:none;">
+        <div class="form-group"><label>سبب الخروج</label>
+          <select id="mvExitReason" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
+            <option value="">اختر السبب</option>
+            <option value="voluntary">إرادي — عاد لمنزله</option>
+            <option value="relocation">إعادة توطين</option>
+            <option value="medical">أسباب طبية</option>
+            <option value="security">أسباب أمنية</option>
+            <option value="other">أخرى</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- نقل -->
+      <div id="mvTransferSection" style="display:none;">
+        <div class="form-group"><label>المخيم المقصود *</label>
+          <select id="mvTransferCamp" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
+            <option value="">اختر المخيم</option>${otherCampOpts}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group"><label>ملاحظات</label>
+        <textarea id="mvNotes" rows="2" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;resize:none;" placeholder="ملاحظات إضافية..."></textarea>
+      </div>
+
+      <div id="mvError" style="display:none;color:var(--red);font-size:12px;margin-bottom:10px;"></div>
+
+      <div style="display:flex;gap:10px;">
+        <button onclick="saveMovement('${familyId}','${currentCampId}')" style="flex:1;background:var(--purple);color:#fff;border:none;border-radius:8px;padding:11px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">💾 حفظ</button>
+        <button onclick="document.getElementById('movementModal').remove()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:11px 16px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">إلغاء</button>
+      </div>
+    </div>`
+  document.body.appendChild(modal)
+}
+
+function mvTypeChange(currentCampId) {
+  const type = document.getElementById('mvType').value
+  document.getElementById('mvEntrySection').style.display   = type==='entry'    ? 'block':'none'
+  document.getElementById('mvExitSection').style.display    = type==='exit'     ? 'block':'none'
+  document.getElementById('mvTransferSection').style.display= type==='transfer' ? 'block':'none'
+}
+
+async function saveMovement(familyId, currentCampId) {
+  const type    = document.getElementById('mvType').value
+  const date    = document.getElementById('mvDate').value
+  const notes   = document.getElementById('mvNotes').value.trim()
+  const errEl   = document.getElementById('mvError')
+  errEl.style.display = 'none'
+
+  if (!type)  { errEl.textContent='يرجى اختيار نوع الحركة'; errEl.style.display='block'; return }
+  if (!date)  { errEl.textContent='يرجى إدخال التاريخ'; errEl.style.display='block'; return }
+
+  let toCamp   = null
+  let fromCamp = currentCampId
+  let reason   = null
+
+  if (type === 'entry') {
+    toCamp = document.getElementById('mvToCamp').value
+    if (!toCamp) { errEl.textContent='يرجى اختيار المخيم'; errEl.style.display='block'; return }
+    fromCamp = null
+  } else if (type === 'exit') {
+    reason = document.getElementById('mvExitReason').value
+  } else if (type === 'transfer') {
+    toCamp = document.getElementById('mvTransferCamp').value
+    if (!toCamp) { errEl.textContent='يرجى اختيار المخيم المقصود'; errEl.style.display='block'; return }
+  }
+
+  const movement = {
+    id:         crypto.randomUUID(),
+    family_id:  familyId,
+    org_id:     ORG_ID,
+    type,
+    from_camp:  fromCamp || null,
+    to_camp:    toCamp || null,
+    date,
+    reason:     reason || null,
+    notes:      notes || null,
+    created_by: currentUser.id,
+    created_at: new Date().toISOString(),
+  }
+
+  // حفظ محلي
+  await localDB.family_movements.put(movement)
+
+  // إذا نقل — حدّث camp_id في الأسرة
+  if (type === 'transfer' && toCamp) {
+    const localF = await localDB.families.get(familyId)
+    if (localF) await localDB.families.put({ ...localF, camp_id: toCamp, updated_at: new Date().toISOString() })
+    if (navigator.onLine) {
+      await db.from('families').update({ camp_id: toCamp, updated_at: new Date().toISOString() }).eq('id', familyId)
+    } else {
+      await localDB.sync_queue.add({ action:'update_family', record_id:familyId, data: JSON.stringify({camp_id:toCamp,updated_at:new Date().toISOString(),org_id:ORG_ID}), status:'pending', created_at:new Date().toISOString() })
+    }
+  }
+
+  // رفع للسيرفر
+  if (navigator.onLine) {
+    const { id: _id, ...mvData } = movement
+    const { error } = await db.from('family_movements').insert(mvData)
+    if (error) showToast('⚠️ حُفظ محلياً — سيُزامن لاحقاً')
+    else logAction('حركة أسرة', familyId, mvTypeLabel[type])
+  } else {
+    await localDB.sync_queue.add({ action:'insert_movement', data: JSON.stringify(movement), status:'pending', created_at: new Date().toISOString() })
+  }
+
+  document.getElementById('movementModal')?.remove()
+  showToast(`✅ تم تسجيل ${mvTypeLabel[type]}`)
+
+  // أعد تحميل تفاصيل الأسرة
+  openFamily(familyId)
+}
 // بوابة الأسرة — دخول برقم الهوية + تاريخ الميلاد
 
 function switchLoginTab(tab) {
@@ -6388,7 +6575,7 @@ function buildFamilyDobSelect() {
   let years='<option value="">سنة</option>'
   for(let i=1;i<=31;i++) days+=`<option value="${String(i).padStart(2,'0')}">${i}</option>`
   ;['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'].forEach((m,i)=>mons+=`<option value="${String(i+1).padStart(2,'0')}">${m}</option>`)
-  for(let y=2025;y>=1924;y--) years+=`<option value="${y}">${y}</option>`
+  for(let y=new Date().getFullYear();y>=1924;y--) years+=`<option value="${y}">${y}</option>`
   c.innerHTML = `<select id="famDobD" style="${s}">${days}</select><select id="famDobM" style="${s}">${mons}</select><select id="famDobY" style="${s}">${years}</select>`
 }
 
@@ -6733,188 +6920,82 @@ function contactSales() {
   window.open('https://wa.me/966XXXXXXXXX?text='+msg, '_blank')
 }
 
-// ══ FAMILY MOVEMENTS ══
-const movementTypes = {
-  entry:    { label:'📥 دخول',  color:'var(--green)',  bg:'rgba(16,185,129,0.1)' },
-  exit:     { label:'📤 خروج',  color:'var(--red)',    bg:'rgba(239,68,68,0.1)' },
-  transfer: { label:'🔄 نقل',   color:'var(--blue)',   bg:'rgba(59,130,246,0.1)' },
-}
-
-async function loadFamilyMovements(familyId) {
-  const container = document.getElementById('movementsLog_' + familyId)
+// ── صفحة الحركات ──
+async function loadMovementsPage() {
+  const container = document.getElementById('movementsPageList')
   if (!container) return
-  if (!navigator.onLine) return
+  container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
 
-  try {
-    const { data: movements } = await db.from('family_movements')
-      .select('*').eq('family_id', familyId)
-      .order('date', { ascending: false }).limit(10)
+  const campSel = document.getElementById('mvFilterCamp')
+  if (campSel && campSel.options.length <= 1) {
+    allCamps.forEach(c => campSel.innerHTML += `<option value="${c.id}">${esc(c.name)}</option>`)
+  }
 
-    if (!movements?.length) {
-      container.innerHTML = `
-        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;color:var(--muted);font-size:12px;">
-          📋 لا توجد حركات مسجلة
-        </div>`
-      return
-    }
+  const typeFilter = document.getElementById('mvFilterType')?.value || ''
+  const campFilter = document.getElementById('mvFilterCamp')?.value || ''
+  const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
+  const tColor  = { entry:'var(--green)', exit:'var(--red)', transfer:'var(--blue)' }
+  const tLabel  = { entry:'🟢 دخول', exit:'🔴 خروج', transfer:'🔵 نقل' }
 
-    const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+  let movements = []
+  if (navigator.onLine) {
+    let q = db.from('family_movements')
+      .select('*, families(head_name,head_id)')
+      .eq('org_id', ORG_ID)
+      .order('date', { ascending: false }).limit(100)
+    if (typeFilter) q = q.eq('type', typeFilter)
+    if (campFilter) q = q.or(`from_camp.eq.${campFilter},to_camp.eq.${campFilter}`)
+    const { data } = await q
+    movements = data || []
+  } else {
+    movements = await localDB.family_movements.where('org_id').equals(ORG_ID).toArray()
+    movements.sort((a,b) => b.date.localeCompare(a.date))
+    if (typeFilter) movements = movements.filter(m => m.type===typeFilter)
+    if (campFilter) movements = movements.filter(m => m.from_camp===campFilter||m.to_camp===campFilter)
+    movements = movements.slice(0,100)
+  }
 
-    container.innerHTML = `
-      <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">📋 سجل الحركات</div>
-      ${movements.map(m => {
-        const t = movementTypes[m.type] || movementTypes.entry
-        return `
-        <div style="background:${t.bg};border:1px solid ${t.color}30;border-radius:10px;padding:10px;margin-bottom:8px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <span style="font-size:12px;font-weight:700;color:${t.color};">${t.label}</span>
-            <span style="font-size:10px;color:var(--muted);">${m.date}</span>
+  if (!movements.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">🚶</div>لا توجد حركات مسجلة</div>'
+    return
+  }
+
+  const stats = { entry:0, exit:0, transfer:0 }
+  movements.forEach(m => { if(stats[m.type]!==undefined) stats[m.type]++ })
+
+  container.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">
+      ${[['entry','🟢 دخول',stats.entry],['exit','🔴 خروج',stats.exit],['transfer','🔵 نقل',stats.transfer]].map(([t,l,n])=>`
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+          <div style="font-size:20px;font-weight:900;color:${tColor[t]};">${n}</div>
+          <div style="font-size:10px;color:var(--muted);">${l}</div>
+        </div>`).join('')}
+    </div>
+    ${movements.map(m=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-right:4px solid ${tColor[m.type]||'var(--border)'};border-radius:0 12px 12px 0;padding:12px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;">
+          <div>
+            <div style="font-size:13px;font-weight:700;">${esc(m.families?.head_name||'—')}</div>
+            <div style="font-size:10px;color:var(--muted);" dir="ltr">${esc(m.families?.head_id||'')}</div>
           </div>
-          ${m.type==='transfer' ? `
-            <div style="font-size:11px;color:var(--muted);">
-              من: ${campMap[m.from_camp]||'—'} ← إلى: ${campMap[m.to_camp]||'—'}
-            </div>` : ''}
-          ${m.type==='exit' && m.from_camp ? `<div style="font-size:11px;color:var(--muted);">المخيم: ${campMap[m.from_camp]||'—'}</div>` : ''}
-          ${m.type==='entry' && m.to_camp   ? `<div style="font-size:11px;color:var(--muted);">المخيم: ${campMap[m.to_camp]||'—'}</div>` : ''}
-          ${m.reason ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">السبب: ${esc(m.reason)}</div>` : ''}
-          ${m.notes  ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">ملاحظة: ${esc(m.notes)}</div>` : ''}
-        </div>`
-      }).join('')}
-    `
-  } catch(e) { console.warn('movements:', e.message) }
-}
-
-function openMovementModal(familyId, type) {
-  const existing = document.getElementById('movementModal')
-  if (existing) existing.remove()
-
-  const t = movementTypes[type]
-  const campOpts = allCamps.map(c =>
-    `<option value="${c.id}">${c.name}</option>`).join('')
-
-  // تاريخ اليوم
-  const today = new Date().toISOString().split('T')[0]
-
-  const modal = document.createElement('div')
-  modal.id = 'movementModal'
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;'
-  modal.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;">
-      <div style="font-size:15px;font-weight:700;color:${t.color};margin-bottom:16px;">${t.label} — تسجيل حركة</div>
-
-      <div class="form-group">
-        <label>التاريخ *</label>
-        <input type="date" id="mvDate" value="${today}"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
-      </div>
-
-      ${type === 'entry' || type === 'transfer' ? `
-      <div class="form-group">
-        <label>${type==='transfer'?'المخيم الجديد (إلى) *':'المخيم *'}</label>
-        <select id="mvToCamp" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
-          <option value="">اختر المخيم</option>${campOpts}
-        </select>
-      </div>` : ''}
-
-      ${type === 'exit' || type === 'transfer' ? `
-      <div class="form-group">
-        <label>${type==='transfer'?'المخيم القديم (من) *':'المخيم المغادر *'}</label>
-        <select id="mvFromCamp" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
-          <option value="">اختر المخيم</option>${campOpts}
-        </select>
-      </div>` : ''}
-
-      ${type === 'exit' ? `
-      <div class="form-group">
-        <label>سبب الخروج</label>
-        <select id="mvReason" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
-          <option value="">اختر السبب</option>
-          <option value="عودة طوعية">عودة طوعية</option>
-          <option value="نقل لمنظمة أخرى">نقل لمنظمة أخرى</option>
-          <option value="وفاة">وفاة</option>
-          <option value="انتهاء الخدمة">انتهاء الخدمة</option>
-          <option value="أخرى">أخرى</option>
-        </select>
-      </div>` : ''}
-
-      <div class="form-group">
-        <label>ملاحظات</label>
-        <textarea id="mvNotes" rows="2"
-          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;direction:rtl;outline:none;resize:vertical;"
-          placeholder="أي ملاحظات إضافية..."></textarea>
-      </div>
-
-      <div id="mvError" style="display:none;color:var(--red);font-size:12px;margin-bottom:10px;"></div>
-
-      <div style="display:flex;gap:10px;">
-        <button onclick="saveMovement('${familyId}','${type}')"
-          style="flex:1;background:${t.color};color:${type==='entry'?'#fff':type==='transfer'?'#fff':'#fff'};border:none;border-radius:8px;padding:11px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">
-          💾 حفظ
-        </button>
-        <button onclick="document.getElementById('movementModal').remove()"
-          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:11px 18px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">
-          إلغاء
-        </button>
-      </div>
-    </div>`
-  document.body.appendChild(modal)
-}
-
-async function saveMovement(familyId, type) {
-  const date     = document.getElementById('mvDate')?.value
-  const toCamp   = document.getElementById('mvToCamp')?.value   || null
-  const fromCamp = document.getElementById('mvFromCamp')?.value || null
-  const reason   = document.getElementById('mvReason')?.value   || null
-  const notes    = document.getElementById('mvNotes')?.value    || null
-  const errEl    = document.getElementById('mvError')
-
-  errEl.style.display = 'none'
-  if (!date) { errEl.textContent = 'يرجى تحديد التاريخ'; errEl.style.display='block'; return }
-  if ((type==='entry'||type==='transfer') && !toCamp) {
-    errEl.textContent = 'يرجى اختيار المخيم'; errEl.style.display='block'; return
-  }
-  if ((type==='exit'||type==='transfer') && !fromCamp) {
-    errEl.textContent = 'يرجى اختيار المخيم'; errEl.style.display='block'; return
-  }
-
-  try {
-    const record = {
-      family_id:  familyId,
-      org_id:     ORG_ID,
-      type,
-      from_camp:  fromCamp,
-      to_camp:    toCamp,
-      date,
-      reason,
-      notes,
-      created_by: currentUser.id,
-    }
-
-    const { error } = await db.from('family_movements').insert(record)
-    if (error) throw error
-
-    // عند النقل — حدّث camp_id في الأسرة
-    if (type === 'transfer' && toCamp) {
-      await db.from('families').update({ camp_id: toCamp, updated_at: new Date().toISOString() }).eq('id', familyId)
-      await localDB.families.where('id').equals(familyId).modify(f => { f.camp_id = toCamp })
-    }
-
-    const tLabel = movementTypes[type].label
-    logAction('حركة أسرة - ' + tLabel, familyId, '')
-    showToast('✅ تم تسجيل ' + tLabel)
-    document.getElementById('movementModal')?.remove()
-
-    // تحديث سجل الحركات في الـ drawer
-    loadFamilyMovements(familyId)
-    if (type === 'transfer') { loadFamilies(); loadDashboard() }
-
-  } catch(e) {
-    errEl.textContent = 'خطأ: ' + e.message; errEl.style.display='block'
-  }
+          <div style="text-align:left;">
+            <span style="background:${tColor[m.type]}22;color:${tColor[m.type]};border-radius:20px;padding:2px 10px;font-size:10px;font-weight:700;">${tLabel[m.type]||m.type}</span>
+            <div style="font-size:10px;color:var(--muted);margin-top:3px;">${m.date}</div>
+          </div>
+        </div>
+        <div style="margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;">
+          ${m.from_camp?`<span style="font-size:11px;color:var(--muted);">📤 ${esc(campMap[m.from_camp]||'—')}</span>`:''}
+          ${m.to_camp  ?`<span style="font-size:11px;color:var(--muted);">📥 ${esc(campMap[m.to_camp]||'—')}</span>`:''}
+          ${m.reason   ?`<span style="font-size:11px;color:var(--muted);">• ${esc(m.reason)}</span>`:''}
+        </div>
+        ${m.notes?`<div style="font-size:11px;color:var(--muted);margin-top:4px;">${esc(m.notes)}</div>`:''}
+      </div>`).join('')}
+  `
 }
 
 // ══ START ══
 init()
+
 </script>
 </body>
 </html>
