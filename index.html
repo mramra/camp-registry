@@ -478,7 +478,16 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
 
   <!-- Devices -->
   <div class="page" id="page-devices">
-    <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px;">📱 إدارة الأجهزة</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+      <div style="font-size:15px;font-weight:700;color:var(--accent);">📱 إدارة الأجهزة</div>
+      <button onclick="loadDevices()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 14px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">🔄 تحديث</button>
+    </div>
+    <!-- إحصائيات -->
+    <div id="devicesStats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;"></div>
+    <!-- بحث -->
+    <div class="search-bar" style="margin-bottom:12px;">
+      <input type="text" id="devicesSearch" placeholder="بحث باسم المستخدم أو الجهاز..." oninput="filterDevices()" style="padding:10px 40px 10px 14px;">
+    </div>
     <div id="devicesList"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div></div>
   </div>
 
@@ -931,6 +940,66 @@ let allFamilies   = []
 let skipFamiliesServerFetch = false  // يمنع إعادة الجلب من السيرفر مباشرة بعد الحذف
 let formMembers   = []
 let editingCampId = null
+
+// ══ SERVER-SIDE PERMISSIONS (للمساعد) ══
+let cachedPermissions = null
+let cachedPermissionsAt = 0
+const PERM_CACHE_TTL = 5 * 60 * 1000  // 5 دقائق
+
+async function fetchServerPermissions() {
+  if (!currentMember || currentMember.role !== 'assistant') return null
+  const now = Date.now()
+  if (cachedPermissions && (now - cachedPermissionsAt) < PERM_CACHE_TTL) return cachedPermissions
+  try {
+    const { data, error } = await db.from('org_members')
+      .select('can_add,can_edit,can_delete,can_export,can_import')
+      .eq('id', currentMember.id).single()
+    if (!error && data) { cachedPermissions = data; cachedPermissionsAt = now }
+    return cachedPermissions
+  } catch(e) { return null }
+}
+
+async function canWriteSafe() {
+  if (!currentMember) return false
+  if (currentMember.role !== 'assistant') return true
+  const p = await fetchServerPermissions()
+  return p?.can_add === true
+}
+
+async function canEditSafe() {
+  if (!currentMember) return false
+  if (currentMember.role !== 'assistant') return true
+  const p = await fetchServerPermissions()
+  return p?.can_edit === true
+}
+
+async function canDeleteSafe() {
+  if (!currentMember) return false
+  if (currentMember.role === 'assistant') {
+    const p = await fetchServerPermissions()
+    return p?.can_delete === true
+  }
+  return ['platform_owner','super_admin','camp_delegate'].includes(currentMember.role)
+}
+
+// ══ CAMP CAPACITY CHECK ══
+async function checkCampCapacity(campId, excludeFamilyId = null) {
+  if (!campId) return true
+  const camp = allCamps.find(c => c.id === campId)
+  if (!camp?.capacity) return true  // لا حد مقرر
+  let count = 0
+  if (navigator.onLine) {
+    let q = db.from('families').select('*', { count:'exact', head:true })
+      .eq('camp_id', campId).eq('org_id', ORG_ID)
+    if (excludeFamilyId) q = q.neq('id', excludeFamilyId)
+    const { count: c } = await q
+    count = c || 0
+  } else {
+    const local = await localDB.families.where('camp_id').equals(campId).toArray()
+    count = local.filter(f => !excludeFamilyId || f.id !== excludeFamilyId).length
+  }
+  return count < camp.capacity
+}
 let editingFamilyId = null
 
 // ══ XSS PROTECTION ══
@@ -1121,6 +1190,10 @@ function hideLoginScreen() {
   document.getElementById('loginScreen').style.display = 'none'
 }
 
+// ══ LOGIN RATE LIMITING ══
+let loginFailCount = 0
+let loginBlockedUntil = 0
+
 async function doLogin() {
   const nationalId = document.getElementById('loginNationalId').value.trim()
   const password   = document.getElementById('loginPassword').value
@@ -1131,6 +1204,14 @@ async function doLogin() {
   if (!nationalId || nationalId.length < 9) { errEl.textContent = 'يرجى إدخال رقم الهوية'; errEl.style.display = 'block'; return }
   if (!password) { errEl.textContent = 'يرجى إدخال كلمة المرور'; errEl.style.display = 'block'; return }
 
+  // تحقق من الحظر المؤقت
+  const now = Date.now()
+  if (loginBlockedUntil > now) {
+    const secs = Math.ceil((loginBlockedUntil - now) / 1000)
+    errEl.textContent = `⏳ محاولات كثيرة — انتظر ${secs} ثانية`
+    errEl.style.display = 'block'; return
+  }
+
   btn.disabled = true; btn.textContent = 'جارٍ الدخول...'
 
   const { data, error: loginError } = await db.auth.signInWithPassword({
@@ -1138,12 +1219,20 @@ async function doLogin() {
   })
 
   if (!data?.user) {
-    errEl.textContent = `خطأ: ${loginError?.message || 'بيانات غير صحيحة'} | ${nationalId}@c.co`
+    loginFailCount++
+    // تأخير تدريجي: 3 محاولات → 15ث، 5 → 60ث
+    if (loginFailCount >= 5)      loginBlockedUntil = Date.now() + 60000
+    else if (loginFailCount >= 3) loginBlockedUntil = Date.now() + 15000
+    errEl.textContent = loginFailCount >= 3
+      ? `❌ بيانات غير صحيحة — محاولة ${loginFailCount} (قد يُحظر الدخول مؤقتاً)`
+      : '❌ رقم الهوية أو كلمة المرور غير صحيحة'
     errEl.style.display = 'block'
     btn.disabled = false; btn.textContent = 'دخول'
     return
   }
 
+  loginFailCount = 0
+  loginBlockedUntil = 0
   currentUser = data.user
 
   const { data: member } = await db.from('org_members')
@@ -1205,6 +1294,7 @@ async function logout() {
     await localDB.sync_queue.clear()
   } catch(e) {}
   currentUser = null; currentMember = null; allCamps = []; allFamilies = []
+  cachedPermissions = null; cachedPermissionsAt = 0; loginFailCount = 0; loginBlockedUntil = 0
   showLoginScreen()
 }
 
@@ -1241,7 +1331,10 @@ function buildSidebar() {
       html += navItem('📋', 'سجل النشاط', 'page-audit')
     }
     if (currentMember.role === 'platform_owner') {
-      html += navItem('📱', 'الأجهزة', 'page-devices')
+      html += `<button class="nav-item" onclick="showPage('page-devices');closeSidebar()">
+        <span style="width:20px;text-align:center;">📱</span> الأجهزة
+        <span id="devicesBadge" style="display:none;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:900;align-items:center;justify-content:center;margin-right:auto;"></span>
+      </button>`
       html += navItem('💳', 'الاشتراكات', 'page-subscription')
     }
   }
@@ -1251,10 +1344,26 @@ function buildSidebar() {
   html += navItem('⚙️', 'الإعدادات', 'page-settings')
 
   nav.innerHTML = html
+  // تحقق من الأجهزة المعلقة
+  checkPendingDevices()
 }
 
 function navItem(icon, label, page) {
   return `<button class="nav-item" onclick="showPage('${page}');closeSidebar()"><span style="width:20px;text-align:center;">${icon}</span> ${label}</button>`
+}
+
+async function checkPendingDevices() {
+  if (currentMember?.role !== 'platform_owner') return
+  try {
+    const { count } = await db.from('devices')
+      .select('*', { count:'exact', head:true })
+      .eq('org_id', ORG_ID).eq('is_approved', false).eq('is_blocked', false)
+    const badge = document.getElementById('devicesBadge')
+    if (badge) {
+      badge.style.display = count > 0 ? 'inline-flex' : 'none'
+      badge.textContent   = count
+    }
+  } catch(e) {}
 }
 
 // ══ PERMISSIONS (الصلاحيات) ══
@@ -2208,6 +2317,7 @@ function closeDrawer() {
 }
 
 async function deleteFamily(id) {
+  if (!(await canDeleteSafe())) { showToast('⚠️ لا تملك صلاحية الحذف', true); return }
   const fam  = allFamilies.find(f => f.id === id) || {}
   const name = fam.head_name || 'هذه الأسرة'
   if (!confirm(`هل تريد حذف أسرة ${name}؟`)) return
@@ -2607,10 +2717,16 @@ function closeDupModal() {
 // ══ SAVE / UPDATE FAMILY ══
 
 async function saveFamily() {
+  if (!(await canWriteSafe())) { showToast('⚠️ لا تملك صلاحية الإضافة', true); return }
   const headName = document.getElementById('headName').value.trim()
   const campId   = document.getElementById('familyCamp').value
   if (!headName) { showToast('يرجى إدخال اسم رب الأسرة', true); return }
   if (!campId)   { showToast('يرجى اختيار المخيم', true); return }
+
+  // فحص سعة المخيم
+  if (!(await checkCampCapacity(campId))) {
+    showToast('⚠️ المخيم ممتلئ — وصل للسعة القصوى', true); return
+  }
 
   // ضوابط الحقول
   const errs = runFormValidation()
@@ -2684,8 +2800,15 @@ async function doSaveFamily() {
 }
 
 async function updateFamily(id) {
+  if (!(await canEditSafe())) { showToast('⚠️ لا تملك صلاحية التعديل', true); return }
   const headName = document.getElementById('headName').value.trim()
   if (!headName) { showToast('يرجى إدخال اسم رب الأسرة', true); return }
+
+  // فحص سعة المخيم عند التعديل
+  const campId = document.getElementById('familyCamp').value
+  if (campId && !(await checkCampCapacity(campId, id))) {
+    showToast('⚠️ المخيم ممتلئ', true); return
+  }
 
   // ضوابط الحقول
   const errs = runFormValidation()
@@ -3488,55 +3611,163 @@ async function registerDevice() {
 }
 
 // ══ DEVICES ══
+let allDevicesData = []   // للبحث المحلي
+
 async function loadDevices() {
-  const container = document.getElementById('devicesList'); if(!container) return
+  const container  = document.getElementById('devicesList')
+  const statsEl    = document.getElementById('devicesStats')
+  if (!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
-  
+
   const { data: devices, error } = await db.from('devices')
     .select('id,org_id,user_id,fingerprint,device_name,device_type,is_approved,is_blocked,last_seen,created_at')
     .eq('org_id', ORG_ID)
     .order('created_at', { ascending: false })
 
-  if (error) { container.innerHTML=`<div class="empty">خطأ: ${error.message}</div>`; return }
+  if (error) { container.innerHTML=`<div class="empty">خطأ: ${esc(error.message)}</div>`; return }
   if (!devices?.length) { container.innerHTML='<div class="empty"><div class="empty-icon">📱</div>لا توجد أجهزة مسجلة</div>'; return }
 
   // جلب أسماء المستخدمين
   const userIds = [...new Set(devices.map(d=>d.user_id).filter(Boolean))]
   let userMap = {}
   if (userIds.length) {
-    const { data: members } = await db.from('org_members').select('user_id,full_name').in('user_id', userIds)
-    members?.forEach(m => userMap[m.user_id] = m.full_name)
+    const { data: members } = await db.from('org_members').select('user_id,full_name,role').in('user_id', userIds)
+    members?.forEach(m => userMap[m.user_id] = { name: m.full_name, role: m.role })
   }
 
-  const pending  = devices.filter(d => !d.is_approved&&!d.is_blocked)
-  const approved = devices.filter(d => d.is_approved&&!d.is_blocked)
-  const blocked  = devices.filter(d => d.is_blocked)
+  // إضافة بيانات المستخدم لكل جهاز
+  allDevicesData = devices.map(d => ({ ...d, userName: userMap[d.user_id]?.name || '—', userRole: userMap[d.user_id]?.role || '' }))
 
-  const card = d => `<div style="background:var(--surface);border:1px solid ${!d.is_approved&&!d.is_blocked?'rgba(245,158,11,0.4)':d.is_blocked?'rgba(239,68,68,0.4)':'var(--border)'};border-radius:12px;padding:14px;margin-bottom:10px;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
-      <div>
-        <div style="font-size:13px;font-weight:700;">${d.device_type==='mobile'?'📱':'💻'} ${d.device_name||'جهاز'}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">👤 ${userMap[d.user_id]||'—'}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px;">آخر ظهور: ${d.last_seen?new Date(d.last_seen).toLocaleDateString('ar'):'—'}</div>
+  // إحصائيات
+  const pending  = allDevicesData.filter(d => !d.is_approved && !d.is_blocked).length
+  const approved = allDevicesData.filter(d =>  d.is_approved && !d.is_blocked).length
+  const blocked  = allDevicesData.filter(d =>  d.is_blocked).length
+
+  if (statsEl) statsEl.innerHTML = [
+    ['⏳ انتظار', pending,  'var(--accent)'],
+    ['✅ معتمدة', approved, 'var(--green)'],
+    ['🚫 محظورة', blocked,  'var(--red)'],
+  ].map(([l,n,c]) => `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+      <div style="font-size:20px;font-weight:900;color:${c};">${n}</div>
+      <div style="font-size:10px;color:var(--muted);">${l}</div>
+    </div>`).join('')
+
+  renderDevices(allDevicesData)
+}
+
+function filterDevices() {
+  const q = (document.getElementById('devicesSearch')?.value || '').trim().toLowerCase()
+  if (!q) { renderDevices(allDevicesData); return }
+  renderDevices(allDevicesData.filter(d =>
+    d.userName.toLowerCase().includes(q) ||
+    (d.device_name||'').toLowerCase().includes(q)
+  ))
+}
+
+function renderDevices(devices) {
+  const container = document.getElementById('devicesList')
+  if (!container) return
+  if (!devices.length) { container.innerHTML='<div class="empty"><div class="empty-icon">🔍</div>لا توجد نتائج</div>'; return }
+
+  const pending  = devices.filter(d => !d.is_approved && !d.is_blocked)
+  const approved = devices.filter(d =>  d.is_approved && !d.is_blocked)
+  const blocked  = devices.filter(d =>  d.is_blocked)
+
+  const roleLabel = { platform_owner:'👑', super_admin:'🔴', camp_delegate:'🟠', assistant:'🟡' }
+
+  const card = d => {
+    const lastSeen = d.last_seen
+      ? new Date(d.last_seen).toLocaleString('ar-SA', { dateStyle:'short', timeStyle:'short' })
+      : '—'
+    const registered = d.created_at
+      ? new Date(d.created_at).toLocaleString('ar-SA', { dateStyle:'short', timeStyle:'short' })
+      : '—'
+    const borderColor = d.is_blocked
+      ? 'rgba(239,68,68,0.4)'
+      : !d.is_approved
+        ? 'rgba(245,158,11,0.4)'
+        : 'var(--border)'
+    const statusColor = d.is_blocked ? 'var(--red)' : d.is_approved ? 'var(--green)' : 'var(--accent)'
+    const statusText  = d.is_blocked ? '🚫 محظور' : d.is_approved ? '✅ معتمد' : '⏳ انتظار'
+
+    return `
+    <div style="background:var(--surface);border:1px solid ${borderColor};border-radius:12px;padding:14px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:700;">${d.device_type==='mobile'?'📱':'💻'} ${esc(d.device_name||'جهاز غير معروف')}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">
+            ${roleLabel[d.userRole]||'👤'} ${esc(d.userName)}
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">
+            🕐 آخر ظهور: ${lastSeen}
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+            📅 تسجيل: ${registered}
+          </div>
+        </div>
+        <span style="font-size:10px;font-weight:700;color:${statusColor};white-space:nowrap;">${statusText}</span>
       </div>
-      <span style="font-size:10px;font-weight:700;color:${d.is_blocked?'var(--red)':d.is_approved?'var(--green)':'var(--accent)'};">${d.is_blocked?'🚫 محظور':d.is_approved?'✅ معتمد':'⏳ انتظار'}</span>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-      ${!d.is_approved&&!d.is_blocked?`<button onclick="approveDevice('${d.id}')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✅ موافقة</button><button onclick="blockDevice('${d.id}')" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🚫 رفض</button>`:''}
-      ${d.is_approved&&!d.is_blocked?`<button onclick="blockDevice('${d.id}')" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🚫 حظر</button>`:''}
-      ${d.is_blocked?`<button onclick="approveDevice('${d.id}')" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:6px;padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✅ رفع الحظر</button>`:''}
-    </div>
-  </div>`
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
+        ${!d.is_approved && !d.is_blocked ? `
+          <button onclick="approveDevice('${d.id}')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✅ موافقة</button>
+          <button onclick="blockDevice('${d.id}')"   style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🚫 رفض</button>
+        ` : ''}
+        ${d.is_approved && !d.is_blocked ? `
+          <button onclick="blockDevice('${d.id}')"   style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🚫 حظر</button>
+        ` : ''}
+        ${d.is_blocked ? `
+          <button onclick="approveDevice('${d.id}')" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✅ رفع الحظر</button>
+        ` : ''}
+        <button onclick="deleteDevice('${d.id}')" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>
+      </div>
+    </div>`
+  }
 
   let html = ''
-  if (pending.length)  html += `<div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px;">⏳ تنتظر الموافقة (${pending.length})</div>`+pending.map(card).join('')
-  if (approved.length) html += `<div style="font-size:11px;font-weight:700;color:var(--green);margin:14px 0 8px;">✅ معتمدة (${approved.length})</div>`+approved.map(card).join('')
-  if (blocked.length)  html += `<div style="font-size:11px;font-weight:700;color:var(--red);margin:14px 0 8px;">🚫 محظورة (${blocked.length})</div>`+blocked.map(card).join('')
+  if (pending.length)  html += `<div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px;">⏳ تنتظر الموافقة (${pending.length})</div>`  + pending.map(card).join('')
+  if (approved.length) html += `<div style="font-size:11px;font-weight:700;color:var(--green);margin:14px 0 8px;">✅ معتمدة (${approved.length})</div>`              + approved.map(card).join('')
+  if (blocked.length)  html += `<div style="font-size:11px;font-weight:700;color:var(--red);margin:14px 0 8px;">🚫 محظورة (${blocked.length})</div>`                  + blocked.map(card).join('')
   container.innerHTML = html
 }
 
-async function approveDevice(id) { await db.from('devices').update({ is_approved:true, is_blocked:false }).eq('id',id); showToast('✅ تم اعتماد الجهاز'); loadDevices() }
-async function blockDevice(id)   { await db.from('devices').update({ is_blocked:true, is_approved:false }).eq('id',id); showToast('🚫 تم حظر الجهاز'); loadDevices() }
+async function approveDevice(id) {
+  await db.from('devices').update({ is_approved:true, is_blocked:false }).eq('id',id)
+  logAction('اعتماد جهاز', id, '')
+  showToast('✅ تم اعتماد الجهاز')
+  checkPendingDevices()
+  loadDevices()
+}
+
+async function blockDevice(id) {
+  await db.from('devices').update({ is_blocked:true, is_approved:false }).eq('id',id)
+  logAction('حظر جهاز', id, '')
+  showToast('🚫 تم حظر الجهاز')
+  checkPendingDevices()
+  loadDevices()
+}
+
+async function deleteDevice(id) {
+  if (!confirm('هل تريد حذف هذا الجهاز نهائياً من السجل؟')) return
+  const { error } = await db.from('devices').delete().eq('id', id)
+  if (error) { showToast('❌ ' + error.message, true); return }
+  logAction('حذف جهاز', id, '')
+  showToast('✅ تم حذف الجهاز')
+  allDevicesData = allDevicesData.filter(d => d.id !== id)
+  renderDevices(allDevicesData)
+  // تحديث الإحصائيات
+  const statsEl = document.getElementById('devicesStats')
+  if (statsEl) {
+    const p = allDevicesData.filter(d=>!d.is_approved&&!d.is_blocked).length
+    const a = allDevicesData.filter(d=>d.is_approved&&!d.is_blocked).length
+    const b = allDevicesData.filter(d=>d.is_blocked).length
+    statsEl.innerHTML = [['⏳ انتظار',p,'var(--accent)'],['✅ معتمدة',a,'var(--green)'],['🚫 محظورة',b,'var(--red)']].map(([l,n,c])=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:20px;font-weight:900;color:${c};">${n}</div>
+        <div style="font-size:10px;color:var(--muted);">${l}</div>
+      </div>`).join('')
+  }
+}
 
 
 // ══ INCOMPLETE / MISSING DETECTION ══
@@ -3961,479 +4192,6 @@ function printFamily(id) {
 // ══ EXPORT EXCEL ══
 // calcAge defined above
 
-async function exportExcel() {
-  if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
-  showToast('⏳ جارٍ تصدير البيانات...')
-
-  const families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  const members  = await localDB.family_members.toArray()
-  const campMap  = {}
-  allCamps.forEach(c => campMap[c.id] = c.name)
-
-  const mByFamily = {}
-  members.forEach(m => { if(!mByFamily[m.family_id]) mByFamily[m.family_id]=[]; mByFamily[m.family_id].push(m) })
-
-  // ورقة 1: الأسر
-  const familyRows = families.map(f => ({
-    'رقم الهوية':       f.head_id||'',
-    'اسم رب الأسرة':    f.head_name||'',
-    'الجوال':           f.phone1||'',
-    'المخيم':           campMap[f.camp_id]||'',
-    'الخيمة':           f.tent||'',
-    'الحالة':           f.status==='ok'?'مستقر':f.status==='need'?'يحتاج مساعدة':'عاجل',
-    'الحالة الاجتماعية':f.head_marital||'',
-    'الجنس':            f.head_gender||'',
-    'تاريخ الميلاد':    f.head_dob||'',
-    'العمر':            calcAge(f.head_dob)??'',
-    'عدد الأفراد':      (mByFamily[f.id]?.length||0)+1,
-    'ملاحظات':          f.notes||'',
-    'الاحتياجات':        (f.tags||[]).join(', '),
-  }))
-
-  // ورقة 2: كل الأفراد
-  const memberRows = []
-  families.forEach(f => {
-    const fMems = filterOutHead(f, mByFamily[f.id]||[])
-    // رب الأسرة
-    memberRows.push({
-      'أسرة رب الأسرة': f.head_name||'',
-      'المخيم':          campMap[f.camp_id]||'',
-      'الاسم':           f.head_name||'',
-      'العلاقة':         'رب الأسرة',
-      'رقم الهوية':      f.head_id||'',
-      'تاريخ الميلاد':   f.head_dob||'',
-      'العمر':           calcAge(f.head_dob)??'',
-      'الجنس':           f.head_gender||'',
-    })
-    fMems.forEach(m => memberRows.push({
-      'أسرة رب الأسرة': f.head_name||'',
-      'المخيم':          campMap[f.camp_id]||'',
-      'الاسم':           m.name||'',
-      'العلاقة':         m.relation||'',
-      'رقم الهوية':      m.national_id||'',
-      'تاريخ الميلاد':   m.dob||'',
-      'العمر':           calcAge(m.dob)??'',
-      'الجنس':           m.gender||'',
-      'الحالة الصحية':   m.health||'',
-    }))
-  })
-
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(familyRows), 'الأسر')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(memberRows), 'الأفراد')
-
-  // ورقة 3: فئات عمرية
-  const today = new Date()
-  const ageRows = []
-  const allPersons2 = [
-    ...families.map(f => ({ name: f.head_name, dob: f.head_dob, role: 'رب الأسرة', camp: campMap[f.camp_id]||'' })),
-    ...members.map(m => {
-      const fam = families.find(f=>f.id===m.family_id)
-      return { name: m.name, dob: m.dob, role: m.relation||'فرد', camp: campMap[fam?.camp_id]||'' }
-    })
-  ]
-  allPersons2.forEach(p => {
-    const age = calcAge(p.dob)
-    if (age !== null) ageRows.push({ 'الاسم': p.name, 'العمر': age, 'الصفة': p.role, 'المخيم': p.camp, 'تاريخ الميلاد': p.dob })
-  })
-  ageRows.sort((a,b)=>a['العمر']-b['العمر'])
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ageRows), 'الفئات العمرية')
-
-  const date = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
-  XLSX.writeFile(wb, `سجل_الأسر_${date}.xlsx`)
-  showToast(`✅ تم تصدير ${families.length} أسرة`)
-}
-
-// ══ ANALYSIS PAGE ══
-async function loadAnalysis() {
-  const out = document.getElementById('analysisContent')
-  if (!out) return
-  out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحليل...</div></div>'
-
-  let fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  // فلتر الدور: super_admin → مخيماته | delegate/assistant → مخيمه
-  if (currentMember.role === 'super_admin') {
-    const myCampIds = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
-    fams = fams.filter(f => myCampIds.includes(f.camp_id))
-  } else if (currentMember.camp_id) {
-    fams = fams.filter(f => f.camp_id === currentMember.camp_id)
-  }
-  const famIds = new Set(fams.map(f => f.id))
-  const allMems = await localDB.family_members.toArray()
-  const members = allMems.filter(m => famIds.has(m.family_id))
-
-  if (!fams.length) {
-    out.innerHTML = '<div class="empty"><div class="empty-icon">📊</div>لا توجد بيانات</div>'
-    return
-  }
-
-  // ── بناء خريطة الأفراد (بدون رب الأسرة) ──
-  const famById = {}; fams.forEach(f => famById[f.id] = f)
-  const filteredMems = members.filter(m => {
-    const fam = famById[m.family_id]
-    if (!fam) return true
-    if (['رب الأسرة','رب أسرة'].includes((m.relation||'').trim())) return false
-    if (fam.head_id && m.national_id && m.national_id.trim() === fam.head_id.trim()) return false
-    const mN = (m.name||'').trim().replace(/\s+/g,' ')
-    const fN = (fam.head_name||'').trim().replace(/\s+/g,' ')
-    if (mN && fN && mN === fN) return false
-    return true
-  })
-
-  const totalPersons = fams.length + filteredMems.length
-
-  // ── الأعمار ──
-  const allPersons = [
-    ...fams.map(f => ({ dob: f.head_dob })),
-    ...filteredMems.map(m => ({ dob: m.dob }))
-  ]
-  let children=0, adults=0, elderly=0, noAge=0
-  allPersons.forEach(p => {
-    const age = calcAge(p.dob)
-    if (age === null) { noAge++; return }
-    if (age < 18) children++
-    else if (age < 60) adults++
-    else elderly++
-  })
-
-  // ── المخيمات ──
-  const campCount = {}
-  allCamps.forEach(c => campCount[c.id] = 0)
-  fams.forEach(f => { if (f.camp_id) campCount[f.camp_id] = (campCount[f.camp_id]||0)+1 })
-  const campsSorted = allCamps
-    .map(c => ({ name: c.name, n: campCount[c.id]||0 }))
-    .filter(c => c.n > 0)
-    .sort((a,b) => b.n - a.n)
-
-  // ── الجنس ──
-  const genderCount = { 'ذكر':0, 'أنثى':0, 'غير محدد':0 }
-  fams.forEach(f => {
-    const g = f.head_gender
-    if (g === 'ذكر') genderCount['ذكر']++
-    else if (g === 'أنثى') genderCount['أنثى']++
-    else genderCount['غير محدد']++
-  })
-
-  // ── الحالة الاجتماعية ──
-  const maritalCount = {}
-  fams.forEach(f => {
-    const m = f.head_marital || 'غير محدد'
-    maritalCount[m] = (maritalCount[m]||0)+1
-  })
-
-  // ── النواقص ──
-  const noDob     = fams.filter(f => !f.head_dob).length
-  const noPhone   = fams.filter(f => !f.phone1).length
-  const noMarital = fams.filter(f => !f.head_marital).length
-  const noGender  = fams.filter(f => !f.head_gender).length
-
-  // ── حجم الأسرة ──
-  const mByFam = {}
-  filteredMems.forEach(m => mByFam[m.family_id] = (mByFam[m.family_id]||0)+1)
-  const sizes = fams.map(f => (mByFam[f.id]||0)+1)
-  const avgSize = (sizes.reduce((a,b)=>a+b,0)/sizes.length).toFixed(1)
-  const maxSize = Math.max(...sizes)
-  const noMembers = fams.filter(f => !mByFam[f.id]).length
-
-  // ── الحالة الصحية ──
-  const healthCount = {}
-  filteredMems.forEach(m => {
-    const h = m.health || 'سليم'
-    healthCount[h] = (healthCount[h]||0)+1
-  })
-
-  const colors = ['#f59e0b','#3b82f6','#10b981','#8b5cf6','#ef4444','#06b6d4','#84cc16']
-
-  const bar = (label, n, total, color) => {
-    const pct = total ? Math.round(n/total*100) : 0
-    return `<div class="bar-row">
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
-        <span>${label}</span>
-        <span style="color:${color};font-weight:700;">${n} — ${pct}%</span>
-      </div>
-      <div style="background:var(--border);border-radius:4px;height:8px;overflow:hidden;">
-        <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;transition:width .6s;"></div>
-      </div>
-    </div>`
-  }
-
-  const maritalColors = {'متزوج':'#3b82f6','متزوجة':'#3b82f6','أرملة':'#f59e0b','أرمل':'#f59e0b','مطلق':'#ef4444','مطلقة':'#ef4444','منفصلة':'#8b5cf6','غير محدد':'#8b949e'}
-
-  out.innerHTML = `
-    <!-- إجمالي -->
-    <div class="card">
-      <div class="card-title">👥 إجمالي البيانات</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:20px;font-weight:900;color:var(--accent);">${fams.length}</div>
-          <div style="font-size:10px;color:var(--muted);">👨‍👩‍👧 أسرة</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:20px;font-weight:900;color:var(--blue);">${filteredMems.length}</div>
-          <div style="font-size:10px;color:var(--muted);">👤 فرد</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:20px;font-weight:900;color:var(--green);">${totalPersons}</div>
-          <div style="font-size:10px;color:var(--muted);">🧑 إجمالي</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- المخيمات -->
-    <div class="card">
-      <div class="card-title">⛺ توزيع المخيمات</div>
-      ${campsSorted.map((c,i) => bar(c.name, c.n, fams.length, colors[i%colors.length])).join('')}
-    </div>
-
-    <!-- الفئات العمرية -->
-    <div class="card">
-      <div class="card-title">👶 الفئات العمرية</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:20px;font-weight:900;color:var(--green);">${children}</div>
-          <div style="font-size:10px;color:var(--muted);">👶 أطفال<br>0-17</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:20px;font-weight:900;color:var(--blue);">${adults}</div>
-          <div style="font-size:10px;color:var(--muted);">👤 بالغون<br>18-59</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:20px;font-weight:900;color:var(--accent);">${elderly}</div>
-          <div style="font-size:10px;color:var(--muted);">👴 كبار<br>60+</div>
-        </div>
-      </div>
-      ${noAge > 0 ? `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:8px;font-size:11px;color:var(--red);text-align:center;">⚠️ ${noAge} شخص (${Math.round(noAge/totalPersons*100)}%) بدون تاريخ ميلاد</div>` : `<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:8px;padding:8px;font-size:11px;color:var(--green);text-align:center;">✅ كل الأعمار مسجّلة</div>`}
-    </div>
-
-    <!-- الجنس -->
-    <div class="card">
-      <div class="card-title">👤 جنس رب الأسرة</div>
-      ${bar('ذكر', genderCount['ذكر'], fams.length, '#3b82f6')}
-      ${bar('أنثى (أرامل/مطلقات)', genderCount['أنثى'], fams.length, '#8b5cf6')}
-      ${genderCount['غير محدد'] > 0 ? bar('غير محدد', genderCount['غير محدد'], fams.length, '#8b949e') : ''}
-    </div>
-
-    <!-- الحالة الاجتماعية -->
-    <div class="card">
-      <div class="card-title">💍 الحالة الاجتماعية</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        ${Object.entries(maritalCount).sort((a,b)=>b[1]-a[1]).map(([k,v]) =>
-          `<span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;background:rgba(59,130,246,.1);color:${maritalColors[k]||'var(--muted)'};border:1px solid ${maritalColors[k]||'#8b949e'}33;">${k}: ${v}</span>`
-        ).join('')}
-      </div>
-    </div>
-
-    <!-- النواقص -->
-    <div class="card">
-      <div class="card-title">⚠️ نواقص البيانات</div>
-      ${bar('بدون تاريخ ميلاد', noDob, fams.length, noDob>fams.length*0.3?'#ef4444':'#f59e0b')}
-      ${bar('بدون حالة اجتماعية', noMarital, fams.length, '#f59e0b')}
-      ${bar('بدون جنس', noGender, fams.length, '#f59e0b')}
-      ${bar('بدون جوال', noPhone, fams.length, noPhone>0?'#ef4444':'#10b981')}
-    </div>
-
-    <!-- الحالة الصحية -->
-    ${Object.keys(healthCount).length > 1 ? `
-    <div class="card">
-      <div class="card-title">💊 الحالة الصحية للأفراد</div>
-      ${Object.entries(healthCount).sort((a,b)=>b[1]-a[1]).map(([k,v],i) =>
-        bar(k, v, filteredMems.length, k==='سليم'?'#10b981':k==='مريض'?'#ef4444':k==='معاق'?'#8b5cf6':'#f59e0b')
-      ).join('')}
-    </div>` : ''}
-
-    <!-- حجم الأسرة -->
-    <div class="card">
-      <div class="card-title">📐 حجم الأسرة</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:20px;font-weight:900;color:var(--accent);">${avgSize}</div>
-          <div style="font-size:10px;color:var(--muted);">متوسط<br>الأفراد</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:20px;font-weight:900;color:var(--red);">${maxSize}</div>
-          <div style="font-size:10px;color:var(--muted);">أكبر<br>أسرة</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:20px;font-weight:900;color:var(--green);">${noMembers}</div>
-          <div style="font-size:10px;color:var(--muted);">أسر<br>بدون أفراد</div>
-        </div>
-      </div>
-    </div>
-
-    <div style="font-size:10px;color:var(--muted);text-align:center;padding:8px;">
-      آخر تحديث: ${new Date().toLocaleString('ar-EG')}
-    </div>
-  `
-}
-
-// ══ DATA PAGE (استيراد/تصدير) ══
-async function loadDataPage() {
-  const out = document.getElementById('dataPageContent')
-  if (!out) return
-  const role = currentMember.role
-  const isOwner   = role === 'platform_owner'
-  const isAdmin   = ['platform_owner','super_admin'].includes(role)
-  // المندوب يصدّر دائماً، المساعد حسب can_export
-  const canExport = ['platform_owner','super_admin','camp_delegate'].includes(role) ||
-                    (role === 'assistant' && currentMember.can_export === true)
-  // المندوب يستورد دائماً، المساعد حسب can_import
-  const canImport = isAdmin || role === 'camp_delegate' ||
-                    (role === 'assistant' && currentMember.can_import === true)
-
-  const campLabel = currentMember.camp_id
-    ? (allCamps.find(c=>c.id===currentMember.camp_id)?.name || 'مخيمك')
-    : 'كل المخيمات'
-
-  let html = ''
-
-  // ── قسم التصدير ──
-  if (canExport) {
-    html += `
-    <div class="card" style="margin-bottom:12px;">
-      <div class="card-title">📤 تصدير البيانات</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">
-        التصدير يشمل: <strong>${campLabel}</strong>
-      </div>
-
-      <button onclick="openExportModal()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:8px;padding:11px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:8px;">
-        📊 تصدير Excel — اختيار الأعمدة
-      </button>
-
-      <button onclick="exportExcelMissing()" style="width:100%;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:11px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:8px;">
-        ⚠️ تصدير Excel — البيانات الناقصة
-      </button>
-
-      <button onclick="printAllFamilies()" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:11px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">
-        🖨️ طباعة قائمة الأسر
-      </button>
-    </div>`
-  }
-
-  // ── قسم الاستيراد ──
-  if (canImport) {
-    html += `
-    <div class="card" style="margin-bottom:12px;">
-      <div class="card-title">📥 استيراد البيانات</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.8;">
-        استيراد من ملف Excel — يضيف الجديد فقط ولا يحذف الموجود
-      </div>
-
-      <button onclick="downloadImportTemplate()" style="width:100%;background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:10px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;">
-        📥 تحميل قالب Excel فارغ
-      </button>
-
-      <label style="display:block;width:100%;background:var(--surface2);border:2px dashed var(--border);border-radius:8px;padding:16px;text-align:center;cursor:pointer;font-family:Cairo,sans-serif;font-size:13px;color:var(--muted);margin-bottom:8px;">
-        📎 رفع ملف Excel للاستيراد
-        <input type="file" id="importFile" accept=".xlsx" onchange="handleImportFile(event)" style="display:none;">
-      </label>
-
-      <div id="importPreview"></div>
-    </div>`
-  }
-
-  // ── استيراد من HTML قديم — platform_owner فقط ──
-  if (isOwner) {
-    html += `
-    <div class="card">
-      <div class="card-title" style="color:var(--purple);">🔄 استيراد من برنامج قديم</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.8;">
-        استيراد من ملف HTML للبرنامج القديم — يقارن ويضيف الناقص فقط
-      </div>
-      <label style="display:block;width:100%;background:var(--surface2);border:2px dashed rgba(139,92,246,0.4);border-radius:8px;padding:16px;text-align:center;cursor:pointer;font-family:Cairo,sans-serif;font-size:13px;color:var(--purple);margin-bottom:8px;">
-        📎 اختر ملف HTML القديم
-        <input type="file" id="importOldFile" accept=".html" onchange="handleOldImport(event)" style="display:none;">
-      </label>
-      <div id="oldImportPreview"></div>
-    </div>`
-  }
-
-  if (!canExport && !isAdmin) {
-    html = '<div class="empty"><div class="empty-icon">🔒</div>لا تملك صلاحية الوصول لهذه الصفحة</div>'
-  }
-  
-  // أضف إشعار offline
-  if (!navigator.onLine) {
-    html = `<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px;font-size:12px;color:var(--accent);margin-bottom:12px;text-align:center;">
-      📴 أنت غير متصل<br>
-      <span style="font-size:10px;color:var(--muted);">التصدير والطباعة يعملان • الاستيراد يُحفظ محلياً ويُزامن لاحقاً</span>
-    </div>` + html
-  }
-
-    if (!navigator.onLine) {
-    html = `<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px;font-size:12px;color:var(--accent);margin-bottom:12px;text-align:center;">
-      📴 أنت غير متصل — التصدير والطباعة يعملان • الاستيراد يُحفظ محلياً ويُزامن لاحقاً
-    </div>` + html
-  }
-  out.innerHTML = html
-}
-
-// ── تصدير Excel كامل ──
-async function exportExcelFull() {
-  if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
-  showToast('⏳ جارٍ التصدير...')
-
-  let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  const exportCamp = document.getElementById('exportCampFilter')?.value || ''
-  // المندوب محدود بمخيمه، غيره يختار
-  if (currentMember.camp_id) families = families.filter(f => f.camp_id === currentMember.camp_id)
-  else if (exportCamp) families = families.filter(f => f.camp_id === exportCamp)
-
-  const members = await localDB.family_members.toArray()
-  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
-  const mByFamily = {}; members.forEach(m => { if(!mByFamily[m.family_id]) mByFamily[m.family_id]=[]; mByFamily[m.family_id].push(m) })
-
-  const familyRows = families.map(f => ({
-    'رقم الهوية': f.head_id||'', 'اسم رب الأسرة': f.head_name||'',
-    'الجوال': f.phone1||'', 'المخيم': campMap[f.camp_id]||'',
-    'الخيمة': f.tent||'', 'الحالة': f.status==='ok'?'مستقر':f.status==='need'?'يحتاج':'عاجل',
-    'الحالة الاجتماعية': f.head_marital||'', 'الجنس': f.head_gender||'',
-    'تاريخ الميلاد': f.head_dob||'', 'العمر': calcAge(f.head_dob)??'',
-    'عدد الأفراد': (mByFamily[f.id]?.length||0)+1,
-    'الاحتياجات': (f.tags||[]).join(', '), 'ملاحظات': f.notes||'',
-  }))
-
-  const memberRows = []
-  families.forEach(f => {
-    const fMems = filterOutHead(f, mByFamily[f.id]||[])
-    memberRows.push({ 'أسرة': f.head_name, 'المخيم': campMap[f.camp_id]||'', 'الاسم': f.head_name, 'العلاقة': 'رب الأسرة', 'الهوية': f.head_id||'', 'الميلاد': f.head_dob||'', 'العمر': calcAge(f.head_dob)??'', 'الجنس': f.head_gender||'', 'الصحة': '' })
-    fMems.forEach(m => memberRows.push({ 'أسرة': f.head_name, 'المخيم': campMap[f.camp_id]||'', 'الاسم': m.name||'', 'العلاقة': m.relation||'', 'الهوية': m.national_id||'', 'الميلاد': m.dob||'', 'العمر': calcAge(m.dob)??'', 'الجنس': m.gender||'', 'الصحة': m.health||'' }))
-  })
-
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(familyRows), 'الأسر')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(memberRows), 'الأفراد')
-  const date = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
-  XLSX.writeFile(wb, `سجل_الأسر_${date}.xlsx`)
-  showToast(`✅ تم تصدير ${families.length} أسرة`)
-}
-
-// ── تصدير الفئات العمرية ──
-async function exportExcelAge() {
-  if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
-  let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  const exportCamp = document.getElementById('exportCampFilter')?.value || ''
-  // المندوب محدود بمخيمه، غيره يختار
-  if (currentMember.camp_id) families = families.filter(f => f.camp_id === currentMember.camp_id)
-  else if (exportCamp) families = families.filter(f => f.camp_id === exportCamp)
-  const members = await localDB.family_members.toArray()
-  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
-  const famIds = new Set(families.map(f=>f.id))
-
-  const rows = []
-  families.forEach(f => {
-    rows.push({ 'الاسم': f.head_name, 'الصفة': 'رب الأسرة', 'المخيم': campMap[f.camp_id]||'', 'تاريخ الميلاد': f.head_dob||'', 'العمر': calcAge(f.head_dob)??'', 'الجنس': f.head_gender||'' })
-  })
-  members.filter(m=>famIds.has(m.family_id)).forEach(m => {
-    const fam = families.find(f=>f.id===m.family_id)
-    rows.push({ 'الاسم': m.name, 'الصفة': m.relation||'فرد', 'المخيم': campMap[fam?.camp_id]||'', 'تاريخ الميلاد': m.dob||'', 'العمر': calcAge(m.dob)??'', 'الجنس': m.gender||'' })
-  })
-  rows.sort((a,b) => (a['العمر']||999) - (b['العمر']||999))
-
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'الفئات العمرية')
-  XLSX.writeFile(wb, `الفئات_العمرية_${new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')}.xlsx`)
-  showToast(`✅ تم تصدير ${rows.length} شخص`)
-}
 
 // ── تصدير البيانات الناقصة ──
 async function exportExcelMissing() {
