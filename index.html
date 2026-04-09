@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 :root {
   --bg:#0d1117; --surface:#161b22; --surface2:#1f2937;
@@ -296,6 +297,21 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
 
   <!-- Dashboard -->
   <div class="page active" id="page-dashboard">
+    <!-- بطاقة معلومات المخيم — تظهر للمندوب والمساعد -->
+    <div id="campInfoCard" style="display:none;background:linear-gradient(135deg,rgba(245,158,11,0.1),rgba(245,158,11,0.03));border:1px solid rgba(245,158,11,0.3);border-radius:14px;padding:14px 16px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:42px;height:42px;background:var(--accent);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">⛺</div>
+        <div style="flex:1;">
+          <div style="font-size:15px;font-weight:900;color:var(--accent);" id="campInfoName">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;" id="campInfoAddress"></div>
+        </div>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(245,158,11,0.2);display:flex;gap:16px;flex-wrap:wrap;">
+        <div id="campInfoDelegate" style="font-size:12px;color:var(--muted);"></div>
+        <div id="campInfoStats" style="font-size:12px;color:var(--muted);margin-right:auto;"></div>
+      </div>
+    </div>
+
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-num" id="statFamilies">—</div><div class="stat-label">👨‍👩‍👧 الأسر</div></div>
       <div class="stat-card"><div class="stat-num" id="statMembers">—</div><div class="stat-label">👤 الأفراد</div></div>
@@ -316,7 +332,7 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <button class="btn btn-primary" onclick="showPage('page-add-family')" id="btnAddFamily" style="display:none;">➕ إضافة أسرة</button>
     </div>
     <div class="search-bar"><input type="text" id="searchInput" placeholder="بحث باسم رب الأسرة أو رقم الهوية..." oninput="searchFamilies()"></div>
-    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+    <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
       <select id="filterMissing" onchange="loadFamilies()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-family:'Cairo',sans-serif;font-size:12px;outline:none;">
         <option value="">كل الأسر</option>
         <option value="incomplete">⚠️ ناقص</option>
@@ -331,6 +347,29 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <select id="filterCamp" onchange="loadFamilies()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-family:'Cairo',sans-serif;font-size:12px;outline:none;">
         <option value="">كل المخيمات</option>
       </select>
+      <select id="filterTag" onchange="loadFamilies()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-family:'Cairo',sans-serif;font-size:12px;outline:none;">
+        <option value="">كل الاحتياجات</option>
+        <option value="food">🍞 غذاء</option>
+        <option value="medicine">💊 دواء</option>
+        <option value="clothes">👕 ملابس</option>
+        <option value="shelter">⛺ مأوى</option>
+        <option value="special">⚠️ خاص</option>
+      </select>
+      <select id="filterGender" onchange="loadFamilies()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-family:'Cairo',sans-serif;font-size:12px;outline:none;">
+        <option value="">كل الجنس</option>
+        <option value="ذكر">👨 ذكر</option>
+        <option value="أنثى">👩 أنثى</option>
+      </select>
+      <button onclick="resetFamilyFilters()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:7px 12px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;">↺ إعادة</button>
+    </div>
+    <!-- نطاق عمر رب الأسرة -->
+    <div id="ageFilterRow" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <span style="font-size:11px;color:var(--muted);">🎂 العمر من</span>
+      <input type="number" id="filterAgeMin" value="" min="0" max="120" placeholder="—" onchange="loadFamilies()" style="width:56px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;text-align:center;outline:none;">
+      <span style="font-size:11px;color:var(--muted);">إلى</span>
+      <input type="number" id="filterAgeMax" value="" min="0" max="120" placeholder="—" onchange="loadFamilies()" style="width:56px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;text-align:center;outline:none;">
+      <span style="font-size:11px;color:var(--muted);">سنة</span>
+      <div id="familiesCount" style="font-size:11px;color:var(--muted);margin-right:auto;"></div>
     </div>
     <div class="table-wrap">
       <table>
@@ -587,6 +626,20 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <input type="file" id="backupImportFile" accept=".json" style="display:none;" onchange="restoreBackup(this)">
       <div id="backupStatus" style="margin-top:10px;font-size:12px;"></div>
     </div>
+
+    <!-- الأمان — لجميع المستخدمين -->
+    <div class="card" id="securityCard" style="display:none;">
+      <div class="card-title" style="color:var(--purple);">🔒 الأمان والإشعارات</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.8;">
+        تسجيل خروج من جميع أجهزتك الأخرى مع بقائك مسجلاً في هذا الجهاز.
+      </div>
+      <button id="logoutAllDevicesBtn" onclick="logoutAllOtherDevices()" style="width:100%;padding:11px;background:rgba(139,92,246,0.1);border:1px solid var(--purple);color:var(--purple);border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+        🔒 تسجيل خروج من جميع الأجهزة الأخرى
+      </button>
+      <button onclick="requestPushPermission()" style="width:100%;padding:11px;background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">
+        🔔 تفعيل إشعارات التطبيق
+      </button>
+    </div>
   </div>
 
 
@@ -609,7 +662,14 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   <div class="page" id="page-dist">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--accent);">📦 توزيع المساعدات</div>
-      <button onclick="showNewDistForm()" id="btnNewDist" class="btn btn-primary">➕ توزيع جديد</button>
+      <div style="display:flex;gap:8px;">
+        <button onclick="toggleDistStats()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 12px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;">📊 إحصائيات</button>
+        <button onclick="showNewDistForm()" id="btnNewDist" class="btn btn-primary">➕ توزيع جديد</button>
+      </div>
+    </div>
+    <!-- إحصائيات التوزيعات (مخفية افتراضياً) -->
+    <div id="distStatsPanel" style="display:none;margin-bottom:14px;">
+      <div id="distStatsContent"><div class="loading-wrap"><div class="spinner"></div></div></div>
     </div>
     <div id="distContent"></div>
   </div>
@@ -657,7 +717,24 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   <!-- Analysis -->
   <div class="page" id="page-analysis2">
     <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px;">📈 تحليل البيانات</div>
-    <div id="analysisContent"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحليل...</div></div></div>
+    <div id="analysisContent">
+      <div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحليل...</div></div>
+    </div>
+    <!-- رسوم بيانية -->
+    <div id="chartsSection" style="display:none;">
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title" style="color:var(--green);">🎂 الفئات العمرية</div>
+        <canvas id="ageChart" style="max-height:220px;"></canvas>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title" style="color:var(--blue);">⛺ توزيع المخيمات</div>
+        <canvas id="campChart" style="max-height:220px;"></canvas>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title" style="color:var(--accent);">📊 الحالات</div>
+        <canvas id="statusChart" style="max-height:220px;"></canvas>
+      </div>
+    </div>
   </div>
 
   <!-- حركات الأسر -->
@@ -706,6 +783,69 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <button onclick="loadAlertsPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 14px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">🔄 تحديث</button>
     </div>
     <div id="alertsContent"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحليل...</div></div></div>
+  </div>
+
+  <!-- صفحة المساعدة -->
+  <div class="page" id="page-help">
+    <div style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:14px;">❓ دليل الاستخدام</div>
+
+    <!-- الأدوار -->
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-title" style="color:var(--blue);">👥 الأدوار والصلاحيات</div>
+      <div style="display:grid;gap:8px;">
+        ${[
+          ['👑','platform_owner','مالك النظام','كل الصلاحيات — إدارة المنظمات والاشتراكات'],
+          ['🔴','super_admin','مدير الإيواء','إدارة مخيماته فقط — مستخدمين وأسر وتوزيعات'],
+          ['🟠','camp_delegate','مندوب المخيم','مخيمه فقط — إضافة وتعديل وإدارة مساعديه'],
+          ['🟡','assistant','مساعد','صلاحيات محددة من المندوب (إضافة/تعديل/حذف)'],
+        ].map(([icon,role,name,desc]) => `
+          <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+            <div style="font-size:12px;font-weight:700;">${icon} ${name}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">${desc}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- الميزات -->
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-title" style="color:var(--green);">🛠️ الميزات الرئيسية</div>
+      <div style="display:grid;gap:8px;font-size:12px;line-height:1.8;">
+        ${[
+          ['👨‍👩‍👧','الأسر','إضافة وتعديل وحذف الأسر مع فحص تلقائي للتكرار والبيانات الناقصة'],
+          ['🚶','حركات الأسر','تسجيل دخول الأسرة للمخيم أو خروجها أو نقلها لمخيم آخر'],
+          ['📦','التوزيعات','إنشاء جولات ودفعات وتسجيل استلام الأسر — يعمل أوفلاين'],
+          ['🔔','التنبيهات','تنبيهات ذكية تلقائية: أسر عاجلة، مخيمات ممتلئة، توزيع متأخر'],
+          ['📊','التقارير','تصدير Excel مخصص باختيار الأعمدة والفئات العمرية'],
+          ['💾','النسخ الاحتياطي','تصدير كامل البيانات JSON واستيرادها — في صفحة الإعدادات'],
+          ['🔍','البحث العالمي','ابحث بالاسم أو الهوية في الأسر والأفراد والمخيمات معاً'],
+          ['📱','الأجهزة','كل جهاز يحتاج موافقة المسؤول — الجهاز المحظور يُطرد تلقائياً'],
+          ['🔌','أوفلاين','التطبيق يعمل بدون إنترنت — البيانات تُزامن عند الاتصال'],
+          ['🏠','بوابة الأسرة','كل أسرة تستطيع عرض بياناتها وتوزيعاتها برقم هويتها وتاريخ الميلاد'],
+        ].map(([icon,title,desc]) => `
+          <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+            <div style="font-weight:700;">${icon} ${title}</div>
+            <div style="color:var(--muted);margin-top:2px;">${desc}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- أسئلة شائعة -->
+    <div class="card">
+      <div class="card-title" style="color:var(--accent);">❓ أسئلة شائعة</div>
+      <div style="display:grid;gap:10px;font-size:12px;">
+        ${[
+          ['كيف أضيف مستخدماً جديداً؟','من صفحة المستخدمون — رقم الهوية يُصبح بريده، وكلمة المرور الأولى رقم جواله'],
+          ['الأسرة لا تظهر بعد الإضافة؟','تحقق من اتصال الإنترنت — قد تكون محفوظة محلياً وتنتظر المزامنة'],
+          ['كيف أعيد كلمة مرور مستخدم؟','من صفحة المستخدمون — زر 🔑 — ستظهر كلمة مرور عشوائية أعطها للمستخدم'],
+          ['الجهاز يقول غير معتمد؟','على المسؤول الموافقة عليه من صفحة الأجهزة'],
+          ['كيف أحمي البيانات؟','أخذ نسخة احتياطية أسبوعياً من صفحة الإعدادات'],
+        ].map(([q,a]) => `
+          <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+            <div style="font-weight:700;color:var(--accent);">س: ${q}</div>
+            <div style="color:var(--muted);margin-top:4px;">ج: ${a}</div>
+          </div>`).join('')}
+      </div>
+    </div>
   </div>
 
   <div class="page" id="page-sms">
@@ -1311,6 +1451,12 @@ async function doLogin() {
   await loadMember()
   // سجّل الجهاز في الخلفية
   registerDevice().catch(()=>{})
+  initPush()
+  setTimeout(checkAutoBackupReminder, 3000)
+  updatePendingBadge()
+  startBackgroundSync()
+  // فحص اعتماد الجهاز
+  checkDeviceApproval()
 }
 
 function skipChangePassword() {
@@ -1410,6 +1556,7 @@ function buildSidebar() {
   // الإعدادات لجميع الأدوار (تغيير كلمة المرور)
   html += '<div class="nav-section">الحساب</div>'
   html += navItem('⚙️', 'الإعدادات', 'page-settings')
+  html += navItem('❓', 'المساعدة', 'page-help')
 
   nav.innerHTML = html
   // تحقق من الأجهزة المعلقة
@@ -1498,6 +1645,7 @@ async function showPage(pageId) {
     'page-settings':   ['⚙️ الإعدادات', ''],
     'page-subscription': ['💳 الاشتراكات', 'إدارة خطط الاشتراك'],
     'page-movements':  ['🚶 حركات الأسر', 'سجل الدخول والخروج والنقل'],
+    'page-help':       ['❓ المساعدة', 'دليل الاستخدام'],
     'page-history':    ['📋 سجل التغييرات', 'تاريخ التعديلات على الأسر'],
     'page-alerts':     ['🔔 التنبيهات الذكية', 'تنبيهات تحتاج انتباهك'],
   }
@@ -1513,7 +1661,7 @@ async function showPage(pageId) {
   if (pageId === 'page-devices')    loadDevices()
   if (pageId === 'page-dist')        loadDistPage()
   if (pageId === 'page-analysis')   initReportsPage()
-  if (pageId === 'page-analysis2')  loadAnalysis()
+  if (pageId === 'page-analysis2')  loadAnalysisWithCharts()
   if (pageId === 'page-data')        loadDataPage()
   if (pageId === 'page-audit')       loadAuditLog()
   if (pageId === 'page-settings') {
@@ -1521,6 +1669,8 @@ async function showPage(pageId) {
     if (cc) cc.style.display = currentMember.role === 'platform_owner' ? 'block' : 'none'
     const bc = document.getElementById('backupCard')
     if (bc) bc.style.display = ['platform_owner','super_admin'].includes(currentMember.role) ? 'block' : 'none'
+    const sc = document.getElementById('securityCard')
+    if (sc) sc.style.display = 'block'
     updateBackupLastTime()
   }
   if (pageId === 'page-sms')         loadSmsPage()
@@ -1567,6 +1717,7 @@ function checkOnlineStatus() {
     setSyncing()
     showToast('🔄 جارٍ التحديث...')
     await processSyncQueue()
+    updatePendingBadge()
     await loadCampsFromServer()
     const activePage = document.querySelector('.page.active')?.id
     if (activePage === 'page-camps')     loadCampsList()
@@ -1797,7 +1948,22 @@ async function doCustomExport() {
 
   const wb = XLSX.utils.book_new()
 
-  // ── ورقة الأسر ──
+  // ── ورقة معلومات المخيم ──
+  const activeCampId = currentMember.camp_id || exportCamp
+  const campInfo = await getCampInfoForExcel(activeCampId)
+  if (campInfo.campName) {
+    const infoRows = [
+      { 'البيان': 'اسم المخيم',    'القيمة': campInfo.campName },
+      { 'البيان': 'العنوان',        'القيمة': campInfo.campAddress || '—' },
+      { 'البيان': 'اسم المندوب',   'القيمة': campInfo.delegateName || '—' },
+      { 'البيان': 'السعة',          'القيمة': campInfo.capacity ? campInfo.capacity + ' أسرة' : '—' },
+      { 'البيان': 'تاريخ التصدير', 'القيمة': campInfo.exportDate },
+      { 'البيان': 'عدد الأسر',     'القيمة': families.length },
+    ]
+    const infoSheet = XLSX.utils.json_to_sheet(infoRows)
+    infoSheet['!cols'] = [{ wch: 20 }, { wch: 35 }]
+    XLSX.utils.book_append_sheet(wb, infoSheet, 'معلومات المخيم')
+  }
   if (selFam.length) {
     const famRows = families.map(f => {
       const fMems = filterOutHead(f, mByFamily[f.id]||[])
@@ -1898,6 +2064,9 @@ function calcAge(dob) {
 async function loadDashboard() {
   try {
     if (!currentMember) return
+    // بطاقة المخيم
+    loadCampInfoCard()
+
     let fams    = await localDB.families.where('org_id').equals(ORG_ID).toArray()
     let members = await localDB.family_members.toArray()
 
@@ -2063,6 +2232,10 @@ async function loadFamilies() {
   const tbody  = document.getElementById('familiesTable')
   const status = document.getElementById('filterStatus').value
   const camp   = document.getElementById('filterCamp').value
+  const tag    = document.getElementById('filterTag')?.value    || ''
+  const gender = document.getElementById('filterGender')?.value || ''
+  const ageMin = parseInt(document.getElementById('filterAgeMin')?.value) || 0
+  const ageMax = parseInt(document.getElementById('filterAgeMax')?.value) || 999
 
   // دالة عرض مشتركة
   async function render(families) {
@@ -2071,6 +2244,17 @@ async function loadFamilies() {
     if (currentMember.camp_id) list = list.filter(f => f.camp_id === currentMember.camp_id)
     if (status) list = list.filter(f => f.status === status)
     if (camp)   list = list.filter(f => f.camp_id === camp)
+    if (tag)    list = list.filter(f => Array.isArray(f.tags) ? f.tags.includes(tag) : (f.tags||'').includes(tag))
+    if (gender) list = list.filter(f => f.head_gender === gender)
+
+    // فلتر العمر
+    if (ageMin > 0 || ageMax < 999) {
+      list = list.filter(f => {
+        const age = calcAge(f.head_dob)
+        if (age === null || age === undefined) return true
+        return age >= ageMin && age <= ageMax
+      })
+    }
 
     // بناء خريطة الأفراد — نستثني رب الأسرة من الحساب
     const allRaw  = await localDB.family_members.toArray()
@@ -2110,6 +2294,10 @@ async function loadFamilies() {
     const campMap = {}
     allCamps.forEach(c => campMap[c.id] = c.name)
     allFamilies = list.map(f => ({ ...f, camp_name: campMap[f.camp_id]||'—', members_count: mCount[f.id]||0 }))
+
+    // عداد النتائج
+    const cntEl = document.getElementById('familiesCount')
+    if (cntEl) cntEl.textContent = `${allFamilies.length} أسرة`
 
     if (!allFamilies.length) {
       tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">👨‍👩‍👧</div>لا توجد أسر</div></td></tr>'
@@ -2390,6 +2578,94 @@ async function openFamily(id) {
 function closeDrawer() {
   document.getElementById('familyDrawer').style.right = '-500px'
   document.getElementById('drawerOverlay').style.display = 'none'
+}
+
+// ══ FAMILY MOVEMENTS LOG (في الـ drawer) ══
+async function loadFamilyMovements(familyId) {
+  const container = document.getElementById(`movementsLog_${familyId}`)
+  if (!container) return
+
+  const tColor = { entry:'var(--green)', exit:'var(--red)', transfer:'var(--blue)' }
+  const tLabel = { entry:'🟢 دخول', exit:'🔴 خروج', transfer:'🔵 نقل' }
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+
+  let movements = []
+  try {
+    if (navigator.onLine) {
+      const { data } = await db.from('family_movements')
+        .select('*').eq('family_id', familyId)
+        .order('date', { ascending: false }).limit(10)
+      movements = data || []
+      if (movements.length) await localDB.family_movements.bulkPut(movements).catch(()=>{})
+    } else {
+      movements = await localDB.family_movements.where('family_id').equals(familyId).toArray()
+      movements.sort((a,b) => (b.date||'').localeCompare(a.date||''))
+      movements = movements.slice(0, 10)
+    }
+  } catch(e) { console.warn('loadFamilyMovements:', e.message) }
+
+  if (!movements.length) {
+    container.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px;">لا توجد حركات مسجلة</div>'
+    return
+  }
+
+  container.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;">🚶 سجل الحركات</div>
+    ${movements.map(m => `
+      <div style="background:var(--surface2);border-right:3px solid ${tColor[m.type]||'var(--border)'};border-radius:0 8px 8px 0;padding:8px 10px;margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+          <span style="font-size:11px;font-weight:700;color:${tColor[m.type]};">${tLabel[m.type]||m.type}</span>
+          <span style="font-size:10px;color:var(--muted);">${m.date||''}</span>
+        </div>
+        ${m.from_camp ? `<div style="font-size:10px;color:var(--muted);">📤 من: ${esc(campMap[m.from_camp]||'—')}</div>` : ''}
+        ${m.to_camp   ? `<div style="font-size:10px;color:var(--muted);">📥 إلى: ${esc(campMap[m.to_camp]||'—')}</div>` : ''}
+        ${m.reason    ? `<div style="font-size:10px;color:var(--muted);">السبب: ${esc(m.reason)}</div>` : ''}
+        ${m.notes     ? `<div style="font-size:10px;color:var(--muted);">${esc(m.notes)}</div>` : ''}
+      </div>`).join('')}
+  `
+}
+
+// ══ PENDING QUEUE BADGE ══
+async function updatePendingBadge() {
+  try {
+    const count = await localDB.sync_queue.where('status').anyOf(['pending','error']).count()
+    let badge = document.getElementById('pendingBadge')
+    if (!badge) {
+      const onlineBadge = document.querySelector('.online-badge')
+      if (!onlineBadge) return
+      badge = document.createElement('span')
+      badge.id = 'pendingBadge'
+      badge.style.cssText = 'display:none;background:var(--accent);color:#000;border-radius:12px;padding:1px 7px;font-size:9px;font-weight:900;cursor:pointer;'
+      badge.title = 'عمليات معلقة'
+      onlineBadge.insertBefore(badge, onlineBadge.firstChild)
+    }
+    if (count > 0) {
+      badge.style.display = 'inline'
+      badge.textContent = `⏳ ${count}`
+    } else {
+      badge.style.display = 'none'
+    }
+  } catch(e) {}
+}
+
+// ══ BACKGROUND SYNC ══
+function startBackgroundSync() {
+  // مزامنة كل 5 دقائق
+  setInterval(async () => {
+    if (!navigator.onLine || !currentUser) return
+    const count = await localDB.sync_queue.where('status').anyOf(['pending','error']).count().catch(()=>0)
+    if (count > 0) { await processSyncQueue(); updatePendingBadge() }
+  }, 5 * 60 * 1000)
+
+  // تنظيف sync_queue القديمة كل ساعة (أكثر من 30 يوم ومكتملة)
+  setInterval(async () => {
+    try {
+      const cutoff = new Date(Date.now() - 30*24*60*60*1000).toISOString()
+      const old = await localDB.sync_queue.where('status').equals('done').toArray()
+      const toDelete = old.filter(i => i.created_at < cutoff).map(i => i.id)
+      if (toDelete.length) await localDB.sync_queue.bulkDelete(toDelete)
+    } catch(e) {}
+  }, 60 * 60 * 1000)
 }
 
 // ══ FAMILY HISTORY ══
@@ -2917,6 +3193,7 @@ async function doSaveFamily() {
     }
     logAction('إضافة أسرة', savedFamilyId, familyData.head_name, { camp_id: familyData.camp_id })
     recordFamilyHistory('create', savedFamilyId, null, { ...familyData, id: savedFamilyId })
+    if (familyData.status === 'urgent') sendPush('🚨 أسرة عاجلة جديدة', familyData.head_name)
     showToast('✅ تم حفظ الأسرة')
     clearFamilyForm(); showPage('page-families'); loadDashboard()
   } catch(err) { showToast('خطأ: '+err.message, true) }
@@ -3446,17 +3723,33 @@ async function toggleUserStatus(id, isActive) {
 }
 
 async function resetUserPassword(id, name) {
-  if (!confirm(`إعادة كلمة مرور ${name} إلى رقم جواله؟`)) return
+  if (!confirm(`إعادة تعيين كلمة مرور ${name} بكلمة مرور عشوائية جديدة؟`)) return
   try {
-    // جلب بيانات المستخدم
-    const { data: member } = await db.from('org_members').select('user_id, phone').eq('id', id).single()
+    const { data: member } = await db.from('org_members').select('user_id,phone').eq('id', id).single()
     if (!member) { showToast('❌ لم يُعثر على المستخدم', true); return }
 
-    await callAdminFn('reset_password', { userId: member.user_id, newPassword: member.phone })
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!'
+    const newPass = Array.from({length:12}, () => chars[Math.floor(Math.random()*chars.length)]).join('')
 
+    await callAdminFn('reset_password', { userId: member.user_id, newPassword: newPass })
     await db.from('org_members').update({ must_change_pass: true }).eq('id', id)
     logAction('إعادة كلمة مرور', id, name)
-    showToast(`✅ تم إعادة كلمة مرور ${name} إلى رقم جواله`)
+
+    // عرض كلمة المرور في نافذة داخل التطبيق بدل alert
+    const modalDiv = document.createElement('div')
+    modalDiv.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;'
+    modalDiv.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--accent);border-radius:16px;padding:24px;max-width:360px;width:100%;text-align:center;">
+        <div style="font-size:18px;font-weight:700;color:var(--accent);margin-bottom:8px;">🔑 كلمة المرور الجديدة</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">المستخدم: ${esc(name)}</div>
+        <div style="font-size:22px;font-family:monospace;letter-spacing:2px;background:var(--bg);border:1px solid var(--border);padding:14px;border-radius:10px;margin-bottom:12px;word-break:break-all;color:var(--green);">${newPass}</div>
+        <button onclick="navigator.clipboard?.writeText('${newPass}');showToast('✅ تم النسخ')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 16px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:12px;">📋 نسخ</button>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:16px;line-height:1.8;">أعطِ هذه الكلمة للمستخدم شخصياً<br>سيُطلب منه تغييرها عند أول دخول</div>
+        <button onclick="this.closest('div[style]').remove()" style="background:var(--accent);color:#000;border:none;border-radius:8px;padding:10px 24px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;width:100%;">إغلاق</button>
+      </div>`
+    document.body.appendChild(modalDiv)
+
+    showToast(`✅ تم إعادة تعيين كلمة مرور ${name}`)
     loadUsers()
   } catch(e) { showToast('❌ ' + e.message, true) }
 }
@@ -3713,12 +4006,19 @@ async function registerDevice() {
 
     if (existing) {
       if (existing.is_blocked) {
-        // جهاز محظور — أجبر تسجيل الخروج
         showToast('🚫 هذا الجهاز محظور من الوصول', true)
         setTimeout(() => logout(), 2000)
         return
       }
+      // جهاز غير معتمد — يمنع الدخول إلا للمالك
+      if (!existing.is_approved && currentMember?.role !== 'platform_owner') {
+        await db.from('devices').update({ last_seen: new Date().toISOString() }).eq('id', existing.id)
+        showToast('⏳ هذا الجهاز لم يُعتمد بعد — انتظر موافقة المسؤول', true)
+        setTimeout(() => logout(), 3000)
+        return
+      }
       await db.from('devices').update({ last_seen: new Date().toISOString() }).eq('id', existing.id)
+      logDeviceLogin(fingerprint).catch(()=>{})
     } else {
       // سجّل جهاز جديد
       const isPlatformOwner = currentMember?.role === 'platform_owner'
@@ -3897,7 +4197,7 @@ async function deleteDevice(id) {
 
 
 // ══ INCOMPLETE / MISSING DETECTION ══
-function checkFamilyIssues(f, members) {
+function checkFamilyIssues(f, members = []) {
   const issues = []
   const hName  = f.head_name || 'رب الأسرة'
 
@@ -3930,10 +4230,14 @@ function checkFamilyIssues(f, members) {
   return issues
 }
 
-function isIncomplete(f) { return checkFamilyIssues(f).length > 0 }
+function isIncomplete(f, membersMap) {
+  const mems = membersMap ? (membersMap[f.id]||[]) : []
+  return checkFamilyIssues(f, filterOutHead(f, mems)).length > 0
+}
 
 // ══ SMS PAGE ══
 let smsAllFamilies = []
+let smsMembersMap  = {}   // family_id → members[]
 
 async function loadSmsPage() {
   // جلب البيانات المحلية مع فلتر الدور
@@ -3946,6 +4250,13 @@ async function loadSmsPage() {
     allSmsFams = allSmsFams.filter(f => f.camp_id === currentMember.camp_id)
   }
   smsAllFamilies = allSmsFams
+  // بناء كاش الأفراد للفلترة الصحيحة
+  const famIds = allSmsFams.map(f=>f.id)
+  const allMems = famIds.length
+    ? await localDB.family_members.where('family_id').anyOf(famIds).toArray()
+    : []
+  smsMembersMap = {}
+  allMems.forEach(m => { if(!smsMembersMap[m.family_id]) smsMembersMap[m.family_id]=[]; smsMembersMap[m.family_id].push(m) })
   fillCampSelect('smsFilterCamp', false)
   smsUpdateList()
 }
@@ -3960,7 +4271,7 @@ function smsUpdateList() {
   let list = [...smsAllFamilies]
   if (camp)   list = list.filter(f => f.camp_id === camp)
   if (status) list = list.filter(f => f.status === status)
-  if (missing === 'incomplete') list = list.filter(f => isIncomplete(f))
+  if (missing === 'incomplete') list = list.filter(f => isIncomplete(f, smsMembersMap))
   if (missing === 'nophone')    list = list.filter(f => !f.phone1)
   if (tag)    list = list.filter(f => (f.tags||[]).includes(tag))
   if (q) list = list.filter(f =>
@@ -3979,7 +4290,7 @@ function smsUpdateList() {
   }
 
   container.innerHTML = list.map(f => {
-    const issues   = checkFamilyIssues(f)
+    const issues   = checkFamilyIssues(f, filterOutHead(f, smsMembersMap[f.id]||[]))
     const hasPhone = !!f.phone1
     return `<div class="rec-item">
       <div class="rec-check">
@@ -4019,7 +4330,7 @@ function smsDeselAll() { document.querySelectorAll('#smsRecipientsList input[typ
 function smsSelIncomplete() {
   document.querySelectorAll('#smsRecipientsList input[type=checkbox]:not([disabled])').forEach(cb => {
     const f = smsAllFamilies.find(f => f.id === cb.value)
-    cb.checked = f ? isIncomplete(f) : false
+    cb.checked = f ? isIncomplete(f, smsMembersMap) : false
   }); smsCounterUpdate()
 }
 
@@ -4055,11 +4366,12 @@ function smsSendBulk() {
 }
 
 function smsSendOne(id) {
-  localDB.families.get(id).then(f => {
+  localDB.families.get(id).then(async f => {
     if (!f || !f.phone1) { showToast('📵 لا يوجد رقم جوال', true); return }
     const parts  = (f.head_name||'').trim().split(/\s+/)
     const short  = parts.length <= 3 ? parts.join(' ') : [parts[0],parts[1],parts[parts.length-1]].join(' ')
-    const issues = checkFamilyIssues(f)
+    const mems   = smsMembersMap[id] || await localDB.family_members.where('family_id').equals(id).toArray()
+    const issues = checkFamilyIssues(f, filterOutHead(f, mems))
     const sig    = getSig(f.camp_id)
     const body   = issues.length
       ? 'السيد/ة ' + short + '،\nيرجى مراجعتنا لاستكمال البيانات الناقصة.\n' + issues.join('\n') + '\n' + sig
@@ -4184,6 +4496,7 @@ async function processSyncQueue() {
       }
     }
     if (done > 0) showToast('✅ تمت مزامنة ' + done + ' عملية')
+    updatePendingBadge()
   } catch(e) { console.warn('sync queue:', e.message) }
 }
 
@@ -4345,6 +4658,20 @@ async function exportExcelMissing() {
   })
 
   const wb = XLSX.utils.book_new()
+
+  // ورقة معلومات المخيم
+  const activeCampId2 = currentMember.camp_id || exportCamp
+  const campInfo2 = await getCampInfoForExcel(activeCampId2)
+  if (campInfo2.campName) {
+    const infoRows2 = [
+      { 'البيان': 'اسم المخيم', 'القيمة': campInfo2.campName },
+      { 'البيان': 'العنوان',     'القيمة': campInfo2.campAddress || '—' },
+      { 'البيان': 'اسم المندوب','القيمة': campInfo2.delegateName || '—' },
+      { 'البيان': 'تاريخ التصدير','القيمة': campInfo2.exportDate },
+    ]
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(infoRows2), 'معلومات المخيم')
+  }
+
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'البيانات الناقصة')
   XLSX.writeFile(wb, `نواقص_${new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')}.xlsx`)
   showToast(`✅ تم تصدير ${rows.length} أسرة ناقصة`)
@@ -5579,6 +5906,7 @@ async function confirmDistribution(distId) {
   }
 
   logAction('تسجيل توزيع', distId, `${selected.length} أسرة`)
+  sendPush('📦 تم تسجيل التوزيع', `${selected.length} أسرة استلمت`)
   showToast(`✅ تم تسجيل استلام ${selected.length} أسرة`)
 
   // رجوع للجولة إن كانت موجودة
@@ -5737,7 +6065,7 @@ async function saveCampManager(campId) {
 // ══ ANALYSIS PAGE ══
 async function loadAnalysis2() {
   // نسخة منفصلة من التحليل تعرض في page-analysis2
-  const out = document.getElementById('analysisContent2')
+  const out = document.getElementById('analysisContent')
   if (!out) return
   out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحليل...</div></div>'
 
@@ -5808,6 +6136,7 @@ async function loadAnalysis2() {
         ${bar('👤 بالغون (18-59)', adults, 'var(--blue)')}
         ${bar('👴 كبار السن (60+)', elderly, 'var(--accent)')}
         <div style="font-size:10px;color:var(--muted);margin-top:6px;">⚠️ ${noAge} بدون تاريخ ميلاد</div>
+        <canvas id="ageDonutChart" style="max-height:180px;margin-top:14px;"></canvas>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
@@ -5824,6 +6153,25 @@ async function loadAnalysis2() {
         <div style="font-size:10px;color:var(--muted);">🚨 عاجل</div>
       </div>
     </div>`
+
+  // رسم الـ donut chart للفئات العمرية
+  try {
+    const canvas = document.getElementById('ageDonutChart')
+    if (canvas && typeof Chart !== 'undefined') {
+      if (canvas._chartInstance) canvas._chartInstance.destroy()
+      canvas._chartInstance = new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+          labels: ['👶 أطفال 0-17', '👤 بالغون 18-59', '👴 كبار 60+'],
+          datasets: [{ data: [children, adults, elderly], backgroundColor: ['#10b981','#3b82f6','#f59e0b'], borderWidth: 0 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: true, cutout: '65%',
+          plugins: { legend: { position: 'bottom', labels: { color: '#e6edf3', font: { family: 'Cairo', size: 11 }, padding: 12 } } }
+        }
+      })
+    }
+  } catch(e) { console.warn('chart:', e.message) }
 }
 
 // ══ REPORTS PAGE ══
@@ -5832,6 +6180,50 @@ async function loadAnalysis2() {
 // الفلاتر: المخيم + الحالة (مشتركة بين التقارير)
 
 let currentReport = 'families'  // التقرير النشط
+
+async function loadDataPage() {
+  const container = document.getElementById('dataPageContent')
+  if (!container) return
+  const exportOk = canExport()
+  const importOk = currentMember.role !== 'assistant' || currentMember.can_import === true
+  const printOk  = canPrint()
+  const campOptsHtml = allCamps.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')
+  container.innerHTML = `
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-title">📥 تصدير البيانات</div>
+      ${exportOk ? `
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.8;">صدّر بيانات الأسر والأفراد إلى Excel بالأعمدة التي تختارها.</div>
+        <div style="margin-bottom:10px;">
+          <select id="exportCampFilter" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;margin-bottom:8px;">
+            <option value="">كل المخيمات</option>${campOptsHtml}
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="openExportModal()" class="btn btn-primary" style="flex:1;">📊 تصدير مخصص</button>
+          <button onclick="exportExcelMissing()" style="flex:1;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">⚠️ الناقصة</button>
+        </div>` :
+        `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;font-size:12px;color:var(--red);text-align:center;">🔒 لا تملك صلاحية التصدير</div>`}
+    </div>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-title">📤 استيراد البيانات</div>
+      ${importOk ? `
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">استيراد أسر من Excel — يتحقق من التكرار تلقائياً.</div>
+        <button onclick="document.getElementById('importFileInput2').click()" class="btn btn-success" style="width:100%;">📂 اختر ملف Excel</button>
+        <input type="file" id="importFileInput2" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFile(event)">
+        <div id="importProgress2" style="margin-top:10px;font-size:12px;"></div>` :
+        `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;font-size:12px;color:var(--red);text-align:center;">🔒 لا تملك صلاحية الاستيراد</div>`}
+    </div>
+    <div class="card">
+      <div class="card-title">🖨️ طباعة التقارير</div>
+      ${printOk ? `
+        <button onclick="printAllFamilies()" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">🖨️ طباعة قائمة الأسر</button>` :
+        `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;font-size:12px;color:var(--red);text-align:center;">🔒 لا تملك صلاحية الطباعة</div>`}
+    </div>
+  `
+  // فلتر المخيم حسب الدور
+  const sel = document.getElementById('exportCampFilter')
+  if (sel && currentMember.camp_id) sel.value = currentMember.camp_id
+}
 
 function initReportsPage() {
   // ملء فلتر المخيمات مع عدد الأسر
@@ -6650,6 +7042,22 @@ function mvTypeChange(currentCampId) {
   document.getElementById('mvTransferSection').style.display= type==='transfer' ? 'block':'none'
 }
 
+async function openMovementModal(familyId, preType) {
+  let fam = await localDB.families.get(familyId)
+  if (!fam && navigator.onLine) {
+    const { data } = await db.from('families').select('id,head_name,camp_id').eq('id', familyId).single()
+    fam = data
+  }
+  if (!fam) { showToast('❌ لم يتم العثور على الأسرة', true); return }
+  showMovementModal(familyId, fam.head_name, fam.camp_id)
+  if (preType) {
+    setTimeout(() => {
+      const sel = document.getElementById('mvType')
+      if (sel) { sel.value = preType; mvTypeChange(fam.camp_id) }
+    }, 50)
+  }
+}
+
 async function saveMovement(familyId, currentCampId) {
   const type    = document.getElementById('mvType').value
   const date    = document.getElementById('mvDate').value
@@ -6676,7 +7084,7 @@ async function saveMovement(familyId, currentCampId) {
   }
 
   const movement = {
-    id:         crypto.randomUUID(),
+    id: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)),
     family_id:  familyId,
     org_id:     ORG_ID,
     type,
@@ -6692,10 +7100,13 @@ async function saveMovement(familyId, currentCampId) {
   // حفظ محلي
   await localDB.family_movements.put(movement)
 
-  // إذا نقل — حدّث camp_id في الأسرة
+  // إذا نقل — حدّث camp_id في الأسرة + allFamilies
   if (type === 'transfer' && toCamp) {
     const localF = await localDB.families.get(familyId)
     if (localF) await localDB.families.put({ ...localF, camp_id: toCamp, updated_at: new Date().toISOString() })
+    // تحديث allFamilies في الذاكرة فوراً
+    const idx = allFamilies.findIndex(f => f.id === familyId)
+    if (idx !== -1) allFamilies[idx] = { ...allFamilies[idx], camp_id: toCamp }
     if (navigator.onLine) {
       await db.from('families').update({ camp_id: toCamp, updated_at: new Date().toISOString() }).eq('id', familyId)
     } else {
@@ -6711,13 +7122,15 @@ async function saveMovement(familyId, currentCampId) {
     else logAction('حركة أسرة', familyId, mvTypeLabel[type])
   } else {
     await localDB.sync_queue.add({ action:'insert_movement', data: JSON.stringify(movement), status:'pending', created_at: new Date().toISOString() })
+    updatePendingBadge()
   }
 
   document.getElementById('movementModal')?.remove()
   showToast(`✅ تم تسجيل ${mvTypeLabel[type]}`)
 
-  // أعد تحميل تفاصيل الأسرة
+  // أعد تحميل تفاصيل الأسرة + الداشبورد إن كان نقل
   openFamily(familyId)
+  if (type === 'transfer') { loadDashboard(); loadFamilies() }
 }
 // بوابة الأسرة — دخول برقم الهوية + تاريخ الميلاد
 
@@ -7320,6 +7733,361 @@ async function doGlobalSearch() {
   out.innerHTML = html
 }
 
+function toggleDistStats() {
+  const panel = document.getElementById('distStatsPanel')
+  if (!panel) return
+  const visible = panel.style.display !== 'none'
+  panel.style.display = visible ? 'none' : 'block'
+  if (!visible) loadDistStats()
+}
+
+// ══ FAMILY FILTERS ══
+function resetFamilyFilters() {
+  ;['filterMissing','filterStatus','filterCamp','filterTag','filterGender'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = ''
+  })
+  const mn = document.getElementById('filterAgeMin'); if (mn) mn.value = ''
+  const mx = document.getElementById('filterAgeMax'); if (mx) mx.value = ''
+  const si = document.getElementById('searchInput'); if (si) si.value = ''
+  const cnt = document.getElementById('familiesCount'); if (cnt) cnt.textContent = ''
+  loadFamilies()
+}
+
+// ══ PUSH NOTIFICATIONS ══
+let pushEnabled = false
+
+async function requestPushPermission() {
+  if (!('Notification' in window)) { showToast('⚠️ المتصفح لا يدعم الإشعارات', true); return }
+  if (Notification.permission === 'granted') { pushEnabled = true; showToast('✅ الإشعارات مفعّلة بالفعل'); return }
+  const perm = await Notification.requestPermission()
+  pushEnabled = perm === 'granted'
+  if (pushEnabled) {
+    localStorage.setItem('push_enabled', '1')
+    showToast('✅ تم تفعيل الإشعارات')
+    sendPush('مرحباً 👋', 'الإشعارات مفعّلة بنجاح')
+  } else {
+    showToast('❌ تم رفض إذن الإشعارات', true)
+  }
+}
+
+function sendPush(title, body) {
+  if (!pushEnabled || Notification.permission !== 'granted') return
+  try { new Notification(title, { body, icon: '/camp-registry/icon-192.png' }) } catch(e) {}
+}
+
+function initPush() {
+  if (localStorage.getItem('push_enabled') === '1' && Notification.permission === 'granted') {
+    pushEnabled = true
+  }
+}
+
+// ══ DIST STATS ══
+async function loadDistStats() {
+  const container = document.getElementById('distStatsContent')
+  if (!container) return
+  container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
+
+  try {
+    const rounds = await localDB.dist_rounds.where('org_id').equals(ORG_ID).toArray()
+    const batches = await localDB.camp_distributions.where('org_id').equals(ORG_ID).toArray()
+    const dists = await localDB.camp_dist_families.toArray()
+    const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+
+    // إحصائيات عامة
+    const totalFamiliesReceived = new Set(dists.map(d => d.family_id)).size
+    const totalBatches = batches.length
+    const totalRounds = rounds.length
+
+    // أكثر المخيمات استلاماً
+    const campCount = {}
+    batches.forEach(b => campCount[b.camp_id] = (campCount[b.camp_id]||0) + dists.filter(d=>d.distribution_id===b.id).length)
+    const topCamps = Object.entries(campCount).sort((a,b)=>b[1]-a[1]).slice(0,3)
+
+    // جولات مكتملة / نشطة
+    const active   = rounds.filter(r => r.status !== 'closed').length
+    const closed   = rounds.filter(r => r.status === 'closed').length
+
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;">
+        ${[
+          ['📋', 'إجمالي الجولات',   totalRounds,           'var(--accent)'],
+          ['📦', 'إجمالي الدفعات',   totalBatches,          'var(--blue)'],
+          ['👨‍👩‍👧', 'أسر استلمت',    totalFamiliesReceived, 'var(--green)'],
+          ['🔄', 'جولات نشطة',       active,                'var(--accent)'],
+        ].map(([icon,label,n,c])=>`
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-size:20px;font-weight:900;color:${c};">${n}</div>
+            <div style="font-size:10px;color:var(--muted);">${icon} ${label}</div>
+          </div>`).join('')}
+      </div>
+
+      ${topCamps.length ? `
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-title" style="font-size:13px;">🏆 أكثر المخيمات استلاماً</div>
+        ${topCamps.map(([cid,count],i)=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:12px;">${['🥇','🥈','🥉'][i]||''} ${esc(campMap[cid]||'—')}</span>
+            <span style="font-size:12px;font-weight:700;color:var(--accent);">${count} أسرة</span>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <div style="margin-top:12px;font-size:11px;color:var(--muted);text-align:center;">
+        📊 ${closed} جولة مغلقة • ${active} نشطة
+      </div>
+    `
+  } catch(e) {
+    container.innerHTML = `<div style="color:var(--red);font-size:12px;">${e.message}</div>`
+  }
+}
+
+// ══ DEVICE LOGIN HISTORY ══
+async function logDeviceLogin(fingerprint) {
+  if (!navigator.onLine || !currentUser) return
+  try {
+    const info = {
+      user_agent: navigator.userAgent,
+      os: (() => {
+        const ua = navigator.userAgent
+        if (/Windows/.test(ua)) return 'Windows'
+        if (/Android/.test(ua)) return 'Android'
+        if (/iPhone|iPad/.test(ua)) return 'iOS'
+        if (/Mac/.test(ua)) return 'Mac'
+        if (/Linux/.test(ua)) return 'Linux'
+        return 'غير معروف'
+      })(),
+      browser: (() => {
+        const ua = navigator.userAgent
+        if (/Chrome/.test(ua) && !/Edge/.test(ua)) return 'Chrome'
+        if (/Firefox/.test(ua)) return 'Firefox'
+        if (/Safari/.test(ua) && !/Chrome/.test(ua)) return 'Safari'
+        if (/Edge/.test(ua)) return 'Edge'
+        return 'غير معروف'
+      })(),
+      screen: `${screen.width}×${screen.height}`,
+      lang: navigator.language,
+      fingerprint,
+    }
+    await db.from('devices').update({
+      last_seen: new Date().toISOString(),
+      last_login_info: info,
+    }).eq('fingerprint', fingerprint).eq('org_id', ORG_ID)
+  } catch(e) {}
+}
+
+// ══ CAMP INFO CARD ══
+async function loadCampInfoCard() {
+  const card = document.getElementById('campInfoCard')
+  if (!card) return
+
+  // تظهر فقط للمندوب والمساعد (لهم مخيم محدد)
+  const campId = currentMember?.camp_id
+  if (!campId || currentMember.role === 'platform_owner') {
+    card.style.display = 'none'; return
+  }
+
+  const camp = allCamps.find(c => c.id === campId)
+  if (!camp) { card.style.display = 'none'; return }
+
+  // اسم المخيم
+  const nameEl = document.getElementById('campInfoName')
+  if (nameEl) nameEl.textContent = camp.name || '—'
+
+  // العنوان
+  const addrEl = document.getElementById('campInfoAddress')
+  if (addrEl) addrEl.textContent = camp.address ? '📍 ' + camp.address : ''
+
+  // اسم المندوب — جلب من org_members
+  const delegateEl = document.getElementById('campInfoDelegate')
+  if (delegateEl) {
+    try {
+      const { data: delegate } = await db.from('org_members')
+        .select('full_name').eq('camp_id', campId).eq('role', 'camp_delegate').single()
+      delegateEl.textContent = delegate?.full_name ? '👤 ' + delegate.full_name : ''
+    } catch(e) {
+      // مندوب واحد فقط — قد لا يوجد سجل
+      delegateEl.textContent = currentMember.role === 'camp_delegate'
+        ? '👤 ' + currentMember.full_name : ''
+    }
+  }
+
+  // إحصائيات المخيم
+  const statsEl = document.getElementById('campInfoStats')
+  if (statsEl) {
+    const fams = await localDB.families.where('camp_id').equals(campId).toArray()
+    const capacity = camp.capacity ? `${fams.length} / ${camp.capacity} أسرة` : `${fams.length} أسرة`
+    statsEl.textContent = '📊 ' + capacity
+  }
+
+  card.style.display = 'block'
+}
+
+// ══ CAMP INFO IN EXCEL ══
+async function getCampInfoForExcel(campId) {
+  const camp = allCamps.find(c => c.id === campId)
+  if (!camp) return {}
+
+  let delegateName = ''
+  try {
+    const { data } = await db.from('org_members')
+      .select('full_name').eq('camp_id', campId).eq('role','camp_delegate').single()
+    delegateName = data?.full_name || ''
+  } catch(e) {
+    if (currentMember.role === 'camp_delegate' && currentMember.camp_id === campId) {
+      delegateName = currentMember.full_name
+    }
+  }
+
+  return {
+    campName:     camp.name     || '',
+    campAddress:  camp.address  || '',
+    delegateName,
+    capacity:     camp.capacity || '',
+    exportDate:   new Date().toLocaleDateString('ar-SA'),
+  }
+}
+
+// ══ CHARTS (Chart.js) ══
+let chartInstances = {}
+
+function destroyChart(id) {
+  if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id] }
+}
+
+function makeChart(id, type, labels, data, colors, label) {
+  destroyChart(id)
+  const ctx = document.getElementById(id)
+  if (!ctx || typeof Chart === 'undefined') return
+  chartInstances[id] = new Chart(ctx, {
+    type,
+    data: {
+      labels,
+      datasets: [{ label, data, backgroundColor: colors, borderColor: colors, borderWidth: type==='bar'?0:2, borderRadius: type==='bar'?6:0 }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: type !== 'bar', labels: { color:'#e6edf3', font:{ family:'Cairo', size:11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y ?? ctx.parsed} (${ctx.label})` } }
+      },
+      scales: type === 'bar' ? {
+        x: { ticks:{ color:'#8b949e', font:{family:'Cairo',size:10} }, grid:{color:'#30363d'} },
+        y: { ticks:{ color:'#8b949e', font:{family:'Cairo',size:10} }, grid:{color:'#30363d'}, beginAtZero:true }
+      } : {}
+    }
+  })
+}
+
+async function loadAnalysisWithCharts() {
+  // شغّل التحليل النصي الأصلي
+  await loadAnalysis2()
+
+  const fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+  if (!fams.length || typeof Chart === 'undefined') return
+
+  const allMems = await localDB.family_members.toArray()
+  const famIds  = new Set(fams.map(f=>f.id))
+  const members = allMems.filter(m => famIds.has(m.family_id))
+
+  // ① الفئات العمرية
+  let ch=0, ad=0, el=0
+  ;[...fams.map(f=>f.head_dob), ...members.map(m=>m.dob)].forEach(dob => {
+    const age = calcAge(dob)
+    if (age===null) return
+    if (age<18) ch++; else if (age<60) ad++; else el++
+  })
+  makeChart('ageChart','doughnut',
+    ['أطفال 0-17','بالغون 18-59','كبار 60+'],
+    [ch,ad,el],
+    ['#10b981','#3b82f6','#f59e0b'],
+    'الأفراد'
+  )
+
+  // ② توزيع المخيمات
+  const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
+  const cCount  = {}; fams.forEach(f => cCount[f.camp_id]=(cCount[f.camp_id]||0)+1)
+  const campLabels = allCamps.filter(c=>cCount[c.id]).map(c=>c.name)
+  const campData   = allCamps.filter(c=>cCount[c.id]).map(c=>cCount[c.id])
+  makeChart('campChart','bar', campLabels, campData,
+    Array(campLabels.length).fill('#f59e0b'), 'أسرة'
+  )
+
+  // ③ الحالات
+  const ok     = fams.filter(f=>f.status==='ok').length
+  const need   = fams.filter(f=>f.status==='need').length
+  const urgent = fams.filter(f=>f.status==='urgent').length
+  makeChart('statusChart','doughnut',
+    ['مستقر','يحتاج مساعدة','عاجل'],
+    [ok,need,urgent],
+    ['#10b981','#f59e0b','#ef4444'],
+    'الأسر'
+  )
+
+  document.getElementById('chartsSection').style.display = 'block'
+}
+
+// ══ AUTO BACKUP ══
+function checkAutoBackupReminder() {
+  if (!currentMember || !['platform_owner','super_admin'].includes(currentMember.role)) return
+  const last = localStorage.getItem('last_backup_time')
+  if (!last) {
+    showToast('💾 لم يتم أخذ نسخة احتياطية بعد — يُنصح بذلك من الإعدادات')
+    return
+  }
+  const days = Math.floor((Date.now() - new Date(last)) / 86400000)
+  if (days >= 7) {
+    showToast(`⚠️ آخر نسخة احتياطية منذ ${days} يوم — يُنصح بأخذ نسخة جديدة`)
+  }
+}
+
+// ══ FINE-GRAINED PERMISSIONS ══
+// صلاحيات أدق: تصدير منفصل عن طباعة
+function canExport() {
+  if (!currentMember) return false
+  const role = currentMember.role
+  if (role !== 'assistant') return true
+  return currentMember.can_export === true
+}
+
+function canPrint() {
+  if (!currentMember) return false
+  const role = currentMember.role
+  // الطباعة متاحة لكل من يستطيع القراءة
+  if (role !== 'assistant') return true
+  return currentMember.can_export === true || currentMember.can_add === true
+}
+
+function canManageUsers() {
+  if (!currentMember) return false
+  return ['platform_owner','super_admin','camp_delegate'].includes(currentMember.role)
+}
+
+function canManageSystem() {
+  if (!currentMember) return false
+  return ['platform_owner','super_admin'].includes(currentMember.role)
+}
+
+// ══ LOGOUT ALL DEVICES ══
+async function logoutAllOtherDevices() {
+  if (!navigator.onLine) { showToast('📴 يحتاج اتصالاً بالإنترنت', true); return }
+  if (!confirm('سيتم تسجيل خروجك من جميع أجهزتك الأخرى.\nسيظل هذا الجهاز مسجلاً دخوله. متابعة؟')) return
+
+  const btn = document.getElementById('logoutAllDevicesBtn')
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ التنفيذ...' }
+
+  try {
+    // signOut scope:'others' يُنهي كل الجلسات الأخرى ويبقي الحالية
+    const { error } = await db.auth.signOut({ scope: 'others' })
+    if (error) throw error
+    logAction('تسجيل خروج جميع الأجهزة', null, currentMember.full_name)
+    showToast('✅ تم تسجيل خروج جميع أجهزتك الأخرى')
+  } catch(e) {
+    showToast('❌ ' + e.message, true)
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔒 تسجيل خروج من جميع الأجهزة الأخرى' }
+  }
+}
+
 // ══ BACKUP ══
 function updateBackupLastTime() {
   const el = document.getElementById('backupLastTime')
@@ -7441,6 +8209,28 @@ async function restoreBackup(input) {
     showToast('❌ خطأ في قراءة الملف: ' + e.message, true)
     if (statusEl) statusEl.innerHTML = `<div style="color:var(--red);font-size:12px;">❌ ${e.message}</div>`
   }
+}
+
+// ══ DEVICE ENFORCEMENT ══
+async function checkDeviceApproval() {
+  if (!currentMember || !navigator.onLine) return
+  if (['platform_owner','super_admin'].includes(currentMember.role)) return
+  try {
+    const { data: devs } = await db.from('devices')
+      .select('is_approved,is_blocked')
+      .eq('org_id', ORG_ID).eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false }).limit(1)
+    const dev = devs?.[0]
+    if (!dev) return  // جهاز جديد — registerDevice تتولاه
+    if (dev.is_blocked) {
+      alert('🚫 هذا الجهاز محظور. تواصل مع المسؤول.')
+      logout(); return
+    }
+    if (!dev.is_approved) {
+      alert('⏳ هذا الجهاز لم يُعتمد بعد. سيتم إعلام المسؤول. حاول لاحقاً.')
+      logout(); return
+    }
+  } catch(e) { console.warn('device check:', e.message) }
 }
 
 // ══ START ══
