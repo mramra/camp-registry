@@ -789,61 +789,122 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   <div class="page" id="page-help">
     <div style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:14px;">❓ دليل الاستخدام</div>
 
-    <!-- الأدوار -->
+    <!-- الأدوار والصلاحيات -->
     <div class="card" style="margin-bottom:12px;">
       <div class="card-title" style="color:var(--blue);">👥 الأدوار والصلاحيات</div>
       <div style="display:grid;gap:8px;">
-        ${[
-          ['👑','platform_owner','مالك النظام','كل الصلاحيات — إدارة المنظمات والاشتراكات'],
-          ['🔴','super_admin','مدير الإيواء','إدارة مخيماته فقط — مستخدمين وأسر وتوزيعات'],
-          ['🟠','camp_delegate','مندوب المخيم','مخيمه فقط — إضافة وتعديل وإدارة مساعديه'],
-          ['🟡','assistant','مساعد','صلاحيات محددة من المندوب (إضافة/تعديل/حذف)'],
-        ].map(([icon,role,name,desc]) => `
-          <div style="background:var(--surface2);border-radius:8px;padding:10px;">
-            <div style="font-size:12px;font-weight:700;">${icon} ${name}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px;">${desc}</div>
-          </div>`).join('')}
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;border-right:3px solid gold;">
+          <div style="font-size:12px;font-weight:700;">👑 مالك النظام</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">كل الصلاحيات — إدارة المنظمات والاشتراكات والأجهزة</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;border-right:3px solid var(--red);">
+          <div style="font-size:12px;font-weight:700;">🔴 مدير الإيواء</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">إدارة مخيماته فقط — مستخدمين وأسر وتوزيعات وتقارير</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;border-right:3px solid var(--accent);">
+          <div style="font-size:12px;font-weight:700;">🟠 مندوب المخيم</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">مخيمه فقط — إضافة وتعديل وإدارة مساعديه</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;border-right:3px solid var(--muted);">
+          <div style="font-size:12px;font-weight:700;">🟡 مساعد</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">صلاحيات محددة من المندوب (إضافة / تعديل / حذف / تصدير)</div>
+        </div>
       </div>
     </div>
 
-    <!-- الميزات -->
+    <!-- الميزات الرئيسية -->
     <div class="card" style="margin-bottom:12px;">
       <div class="card-title" style="color:var(--green);">🛠️ الميزات الرئيسية</div>
-      <div style="display:grid;gap:8px;font-size:12px;line-height:1.8;">
-        ${[
-          ['👨‍👩‍👧','الأسر','إضافة وتعديل وحذف الأسر مع فحص تلقائي للتكرار والبيانات الناقصة'],
-          ['🚶','حركات الأسر','تسجيل دخول الأسرة للمخيم أو خروجها أو نقلها لمخيم آخر'],
-          ['📦','التوزيعات','إنشاء جولات ودفعات وتسجيل استلام الأسر — يعمل أوفلاين'],
-          ['🔔','التنبيهات','تنبيهات ذكية تلقائية: أسر عاجلة، مخيمات ممتلئة، توزيع متأخر'],
-          ['📊','التقارير','تصدير Excel مخصص باختيار الأعمدة والفئات العمرية'],
-          ['💾','النسخ الاحتياطي','تصدير كامل البيانات JSON واستيرادها — في صفحة الإعدادات'],
-          ['🔍','البحث العالمي','ابحث بالاسم أو الهوية في الأسر والأفراد والمخيمات معاً'],
-          ['📱','الأجهزة','كل جهاز يحتاج موافقة المسؤول — الجهاز المحظور يُطرد تلقائياً'],
-          ['🔌','أوفلاين','التطبيق يعمل بدون إنترنت — البيانات تُزامن عند الاتصال'],
-          ['🏠','بوابة الأسرة','كل أسرة تستطيع عرض بياناتها وتوزيعاتها برقم هويتها وتاريخ الميلاد'],
-        ].map(([icon,title,desc]) => `
-          <div style="background:var(--surface2);border-radius:8px;padding:10px;">
-            <div style="font-weight:700;">${icon} ${title}</div>
-            <div style="color:var(--muted);margin-top:2px;">${desc}</div>
-          </div>`).join('')}
+      <div style="display:grid;gap:8px;font-size:12px;">
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;">👨‍👩‍👧 الأسر</div>
+          <div style="color:var(--muted);margin-top:2px;">إضافة وتعديل وحذف الأسر مع فحص تلقائي للتكرار والبيانات الناقصة</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;">🚶 حركات الأسر</div>
+          <div style="color:var(--muted);margin-top:2px;">تسجيل دخول الأسرة للمخيم أو خروجها أو نقلها لمخيم آخر</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;">📦 التوزيعات</div>
+          <div style="color:var(--muted);margin-top:2px;">إنشاء جولات ودفعات وتسجيل استلام الأسر — يعمل أوفلاين كاملاً</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;">🔔 التنبيهات الذكية</div>
+          <div style="color:var(--muted);margin-top:2px;">تنبيهات تلقائية: أسر عاجلة، مخيمات ممتلئة، توزيع متأخر، أجهزة معلقة</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;">📊 التقارير والتصدير</div>
+          <div style="color:var(--muted);margin-top:2px;">تصدير Excel مخصص باختيار الأعمدة والفئات العمرية مع بيانات المخيم</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;">💾 النسخ الاحتياطي</div>
+          <div style="color:var(--muted);margin-top:2px;">تصدير كامل البيانات JSON واستيرادها من صفحة الإعدادات</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;">🔍 البحث العالمي</div>
+          <div style="color:var(--muted);margin-top:2px;">ابحث بالاسم أو الهوية في الأسر والأفراد والمخيمات — اضغط 🔍 في الأعلى</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;">📱 إدارة الأجهزة</div>
+          <div style="color:var(--muted);margin-top:2px;">كل جهاز يحتاج موافقة المسؤول — الجهاز المحظور يُطرد تلقائياً</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;">🔌 العمل بدون إنترنت</div>
+          <div style="color:var(--muted);margin-top:2px;">كل العمليات تُحفظ محلياً أولاً — تُزامن تلقائياً عند عودة الاتصال</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;">🏠 بوابة الأسرة</div>
+          <div style="color:var(--muted);margin-top:2px;">كل أسرة تطّلع على بياناتها وتوزيعاتها برقم الهوية وتاريخ الميلاد</div>
+        </div>
       </div>
     </div>
 
     <!-- أسئلة شائعة -->
-    <div class="card">
+    <div class="card" style="margin-bottom:12px;">
       <div class="card-title" style="color:var(--accent);">❓ أسئلة شائعة</div>
-      <div style="display:grid;gap:10px;font-size:12px;">
-        ${[
-          ['كيف أضيف مستخدماً جديداً؟','من صفحة المستخدمون — رقم الهوية يُصبح بريده، وكلمة المرور الأولى رقم جواله'],
-          ['الأسرة لا تظهر بعد الإضافة؟','تحقق من اتصال الإنترنت — قد تكون محفوظة محلياً وتنتظر المزامنة'],
-          ['كيف أعيد كلمة مرور مستخدم؟','من صفحة المستخدمون — زر 🔑 — ستظهر كلمة مرور عشوائية أعطها للمستخدم'],
-          ['الجهاز يقول غير معتمد؟','على المسؤول الموافقة عليه من صفحة الأجهزة'],
-          ['كيف أحمي البيانات؟','أخذ نسخة احتياطية أسبوعياً من صفحة الإعدادات'],
-        ].map(([q,a]) => `
-          <div style="background:var(--surface2);border-radius:8px;padding:10px;">
-            <div style="font-weight:700;color:var(--accent);">س: ${q}</div>
-            <div style="color:var(--muted);margin-top:4px;">ج: ${a}</div>
-          </div>`).join('')}
+      <div style="display:grid;gap:8px;font-size:12px;">
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;color:var(--accent);">س: كيف أضيف مستخدماً جديداً؟</div>
+          <div style="color:var(--muted);margin-top:4px;">ج: من صفحة المستخدمون — رقم الهوية يُصبح بريده، وكلمة المرور الأولى رقم جواله</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;color:var(--accent);">س: الأسرة لا تظهر بعد الإضافة؟</div>
+          <div style="color:var(--muted);margin-top:4px;">ج: قد تكون محفوظة محلياً وتنتظر المزامنة — تحقق من حالة الاتصال وعدد العمليات المعلقة ⏳</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;color:var(--accent);">س: كيف أعيد كلمة مرور مستخدم؟</div>
+          <div style="color:var(--muted);margin-top:4px;">ج: من صفحة المستخدمون — زر 🔑 — ستظهر كلمة مرور عشوائية قوية أعطها للمستخدم شخصياً</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;color:var(--accent);">س: الجهاز يقول "غير معتمد"؟</div>
+          <div style="color:var(--muted);margin-top:4px;">ج: على المسؤول الموافقة عليه من صفحة الأجهزة — ستصله إشعار badge أحمر في القائمة</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;color:var(--accent);">س: كيف أحمي البيانات من الضياع؟</div>
+          <div style="color:var(--muted);margin-top:4px;">ج: أخذ نسخة احتياطية أسبوعياً من صفحة الإعدادات — يُنبّهك النظام تلقائياً إذا تأخرت</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+          <div style="font-weight:700;color:var(--accent);">س: كيف تصل الأسرة لبياناتها؟</div>
+          <div style="color:var(--muted);margin-top:4px;">ج: من شاشة الدخول اختر "🏠 أسرة" ثم أدخل رقم الهوية وتاريخ الميلاد</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- اختصارات لوحة المفاتيح -->
+    <div class="card">
+      <div class="card-title" style="color:var(--purple);">⌨️ اختصارات سريعة</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">
+        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-family:monospace;background:var(--bg);border-radius:4px;padding:2px 8px;display:inline-block;margin-bottom:4px;">Ctrl + K</div>
+          <div style="color:var(--muted);font-size:11px;">البحث العالمي</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-family:monospace;background:var(--bg);border-radius:4px;padding:2px 8px;display:inline-block;margin-bottom:4px;">ESC</div>
+          <div style="color:var(--muted);font-size:11px;">إغلاق النوافذ</div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:12px;">
+        الإصدار الحالي — سجل أسر المخيم 🏕️
       </div>
     </div>
   </div>
@@ -1215,6 +1276,15 @@ function esc(str) {
     .replace(/'/g,'&#39;')
 }
 
+// ══ TIMEOUT WRAPPER ══
+// يحمي من تجميد الشبكة البطيئة — يرجع null بعد ms ثانية
+function withTimeout(promise, ms = 8000) {
+  return Promise.race([
+    promise,
+    new Promise(resolve => setTimeout(() => resolve(null), ms))
+  ])
+}
+
 const roleNames = {
   platform_owner: '👑 مالك المنصة',
   super_admin:    '🔴 مدير الإيواء',
@@ -1235,8 +1305,8 @@ async function init() {
 
   let cachedMember, cachedUser
   try {
-    const cm = localStorage.getItem('current_member') || sessionStorage.getItem('current_member')
-    const cu = localStorage.getItem('current_user')   || sessionStorage.getItem('current_user')
+    const cm = sessionStorage.getItem('current_member') || localStorage.getItem('current_member')
+    const cu = sessionStorage.getItem('current_user')   || localStorage.getItem('current_user')
     if (cm && cu) { cachedMember = JSON.parse(cm); cachedUser = JSON.parse(cu) }
   } catch(e) {
     // كاش تالف — امسحه وابدأ من جديد
@@ -1261,19 +1331,26 @@ async function init() {
     checkOnlineStatus()
 
     if (navigator.onLine) {
-      const { data: { session } } = await db.auth.getSession()
+      // withTimeout: إذا تأخرت الشبكة أكثر من 8 ثوانٍ نتجاوز التحقق ونشغّل الأوفلاين
+      const sessionResult = await withTimeout(db.auth.getSession(), 8000)
+      const session = sessionResult?.data?.session
       if (!session) {
-        localStorage.removeItem('current_member'); localStorage.removeItem('current_user')
-        sessionStorage.removeItem('current_member'); sessionStorage.removeItem('current_user')
-        showLoginScreen(); return
+        // لو timeout أو لا جلسة — شغّل من الكاش بدل إظهار شاشة الدخول
+        const localCamps2 = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
+        if (localCamps2.length) { allCamps = localCamps2; fillCampSelect('filterCamp', true); fillCampSelect('familyCamp'); fillCampSelect('uCamp') }
+        await loadDashboard(); return
       }
-      // تحقق من is_active من السيرفر مباشرة
-      const { data: freshMember } = await db.from('org_members')
-        .select('*').eq('user_id', currentUser.id).eq('is_active', true).single()
+      // تحقق من is_active من السيرفر مع timeout
+      const memberResult = await withTimeout(
+        db.from('org_members').select('*').eq('user_id', currentUser.id).eq('is_active', true).single(),
+        8000
+      )
+      const freshMember = memberResult?.data
       if (!freshMember) {
-        localStorage.removeItem('current_member'); localStorage.removeItem('current_user')
-        sessionStorage.removeItem('current_member'); sessionStorage.removeItem('current_user')
-        showLoginScreen(); return
+        // timeout أو غير نشط — استخدم الكاش
+        const localCamps2 = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
+        if (localCamps2.length) { allCamps = localCamps2; fillCampSelect('filterCamp', true); fillCampSelect('familyCamp'); fillCampSelect('uCamp') }
+        await loadDashboard(); return
       }
       currentMember = freshMember
       localStorage.setItem('current_member', JSON.stringify(freshMember))
@@ -1330,9 +1407,11 @@ async function init() {
 }
 
 async function loadMember() {
-  const { data: member } = await db
-    .from('org_members').select('*')
-    .eq('user_id', currentUser.id).eq('is_active', true).single()
+  const result = await withTimeout(
+    db.from('org_members').select('*').eq('user_id', currentUser.id).eq('is_active', true).single(),
+    8000
+  )
+  const member = result?.data
 
   if (!member) { showLoginScreen(); return }
   currentMember = member
@@ -1416,9 +1495,20 @@ async function doLogin() {
 
   btn.disabled = true; btn.textContent = 'جارٍ الدخول...'
 
-  const { data, error: loginError } = await db.auth.signInWithPassword({
-    email: nationalId + '@c.co', password
-  })
+  if (!navigator.onLine) {
+    errEl.textContent = '📴 لا يوجد اتصال بالإنترنت — تسجيل الدخول يحتاج اتصالاً'
+    errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'دخول'; return
+  }
+
+  const loginResult = await withTimeout(
+    db.auth.signInWithPassword({ email: nationalId + '@c.co', password }),
+    12000
+  )
+  if (!loginResult) {
+    errEl.textContent = '⏳ انتهت مهلة الاتصال — تحقق من الإنترنت وأعد المحاولة'
+    errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'دخول'; return
+  }
+  const { data, error: loginError } = loginResult
 
   if (!data?.user) {
     loginFailCount++
@@ -2464,9 +2554,9 @@ function filterOutHead(f, members) {
     if (['رب الأسرة','رب أسرة','head'].includes((m.relation||'').trim())) return false
     // بالهوية فقط إذا كلاهما موجود
     if (f.head_id && f.head_id.length >= 9 && m.national_id && m.national_id.trim() === f.head_id.trim()) return false
-    // بالاسم الكامل فقط (تطابق تام)
-    const mNorm = (m.name||'').trim().replace(/\s+/g,' ')
-    const hNorm = (f.head_name||'').trim().replace(/\s+/g,' ')
+    // بالاسم — نستخدم normalizeAr لتجاهل التشكيل والألفات والفراغات الزائدة
+    const mNorm = typeof normalizeAr === 'function' ? normalizeAr(m.name||'') : (m.name||'').trim().replace(/\s+/g,' ')
+    const hNorm = typeof normalizeAr === 'function' ? normalizeAr(f.head_name||'') : (f.head_name||'').trim().replace(/\s+/g,' ')
     if (mNorm && hNorm && mNorm === hNorm) return false
     return true
   })
@@ -2749,8 +2839,8 @@ async function deleteFamily(id) {
 
 async function startEditFamily(id) {
   closeDrawer()
-  editingFamilyId = id
-  showPage('page-add-family')
+  await showPage('page-add-family')  // تعيّن editingFamilyId=null داخلها — لذا ننتظرها أولاً
+  editingFamilyId = id               // ثم نعيد تعيينه بعد اكتمالها
   document.getElementById('addFamilyTitle').textContent = '✏️ تعديل أسرة'
   document.getElementById('btnSaveFamily').textContent  = '💾 حفظ التعديلات'
   document.getElementById('btnSaveFamily').onclick      = () => updateFamily(id)
@@ -3360,7 +3450,7 @@ function getTagsHtml(tags) {
   if (!tags || !tags.length) return ''
   const m = {food:'🍞 غذاء',medicine:'💊 دواء',clothes:'👕 ملابس',shelter:'⛺ مأوى',special:'⚠️ احتياج خاص'}
   const cls = {food:'tag-food',medicine:'tag-medicine',clothes:'tag-clothes',shelter:'tag-shelter',special:'tag-special'}
-  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;">'+tags.map(t=>`<span class="tag-pill ${cls[t]||''}">${m[t]||t}</span>`).join('')+'</div>'
+  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;">'+tags.map(t=>`<span class="tag-pill ${esc(cls[t]||'')}">${m[t]||esc(t)}</span>`).join('')+'</div>'
 }
 
 // ══ MEMBERS FORM ══
@@ -4043,6 +4133,10 @@ async function loadDevices() {
   const container  = document.getElementById('devicesList')
   const statsEl    = document.getElementById('devicesStats')
   if (!container) return
+  if (!navigator.onLine) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">📴</div>إدارة الأجهزة تحتاج اتصالاً بالإنترنت</div>'
+    return
+  }
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
 
   const { data: devices, error } = await db.from('devices')
@@ -4432,6 +4526,15 @@ async function processSyncQueue() {
           }
         } else if (item.action === 'update_family') {
           const data = JSON.parse(item.data)
+          // Conflict resolution: لا تكتب إذا كان السيرفر أحدث
+          const { data: srvFam } = await db.from('families').select('updated_at').eq('id', item.record_id).single()
+          const srvTime  = srvFam?.updated_at ? new Date(srvFam.updated_at).getTime() : 0
+          const itemTime = item.created_at   ? new Date(item.created_at).getTime()   : 0
+          if (srvTime > itemTime) {
+            // السيرفر أحدث — لا تكتب فوقه، فقط احذف من الطابور
+            await localDB.sync_queue.delete(item.id)
+            continue
+          }
           await db.from('families').update(data).eq('id', item.record_id)
           // زامن الأفراد مع التعديل
           try {
@@ -7081,6 +7184,9 @@ async function saveMovement(familyId, currentCampId) {
   } else if (type === 'transfer') {
     toCamp = document.getElementById('mvTransferCamp').value
     if (!toCamp) { errEl.textContent='يرجى اختيار المخيم المقصود'; errEl.style.display='block'; return }
+    // فحص سعة المخيم المقصود عند النقل
+    const capOk = await checkCampCapacity(toCamp, familyId)
+    if (!capOk) { errEl.textContent='⚠️ المخيم المقصود وصل للسعة القصوى'; errEl.style.display='block'; return }
   }
 
   const movement = {
