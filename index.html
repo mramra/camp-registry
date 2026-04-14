@@ -1846,15 +1846,27 @@ function checkOnlineStatus() {
   window.addEventListener('online', async () => {
     setSyncing()
     showToast('🔄 جارٍ التحديث...')
-    await processSyncQueue()
-    updatePendingBadge()
-    await loadCampsFromServer()
-    const activePage = document.querySelector('.page.active')?.id
-    if (activePage === 'page-camps')     loadCampsList()
-    if (activePage === 'page-families')  loadFamilies()
-    if (activePage === 'page-dashboard') loadDashboard()
-    clearSyncing()
-    showToast('✅ تم التحديث')
+    const controller = new AbortController()
+    const offlineAbort = () => controller.abort()
+    window.addEventListener('offline', offlineAbort, { once: true })
+    try {
+      const wt = (p, ms = 15000) => Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))])
+      await wt(processSyncQueue()).catch(e => console.warn('sync:', e.message))
+      updatePendingBadge()
+      await wt(loadCampsFromServer()).catch(e => console.warn('camps:', e.message))
+      if (!controller.signal.aborted) {
+        const activePage = document.querySelector('.page.active')?.id
+        if (activePage === 'page-camps')     loadCampsList()
+        if (activePage === 'page-families')  loadFamilies()
+        if (activePage === 'page-dashboard') loadDashboard()
+        showToast('✅ تم التحديث')
+      }
+    } catch(e) {
+      console.warn('online handler:', e.message)
+    } finally {
+      window.removeEventListener('offline', offlineAbort)
+      clearSyncing()  // دائماً — يمنع تجميد شارة المزامنة
+    }
   })
   window.addEventListener('offline', () => {
     update()
@@ -6334,6 +6346,7 @@ async function loadDataPage() {
       <div class="card-title">📤 استيراد البيانات</div>
       ${importOk ? `
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">استيراد أسر من Excel — يتحقق من التكرار تلقائياً.</div>
+        <button onclick="downloadImportTemplate()" style="width:100%;background:rgba(245,158,11,0.1);border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:8px;">📋 تحميل قالب الاستيراد</button>
         <button onclick="document.getElementById('importFileInput2').click()" class="btn btn-success" style="width:100%;">📂 اختر ملف Excel</button>
         <input type="file" id="importFileInput2" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFile(event)">
         <div id="importProgress2" style="margin-top:10px;font-size:12px;"></div>` :
