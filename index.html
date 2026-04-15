@@ -1201,19 +1201,6 @@ let currentMember = null
 let allCamps      = []
 let allFamilies   = []
 let skipFamiliesServerFetch = false  // يمنع إعادة الجلب من السيرفر مباشرة بعد الحذف
-
-// ── كاش الأفراد — يتجنب جلب localDB.family_members عند كل render ──
-let cachedMembers   = null
-let cachedMembersAt = 0
-const MEMBERS_CACHE_TTL = 60 * 1000  // دقيقة
-function invalidateMembersCache() { cachedMembers = null; cachedMembersAt = 0 }
-async function getLocalMembers() {
-  const now = Date.now()
-  if (cachedMembers && (now - cachedMembersAt) < MEMBERS_CACHE_TTL) return cachedMembers
-  cachedMembers   = await localDB.family_members.toArray()
-  cachedMembersAt = now
-  return cachedMembers
-}
 let formMembers   = []
 let editingCampId = null
 
@@ -1372,7 +1359,7 @@ async function init() {
       await loadCampsFromServer()
       try {
         let q = db.from('families')
-          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,updated_at')
           .eq('org_id', ORG_ID).limit(1000)
         if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
         const { data: fams } = await q
@@ -1388,7 +1375,7 @@ async function init() {
           const { data: mems } = await db.from('family_members')
             .select('id,family_id,national_id,name,dob,relation,gender,health')
             .in('family_id', fams.map(f => f.id)).limit(2000)
-          if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems); invalidateMembersCache() }
+          if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems) }
         } else {
           if (currentMember.camp_id) {
             const oldFams = await localDB.families.where('camp_id').equals(currentMember.camp_id).toArray()
@@ -1444,7 +1431,7 @@ async function loadMember() {
     setSyncing()
     try {
       let q = db.from('families')
-        .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+        .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,updated_at')
         .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
       if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
       const { data: fams } = await q
@@ -1993,6 +1980,8 @@ const FAM_COLS = [
   { key:'notes',        label:'ملاحظات',             def:false },
   { key:'spouse_name',  label:'اسم الزوجة/الزوج',    def:false },
   { key:'spouse_id',    label:'هوية الزوجة/الزوج',   def:false },
+  { key:'spouse2_name', label:'اسم الزوجة الثانية',   def:false },
+  { key:'spouse2_id',   label:'هوية الزوجة الثانية',  def:false },
 ]
 
 const MEM_COLS = [
@@ -2009,6 +1998,166 @@ const MEM_COLS = [
   { key:'head_phone', label:'جوال رب الأسرة',   def:false },
 ]
 
+
+
+// ══ كشف الزوج والزوجة ══
+async function exportCoupleSheet() {
+  if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
+  showToast('⏳ جارٍ التصدير...')
+
+  let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+  const exportCamp = document.getElementById('exportCampFilter')?.value || ''
+  if (currentMember.camp_id) families = families.filter(f => f.camp_id === currentMember.camp_id)
+  else if (exportCamp) families = families.filter(f => f.camp_id === exportCamp)
+
+  const members = await localDB.family_members.toArray()
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+  const mByFam  = {}
+  members.forEach(m => { if(!mByFam[m.family_id]) mByFam[m.family_id]=[]; mByFam[m.family_id].push(m) })
+
+  const rows = families.map((f, i) => {
+    const fMems = filterOutHead(f, mByFam[f.id] || [])
+    const campName = campMap[f.camp_id] || ''
+
+    // تحديد الزوج والزوجة
+    // إذا رب الأسرة ذكر → هو الزوج، والزوجة = أول عضو relation=زوجة
+    // إذا رب الأسرة أنثى → هي الزوجة، والزوج = أول عضو relation=زوج
+    let husband = null, wife = null
+
+    if (f.head_gender === 'ذكر' || f.head_gender === 'male') {
+      husband = { name: f.head_name, id: f.head_id, dob: f.head_dob }
+      const wifeMem = fMems.find(m => ['زوجة','wife'].includes((m.relation||'').trim()))
+      if (wifeMem) wife = { name: wifeMem.name, id: wifeMem.national_id, dob: wifeMem.dob }
+    } else {
+      wife = { name: f.head_name, id: f.head_id, dob: f.head_dob }
+      const husbMem = fMems.find(m => ['زوج','husband'].includes((m.relation||'').trim()))
+      if (husbMem) husband = { name: husbMem.name, id: husbMem.national_id, dob: husbMem.dob }
+    }
+
+    // العمر
+    const husbAge = husband?.dob ? calcAge(husband.dob) : ''
+    const wifeAge = wife?.dob   ? calcAge(wife.dob)    : ''
+
+    // السكن الحالي: إذا المخيم اسمه يحتوي "خارجي" → خارجي وإلا داخلي
+    const currentAddr = campName.includes('خارجي') ? 'خارجي' : 'داخلي'
+
+    return {
+      '#':                         i + 1,
+      'رقم الخيمة':               f.tent  || '',
+      'اسم الزوج رباعي':          husband?.name || '',
+      'رقم هوية الزوج':           husband?.id   || '',
+      'تاريخ ميلاد الزوج':        husband?.dob  || '',
+      'عمر الزوج':                husbAge !== '' && husbAge !== null ? husbAge : '',
+      'اسم الزوجة رباعي':         wife?.name || '',
+      'رقم هوية الزوجة':          wife?.id   || '',
+      'تاريخ ميلاد الزوجة':       wife?.dob  || '',
+      'عمر الزوجة':               wifeAge !== '' && wifeAge !== null ? wifeAge : '',
+      'عنوان السكن الأصلي':       f.address  || '',
+      'السكن الحالي داخلي/خارجي': currentAddr,
+      'المخيم':                    campName,
+    }
+  })
+
+  const wb = XLSX.utils.book_new()
+
+  // ورقة معلومات المخيم
+  const activeCampId = currentMember.camp_id || exportCamp
+  const campInfo = await getCampInfoForExcel(activeCampId)
+  if (campInfo.campName) {
+    const infoSheet = XLSX.utils.json_to_sheet([
+      { 'البيان':'اسم المخيم',    'القيمة': campInfo.campName },
+      { 'البيان':'اسم المندوب',   'القيمة': campInfo.delegateName || '—' },
+      { 'البيان':'تاريخ التصدير','القيمة': campInfo.exportDate },
+      { 'البيان':'عدد الأسر',     'القيمة': families.length },
+    ])
+    infoSheet['!cols'] = [{wch:20},{wch:35}]
+    XLSX.utils.book_append_sheet(wb, infoSheet, 'معلومات المخيم')
+  }
+
+  const ws = XLSX.utils.json_to_sheet(rows)
+  ws['!cols'] = [
+    {wch:5},{wch:12},{wch:28},{wch:14},{wch:16},{wch:8},
+    {wch:28},{wch:14},{wch:16},{wch:8},{wch:25},{wch:20},{wch:18}
+  ]
+  XLSX.utils.book_append_sheet(wb, ws, 'كشف الزوج والزوجة')
+
+  const date = new Date().toLocaleDateString('ar-SA').replace(/\//g,'-')
+  const name = campInfo?.campName || 'المخيم'
+  XLSX.writeFile(wb, `كشف_الأزواج_${name}_${date}.xlsx`)
+  showToast('✅ تم تصدير ' + families.length + ' أسرة')
+  logAction('تصدير كشف الأزواج', null, families.length + ' أسرة')
+}
+
+// ══ كشف الأسر الجاهز ══
+async function exportFamilySheet() {
+  if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
+  showToast('⏳ جارٍ التصدير...')
+
+  let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+  const exportCamp = document.getElementById('exportCampFilter')?.value || ''
+  if (currentMember.camp_id) families = families.filter(f => f.camp_id === currentMember.camp_id)
+  else if (exportCamp) families = families.filter(f => f.camp_id === exportCamp)
+
+  const members = await localDB.family_members.toArray()
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+  const mByFam  = {}
+  members.forEach(m => { if(!mByFam[m.family_id]) mByFam[m.family_id]=[]; mByFam[m.family_id].push(m) })
+
+  const rows = families.map((f, i) => {
+    const allMems = mByFam[f.id] || []
+    // استثناء رب الأسرة من الأفراد
+    const fMems = filterOutHead(f, allMems)
+    // الزوجات — مرتبة حسب الترتيب
+    const spouses = fMems.filter(m => ['زوجة','زوج'].includes((m.relation||'').trim()))
+
+    return {
+      '#':                        i + 1,
+      'اسم رب الأسرة':           f.head_name  || '',
+      'رقم الهوية':              f.head_id    || '',
+      'الجنس':                   f.head_gender || '',
+      'الحالة الاجتماعية':       f.head_marital || '',
+      'رقم الجوال':              f.phone1     || '',
+      'رقم الجوال البديل':       f.phone2     || '',
+      'اسم الزوجة الأولى':       spouses[0]?.name        || '',
+      'هوية الزوجة الأولى':      spouses[0]?.national_id || '',
+      'اسم الزوجة الثانية':      spouses[1]?.name        || '',
+      'هوية الزوجة الثانية':     spouses[1]?.national_id || '',
+    }
+  })
+
+  const wb  = XLSX.utils.book_new()
+  const ws  = XLSX.utils.json_to_sheet(rows)
+
+  // عرض الأعمدة
+  ws['!cols'] = [
+    {wch:5}, {wch:28}, {wch:14}, {wch:8}, {wch:16},
+    {wch:14}, {wch:14}, {wch:26}, {wch:14}, {wch:26}, {wch:14}
+  ]
+
+  // تجميد الصف الأول
+  ws['!freeze'] = { xSplit:0, ySplit:1 }
+
+  // ورقة معلومات المخيم
+  const activeCampId = currentMember.camp_id || exportCamp
+  const campInfo = await getCampInfoForExcel(activeCampId)
+  if (campInfo.campName) {
+    const infoSheet = XLSX.utils.json_to_sheet([
+      { 'البيان':'اسم المخيم',    'القيمة': campInfo.campName },
+      { 'البيان':'اسم المندوب',   'القيمة': campInfo.delegateName || '—' },
+      { 'البيان':'تاريخ التصدير','القيمة': campInfo.exportDate },
+      { 'البيان':'عدد الأسر',     'القيمة': families.length },
+    ])
+    infoSheet['!cols'] = [{wch:20},{wch:35}]
+    XLSX.utils.book_append_sheet(wb, infoSheet, 'معلومات المخيم')
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, 'كشف الأسر')
+  const date = new Date().toLocaleDateString('ar-SA').replace(/\//g,'-')
+  const name  = campInfo?.campName || 'المخيم'
+  XLSX.writeFile(wb, `كشف_${name}_${date}.xlsx`)
+  showToast('✅ تم تصدير ' + families.length + ' أسرة')
+  logAction('تصدير كشف الأسر', null, families.length + ' أسرة')
+}
 async function openExportModal() {
   // بناء شبكة أعمدة الأسر
   document.getElementById('famColsGrid').innerHTML = FAM_COLS.map(col =>
@@ -2153,6 +2302,20 @@ async function doCustomExport() {
             )
             row[col.label] = sp?.national_id||''; break
           }
+          case 'spouse2_name': {
+            const spouses = (mByFamily[f.id]||[]).filter(m =>
+              ['زوجة','زوج'].includes(m.relation||'') &&
+              m.national_id !== f.head_id && m.name !== f.head_name
+            )
+            row[col.label] = spouses[1]?.name||''; break
+          }
+          case 'spouse2_id': {
+            const spouses2 = (mByFamily[f.id]||[]).filter(m =>
+              ['زوجة','زوج'].includes(m.relation||'') &&
+              m.national_id !== f.head_id && m.name !== f.head_name
+            )
+            row[col.label] = spouses2[1]?.national_id||''; break
+          }
         }
       })
       return row
@@ -2243,7 +2406,7 @@ async function loadDashboard() {
     if (navigator.onLine) {
       try {
         let q = db.from('families')
-          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,updated_at')
           .eq('org_id', ORG_ID).limit(1000)
         if (currentMember.role === 'super_admin') {
           const { data: mc } = await db.from('camps').select('id').eq('org_id',ORG_ID).eq('manager_id',currentMember.id)
@@ -2268,7 +2431,7 @@ async function loadDashboard() {
           const { data: mems } = await db.from('family_members')
             .select('id,family_id,national_id,name,dob,relation,gender,health')
             .in('family_id', srv.map(f => f.id)).limit(2000)
-          if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems); members = mems; invalidateMembersCache() }
+          if (mems?.length) { await localDB.family_members.clear(); await localDB.family_members.bulkPut(mems); members = mems }
         }
       } catch(e) { console.warn('dashboard sync:', e.message) }
     }
@@ -2393,7 +2556,7 @@ async function loadFamilies() {
   const ageMax = parseInt(document.getElementById('filterAgeMax')?.value) || 999
 
   // دالة عرض مشتركة
-  async function render(families, preloadedMembers = null) {
+  async function render(families) {
     const missing = document.getElementById('filterMissing')?.value || ''
     let list = [...families]
     if (currentMember.camp_id) list = list.filter(f => f.camp_id === currentMember.camp_id)
@@ -2411,8 +2574,8 @@ async function loadFamilies() {
       })
     }
 
-    // بناء خريطة الأفراد — preloadedMembers من السيرفر أو الكاش المحلي
-    const allRaw  = preloadedMembers ?? await getLocalMembers()
+    // بناء خريطة الأفراد — نستثني رب الأسرة من الحساب
+    const allRaw  = await localDB.family_members.toArray()
     const famById = {}
     list.forEach(f => famById[f.id] = f)
 
@@ -2520,13 +2683,18 @@ async function loadFamilies() {
     }
 
     let q = db.from('families')
-      .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,updated_at')
+      .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,updated_at')
       .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
     if (currentMember.role === 'super_admin') {
       const { data: myCampsData } = await db.from('camps')
         .select('id').eq('org_id', ORG_ID).eq('manager_id', currentMember.id)
       const myCamps = myCampsData?.map(c => c.id) || []
-      if (myCamps.length === 0) { tbody.innerHTML='<tr><td colspan="6"><div class="empty">لا توجد مخيمات مُعيَّنة</div></td></tr>'; return }
+      if (myCamps.length === 0) {
+        // super_admin بدون مخيمات — اعرض المحلي إن وجد
+        const localAll = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+        if (localAll.length) { await render(localAll); return }
+        tbody.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-icon">⚠️</div>لا توجد مخيمات مُعيَّنة لحسابك — تحقق من إعدادات المخيمات</div></td></tr>'; return
+      }
       else if (myCamps.length === 1) q = q.eq('camp_id', myCamps[0])
       else q = q.in('camp_id', myCamps)
     } else if (currentMember.camp_id) {
@@ -2542,27 +2710,15 @@ async function loadFamilies() {
       return
     }
     if (!srv?.length) {
+      // قبل "لا توجد أسر" — تحقق من المحلي أولاً
+      const localFallback = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+      if (localFallback.length) { await render(localFallback); return }
       tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">👨‍👩‍👧</div>لا توجد أسر</div></td></tr>'
       return
     }
 
     // حدّث localDB — أضف/عدّل الجديد واحذف ما حُذف من السيرفر
-    // ⚠️ لا نكتب فوق أسرة لها تعديل معلّق في sync_queue (تعديل أوف لاين لم يُرسَل بعد)
-    {
-      const pendingIds = new Set(
-        (await localDB.sync_queue.where('status').anyOf(['pending','error']).toArray())
-          .filter(q => q.action === 'update_family' && q.record_id)
-          .map(q => q.record_id)
-      )
-      const localFamsNow = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-      const localTimeMap = {}
-      localFamsNow.forEach(f => { localTimeMap[f.id] = new Date(f.updated_at||0).getTime() })
-      const srvToWrite = srv.filter(f => {
-        if (pendingIds.has(f.id)) return false
-        return new Date(f.updated_at||0).getTime() >= (localTimeMap[f.id]||0)
-      })
-      if (srvToWrite.length) await localDB.families.bulkPut(srvToWrite)
-    }
+    await localDB.families.bulkPut(srv)
     const srvIds    = new Set(srv.map(f => f.id))
     const localFams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
     const toDelete  = localFams.filter(f => {
@@ -2581,16 +2737,24 @@ async function loadFamilies() {
       try {
         await localDB.family_members.clear()
         await localDB.family_members.bulkPut(mems)
-        invalidateMembersCache()
       } catch(e) {}
     }
 
     // أعد العرض من بيانات السيرفر مباشرة (لا من localDB لتجنب خلط البيانات)
-    await render(srv, mems||[])
+    await render(srv)
     // حدّث الإحصائيات بعد المزامنة
     loadDashboard()
   } catch(e) {
     console.warn('bg sync err:', e.message)
+    // fallback للمحلي عند أي خطأ غير متوقع
+    try {
+      const tbody3 = document.getElementById('familiesTable')
+      if (tbody3 && tbody3.innerHTML.includes('spinner')) {
+        const localErr = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+        if (localErr.length) { await render(localErr); return }
+        tbody3.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">⚠️</div>' + e.message + '</div></td></tr>'
+      }
+    } catch(_) {}
   }
 }
 
@@ -2621,7 +2785,7 @@ function renderFamiliesTable(list) {
   const campMap = {}
   allCamps.forEach(c => campMap[c.id] = c.name)
   document.getElementById('familiesTable').innerHTML = list.length
-    ? list.map((f,i) => `<tr onclick="openFamily('${f.id}')"><td style="color:var(--muted);">${i+1}</td><td><strong>${esc(f.head_name)}</strong>${f.head_id?`<br><span style="font-size:10px;color:var(--muted);">${esc(f.head_id)}</span>`:''}</td><td>${esc(campMap[f.camp_id]||'—')}</td><td>${statusNames[f.status]||'—'}</td><td style="text-align:center;">${(f.members_count||0)+1}</td><td dir="ltr">${esc(f.phone1||'—')}</td></tr>`).join('')
+    ? list.map((f,i) => `<tr onclick="openFamily('${f.id}')"><td style="color:var(--muted);">${i+1}</td><td><strong>${f.head_name}</strong>${f.head_id?`<br><span style="font-size:10px;color:var(--muted);">${f.head_id}</span>`:''}</td><td>${campMap[f.camp_id]||'—'}</td><td>${statusNames[f.status]||'—'}</td><td style="text-align:center;">${(f.members_count||0)+1}</td><td dir="ltr">${f.phone1||'—'}</td></tr>`).join('')
     : '<tr><td colspan="6"><div class="empty"><div class="empty-icon">🔍</div>لا توجد نتائج</div></td></tr>'
 }
 
@@ -2691,8 +2855,8 @@ async function openFamily(id) {
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <div style="font-size:13px;font-weight:700;">${esc(f.head_name)}</div>
-            <div style="font-size:10px;color:var(--muted);">${esc(f.head_gender||'')} • ${esc(f.head_dob||'—')}</div>
+            <div style="font-size:13px;font-weight:700;">${f.head_name}</div>
+            <div style="font-size:10px;color:var(--muted);">${f.head_gender||''} • ${f.head_dob||'—'}</div>
           </div>
           <span style="background:rgba(139,92,246,0.15);color:#8b5cf6;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;">رب الأسرة</span>
         </div>
@@ -3487,7 +3651,7 @@ async function saveMembers(familyId) {
   })
   // حفظ محلي دائماً
   if (members.length) {
-    try { await localDB.family_members.bulkPut(members); invalidateMembersCache() } catch(e) {}
+    try { await localDB.family_members.bulkPut(members) } catch(e) {}
   }
   // حفظ على السيرفر إذا متصل وID ليس مؤقتاً
   if (navigator.onLine && !familyId.toString().startsWith('local_')) {
@@ -4472,14 +4636,14 @@ function smsUpdateList() {
         <input type="checkbox" id="sms_${f.id}" value="${f.id}" ${hasPhone?'checked':'disabled'}
           onchange="smsCounterUpdate()">
         <label for="sms_${f.id}" style="cursor:pointer;flex:1;">
-          <strong>${esc(f.head_name)}</strong>
+          <strong>${f.head_name}</strong>
           <span style="font-size:10px;color:var(--muted);margin-right:6px;">— ${campMap[f.camp_id]||'—'}</span>
           ${issues.length ? `<span class="missing-badge">⚠️ ${issues.length} ناقص</span>` : ''}
           ${(f.tags||[]).map(t=>({food:'🍞',medicine:'💊',clothes:'👕',shelter:'⛺',special:'⚠️'}[t]||t)).join(' ')}
           ${!hasPhone ? '<span class="missing-badge">📵 لا جوال</span>' : ''}
         </label>
       </div>
-      <span dir="ltr" style="font-size:11px;color:var(--blue);flex-shrink:0;">${esc(f.phone1||'—')}</span>
+      <span dir="ltr" style="font-size:11px;color:var(--blue);flex-shrink:0;">${f.phone1||'—'}</span>
     </div>`
   }).join('')
   smsCounterUpdate()
@@ -4617,24 +4781,14 @@ async function processSyncQueue() {
             continue
           }
           await db.from('families').update(data).eq('id', item.record_id)
-          // ✅ حدّث localDB فوراً بالبيانات المُرسَلة — يمنع الكتابة فوقها عند جلب السيرفر
-          try {
-            const localFam = await localDB.families.get(item.record_id)
-            if (localFam) await localDB.families.put({ ...localFam, ...data })
-          } catch(_) {}
-          // زامن الأفراد — upsert بدل delete+insert لمنع فقدان البيانات عند انقطاع الاتصال
+          // زامن الأفراد مع التعديل
           try {
             const localMems = await localDB.family_members
               .where('family_id').equals(item.record_id).toArray()
+            await db.from('family_members').delete().eq('family_id', item.record_id)
             if (localMems.length) {
-              const toUpsert = localMems.map(({ id: _id, ...m }) => m)
-              await db.from('family_members').upsert(toUpsert, { onConflict: 'national_id,family_id', ignoreDuplicates: false })
-              const localNatIds = new Set(localMems.map(m => m.national_id).filter(Boolean))
-              const { data: srvMems } = await db.from('family_members').select('id,national_id').eq('family_id', item.record_id)
-              const toDelete = (srvMems||[]).filter(m => m.national_id && !localNatIds.has(m.national_id)).map(m => m.id)
-              if (toDelete.length) await db.from('family_members').delete().in('id', toDelete)
-            } else {
-              await db.from('family_members').delete().eq('family_id', item.record_id)
+              const toInsert = localMems.map(({ id: _id, ...m }) => m)
+              if (toInsert.length) await db.from('family_members').insert(toInsert)
             }
           } catch(me) { console.warn('update members sync:', me.message) }
         } else if (item.action === 'delete_family') {
@@ -4786,7 +4940,7 @@ function printFamily(id) {
       </tr>`).join('')
     const win = window.open('','_blank')
     win.document.write(`<!DOCTYPE html><html dir="rtl"><head>
-      <meta charset="UTF-8"><title>بطاقة أسرة - ${esc(f.head_name)}</title>
+      <meta charset="UTF-8"><title>بطاقة أسرة - ${f.head_name}</title>
       <style>
         body{font-family:Arial,sans-serif;padding:20px;color:#000;direction:rtl;}
         h2{text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:16px;}
@@ -4801,20 +4955,20 @@ function printFamily(id) {
       </style></head><body>
       <h2>سجل أسر المخيم — بطاقة أسرة</h2>
       <div class="grid">
-        <div class="item"><div class="label">اسم رب الأسرة</div><div class="val">${esc(f.head_name)}</div></div>
-        <div class="item"><div class="label">رقم الهوية</div><div class="val" dir="ltr">${esc(f.head_id||'-')}</div></div>
-        <div class="item"><div class="label">الجوال</div><div class="val" dir="ltr">${esc(f.phone1||'-')}</div></div>
+        <div class="item"><div class="label">اسم رب الأسرة</div><div class="val">${f.head_name}</div></div>
+        <div class="item"><div class="label">رقم الهوية</div><div class="val" dir="ltr">${f.head_id||'-'}</div></div>
+        <div class="item"><div class="label">الجوال</div><div class="val" dir="ltr">${f.phone1||'-'}</div></div>
         <div class="item"><div class="label">المخيم</div><div class="val">${camp?.name||'-'}</div></div>
         <div class="item"><div class="label">الخيمة</div><div class="val">${f.tent||'-'}</div></div>
         <div class="item"><div class="label">الحالة</div><div class="val">${sLabels[f.status]||'-'}</div></div>
-        <div class="item"><div class="label">تاريخ الميلاد</div><div class="val">${esc(f.head_dob||'-')}</div></div>
+        <div class="item"><div class="label">تاريخ الميلاد</div><div class="val">${f.head_dob||'-'}</div></div>
         <div class="item"><div class="label">الحالة الاجتماعية</div><div class="val">${f.head_marital||'-'}</div></div>
         <div class="item"><div class="label">عدد الأفراد</div><div class="val">${filtered.length+1}</div></div>
       </div>
       <table>
         <thead><tr><th>#</th><th>الاسم</th><th>العلاقة</th><th>الهوية</th><th>الميلاد</th><th>الجنس</th></tr></thead>
         <tbody>
-          <tr><td>-</td><td><strong>${esc(f.head_name)}</strong></td><td>رب الأسرة</td><td dir="ltr">${esc(f.head_id||'-')}</td><td>${esc(f.head_dob||'-')}</td><td>${esc(f.head_gender||'-')}</td></tr>
+          <tr><td>-</td><td><strong>${f.head_name}</strong></td><td>رب الأسرة</td><td dir="ltr">${f.head_id||'-'}</td><td>${f.head_dob||'-'}</td><td>${f.head_gender||'-'}</td></tr>
           ${mHtml}
         </tbody>
       </table>
@@ -4885,9 +5039,9 @@ async function printAllFamilies() {
   const rows = families.map((f,i) => `
     <tr>
       <td>${i+1}</td>
-      <td>${esc(f.head_name)}</td>
-      <td dir="ltr">${esc(f.head_id||'-')}</td>
-      <td dir="ltr">${esc(f.phone1||'-')}</td>
+      <td>${f.head_name}</td>
+      <td dir="ltr">${f.head_id||'-'}</td>
+      <td dir="ltr">${f.phone1||'-'}</td>
       <td>${campMap[f.camp_id]||'-'}</td>
       <td>${(filterOutHead(f,mByFamily[f.id]||[]).length)+1}</td>
       <td>${f.status==='ok'?'مستقر':f.status==='need'?'يحتاج':'عاجل'}</td>
@@ -4941,7 +5095,7 @@ async function handleImportFile(event) {
       const wb = XLSX.read(e.target.result, { type: 'binary' })
 
       // ورقة الأسر
-      const famSheetName = wb.SheetNames.find(n => n.includes('أسر') || n.includes('اسرة')) || wb.SheetNames[0]
+      const famSheetName = wb.SheetNames.find(n => n.includes('أسر') || n.includes('اسرة') || n.includes('رب') || n.includes('أسرة') || n.includes('الأسرة')) || wb.SheetNames[0]
       const famRows = XLSX.utils.sheet_to_json(wb.Sheets[famSheetName], { defval: '' })
       if (!famRows.length) { preview.innerHTML = '<div style="color:var(--red)">الملف فارغ</div>'; return }
 
@@ -4953,7 +5107,7 @@ async function handleImportFile(event) {
 
       // ── ربط الأعمدة تلقائياً ──
       const matchers = {
-        nameCol:    ['اسم رب الاسرة','اسم رب الأسرة','اسم الرباعي','الاسم'],
+        nameCol:    ['اسم رب الاسرة','اسم رب الأسرة','اسم الرباعي','الرباعي','الاسم'],
         idCol:      ['رقم الهوية','هوية رب الاسرة','هوية','الهوية'],
         phoneCol:   ['رقم الجوال','رقم التواصل','جوال','تواصل','هاتف'],
         campCol:    ['المخيم','اسم المخيم','مخيم'],
@@ -5556,7 +5710,7 @@ async function openRound(roundId) {
       <div style="max-height:200px;overflow-y:auto;">
         ${families.filter(f=>!allReceivedIds.has(f.id)).slice(0,20).map(f=>`
           <div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:11px;">
-            ${esc(f.head_name)} <span style="color:var(--muted);">— ${esc(campMap[f.camp_id]||'—')}</span>
+            ${f.head_name} <span style="color:var(--muted);">— ${campMap[f.camp_id]||'—'}</span>
           </div>`).join('')}
         ${remaining>20?`<div style="font-size:10px;color:var(--muted);padding:6px 0;">...و ${remaining-20} أسرة أخرى</div>`:''}
       </div>
@@ -5568,7 +5722,6 @@ async function openRound(roundId) {
 }
 
 function addBatchToRound(roundId) {
-  if (!canWrite()) { showToast('⛔ ليس لديك صلاحية إضافة دفعة', true); return }
   const existing = document.getElementById('newBatchModal')
   if (existing) existing.remove()
 
@@ -5754,8 +5907,8 @@ async function printRoundReport(roundId) {
     const f = famMap[r.family_id] || {}
     return `<tr>
       <td>${i+1}</td>
-      <td>${esc(f.head_name||'—')}</td>
-      <td dir="ltr">${esc(f.head_id||'—')}</td>
+      <td>${f.head_name||'—'}</td>
+      <td dir="ltr">${f.head_id||'—'}</td>
       <td>${campMap[f.camp_id]||'—'}</td>
       <td>${f.tent||'—'}</td>
       <td>${r.batch||'—'}</td>
@@ -6034,7 +6187,7 @@ async function applyDistFilter(distId) {
             onclick="event.stopPropagation();updateSelCount()"
             style="width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;cursor:pointer;">
           <div style="flex:1;pointer-events:none;">
-            <div style="font-size:13px;font-weight:700;">${esc(f.head_name||'—')}</div>
+            <div style="font-size:13px;font-weight:700;">${f.head_name||'—'}</div>
             <div style="font-size:10px;color:var(--muted);margin-top:2px;">
               ${campMap[f.camp_id]||'—'}${f.tent?' • خيمة '+f.tent:''} • 👥 ${(mCountMap[f.id]||0)+1} فرد
               ${(f.tags||[]).length?' • '+(f.tags||[]).map(t=>({food:'🍞',medicine:'💊',clothes:'👕',shelter:'⛺',special:'⚠️'}[t]||'')).join(''):'' }
@@ -6379,7 +6532,9 @@ async function loadDataPage() {
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button onclick="openExportModal()" class="btn btn-primary" style="flex:1;">📊 تصدير مخصص</button>
           <button onclick="exportExcelMissing()" style="flex:1;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">⚠️ الناقصة</button>
-        </div>` :
+        </div>
+        <button onclick="exportFamilySheet()" style="width:100%;margin-top:8px;background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">📋 كشف الأسر الكامل</button>
+        <button onclick="exportCoupleSheet()" style="width:100%;margin-top:8px;background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">👫 كشف الزوج والزوجة</button>` :
         `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;font-size:12px;color:var(--red);text-align:center;">🔒 لا تملك صلاحية التصدير</div>`}
     </div>
     <div class="card" style="margin-bottom:12px;">
@@ -6389,7 +6544,7 @@ async function loadDataPage() {
         <button onclick="downloadImportTemplate()" style="width:100%;background:rgba(245,158,11,0.1);border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:8px;">📋 تحميل قالب الاستيراد</button>
         <button onclick="document.getElementById('importFileInput2').click()" class="btn btn-success" style="width:100%;">📂 اختر ملف Excel</button>
         <input type="file" id="importFileInput2" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFile(event)">
-        <div id="importProgress2" style="margin-top:10px;font-size:12px;"></div>` :
+        <div id="importPreview" style="margin-top:10px;font-size:12px;"></div>` :
         `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;font-size:12px;color:var(--red);text-align:center;">🔒 لا تملك صلاحية الاستيراد</div>`}
     </div>
     <div class="card">
@@ -6533,9 +6688,9 @@ async function renderFamiliesReport(out, fams, mems, header, campMap) {
     const status = { ok:'✅ مستقر', need:'⚠️ يحتاج', urgent:'🚨 عاجل' }[f.status] || '—'
     return `<tr>
       <td style="text-align:center;">${i+1}</td>
-      <td>${esc(f.head_name)}</td>
-      <td dir="ltr" style="text-align:center;">${esc(f.head_id||'—')}</td>
-      <td dir="ltr" style="text-align:center;">${esc(f.phone1||'—')}</td>
+      <td>${f.head_name}</td>
+      <td dir="ltr" style="text-align:center;">${f.head_id||'—'}</td>
+      <td dir="ltr" style="text-align:center;">${f.phone1||'—'}</td>
       <td style="text-align:center;">${campMap[f.camp_id]||'—'}</td>
       <td style="text-align:center;">${count}</td>
       <td style="text-align:center;">${status}</td>
@@ -8319,8 +8474,7 @@ async function createBackup() {
         camps:     camps?.length     || 0,
         movements: movements?.length || 0,
       },
-      // ⚠️ org_members: نحذف national_id وphone حماية لبيانات الموظفين
-      data: { families, members, camps, rounds, batches, dists, org_members: orgMembers?.map(({ national_id: _ni, phone: _ph, ...rest }) => rest)||[], movements }
+      data: { families, members, camps, rounds, batches, dists, org_members: orgMembers, movements }
     }
 
     const json    = JSON.stringify(backup, null, 2)
