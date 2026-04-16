@@ -7593,7 +7593,20 @@ async function togglePortal(campId, currentState) {
 // ══ PORTAL ACTIONS ══
 function portalEditFamily() {
   const f = document.getElementById('portalEditForm')
-  if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none'
+  if (f) {
+    const wasHidden = f.style.display === 'none'
+    f.style.display = wasHidden ? 'block' : 'none'
+    if (wasHidden) {
+      const family = window._portalFamily
+      buildDateSelect('pEditDobD','pEditDobM','pEditDobY','pEditDobContainer')
+      if (family?.head_dob) {
+        const [y,m,d] = family.head_dob.split('-')
+        const dy = document.getElementById('pEditDobY'); const dm = document.getElementById('pEditDobM'); const dd = document.getElementById('pEditDobD')
+        if (dy) dy.value = y; if (dm) dm.value = m; if (dd) dd.value = d
+      }
+      const mEl = document.getElementById('pEditMarital'); if (mEl) mEl.value = family?.head_marital || ''
+    }
+  }
 }
 
 async function portalSaveFamily() {
@@ -7602,9 +7615,11 @@ async function portalSaveFamily() {
   const phone1 = document.getElementById('pEditPhone1')?.value.trim()
   const phone2 = document.getElementById('pEditPhone2')?.value.trim()
   const notes  = document.getElementById('pEditNotes')?.value.trim()
-  if (!phone1) { showToast('⚠️ رقم الجوال مطلوب', true); return }
+  const headDob = buildDob('pEditDobY','pEditDobM','pEditDobD')
+  const headMarital = document.getElementById('pEditMarital')?.value || null
+  if (headDob && new Date(headDob) > new Date()) { showToast('⚠️ تاريخ الميلاد في المستقبل', true); return }
   try {
-    const upd = { phone1: phone1||null, phone2: phone2||null, notes: notes||null, updated_at: new Date().toISOString() }
+    const upd = { phone1: phone1||null, phone2: phone2||null, notes: notes||null, head_dob: headDob||family.head_dob||null, head_marital: headMarital||family.head_marital||null, updated_at: new Date().toISOString() }
     const { error } = await db.from('families').update(upd).eq('id', family.id)
     if (error) { showToast('❌ ' + error.message, true); return }
     Object.assign(window._portalFamily, upd)
@@ -7619,7 +7634,7 @@ function portalAddMember() {
   document.getElementById('pMemberRelation').value = ''
   document.getElementById('pMemberGender').value = ''
   document.getElementById('pMemberNid').value = ''
-  document.getElementById('pMemberDob').value = ''
+  buildDateSelect('pMemberDobD','pMemberDobM','pMemberDobY','pMemberDobContainer')
   document.getElementById('portalMemberFormTitle').textContent = '➕ إضافة فرد'
   document.getElementById('portalMemberError').style.display = 'none'
   document.getElementById('portalMemberForm').style.display = 'block'
@@ -7634,7 +7649,12 @@ function portalEditMember(memberId) {
   document.getElementById('pMemberRelation').value = m.relation || ''
   document.getElementById('pMemberGender').value = m.gender || ''
   document.getElementById('pMemberNid').value = m.national_id || ''
-  document.getElementById('pMemberDob').value = m.dob || ''
+  buildDateSelect('pMemberDobD','pMemberDobM','pMemberDobY','pMemberDobContainer')
+  if (m.dob) {
+    const [y,mo,d] = m.dob.split('-')
+    const dy = document.getElementById('pMemberDobY'); const dm = document.getElementById('pMemberDobM'); const dd = document.getElementById('pMemberDobD')
+    if (dy) dy.value = y; if (dm) dm.value = mo; if (dd) dd.value = d
+  }
   document.getElementById('portalMemberFormTitle').textContent = '✏️ تعديل بيانات الفرد'
   document.getElementById('portalMemberError').style.display = 'none'
   document.getElementById('portalMemberForm').style.display = 'block'
@@ -7648,11 +7668,15 @@ async function portalSaveMember() {
   const relation = document.getElementById('pMemberRelation').value
   const gender   = document.getElementById('pMemberGender').value
   const nid      = document.getElementById('pMemberNid').value.trim()
-  const dob      = document.getElementById('pMemberDob').value
+  const dob      = buildDob('pMemberDobY','pMemberDobM','pMemberDobD')
   const errEl    = document.getElementById('portalMemberError')
   errEl.style.display = 'none'
   if (!name || name.split(/\s+/).filter(Boolean).length < 2) {
     errEl.textContent = '⚠️ الاسم يجب أن يكون ثنائياً على الأقل'
+    errEl.style.display = 'block'; return
+  }
+  if (dob && new Date(dob) > new Date()) {
+    errEl.textContent = '⚠️ تاريخ الميلاد في المستقبل'
     errEl.style.display = 'block'; return
   }
   const data = { family_id: family.id, name, relation: relation||null, gender: gender||null, national_id: nid||null, dob: dob||null, health: 'سليم' }
@@ -7703,7 +7727,8 @@ async function renderFamilyPortal() {
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           ${[['الاسم',esc(family.head_name)],['الهوية',esc(family.head_id)],
-             ['الجنس',esc(family.head_gender||'—')],['الحالة الاجتماعية',esc(family.head_marital||'—')],
+             ['الجنس',esc(family.head_gender||'—')],['الميلاد',esc(family.head_dob||'—')],
+             ['الحالة الاجتماعية',esc(family.head_marital||'—')],
              ['الجوال',esc(family.phone1||'—')],['جوال بديل',esc(family.phone2||'—')],
              ['المخيم',esc(camp)],['الحالة',sLabel[family.status]||'—']
           ].map(([l,v])=>`<div style="background:var(--surface2);border-radius:8px;padding:10px;">
@@ -7714,6 +7739,12 @@ async function renderFamilyPortal() {
 
       <div id="portalEditForm" style="display:none;" class="card">
         <div class="card-title" style="color:var(--blue);">✏️ تعديل البيانات</div>
+        <div class="form-group"><label style="font-size:11px;color:var(--muted);">تاريخ الميلاد</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;" id="pEditDobContainer"></div></div>
+        <div class="form-group"><label style="font-size:11px;color:var(--muted);">الحالة الاجتماعية</label>
+          <select id="pEditMarital" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+            <option value="">اختر</option><option value="متزوج">💍 متزوج</option><option value="متزوجة">💍 متزوجة</option><option value="أعزب">🧑 أعزب</option><option value="مطلق">💔 مطلق</option><option value="مطلقة">💔 مطلقة</option><option value="أرمل">🕊️ أرمل</option><option value="أرملة">🕊️ أرملة</option>
+          </select></div>
         <div class="form-group"><label style="font-size:11px;color:var(--muted);">رقم الجوال</label>
           <input id="pEditPhone1" type="tel" value="${esc(family.phone1||'')}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;" dir="ltr"></div>
         <div class="form-group"><label style="font-size:11px;color:var(--muted);">الجوال البديل</label>
@@ -7771,7 +7802,7 @@ async function renderFamilyPortal() {
             <div class="form-group"><label style="font-size:11px;color:var(--muted);">الهوية</label>
               <input id="pMemberNid" type="tel" maxlength="9" dir="ltr" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;"></div>
             <div class="form-group"><label style="font-size:11px;color:var(--muted);">الميلاد</label>
-              <input id="pMemberDob" type="date" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;" id="pMemberDobContainer"></div></div>
           </div>
           <div id="portalMemberError" style="display:none;color:var(--red);font-size:11px;margin-bottom:8px;"></div>
           <div style="display:flex;gap:8px;">
