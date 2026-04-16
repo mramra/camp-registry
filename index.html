@@ -207,8 +207,8 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
         <input type="tel" id="familyLoginId" placeholder="9 أرقام" maxlength="9" dir="ltr" style="text-align:center;letter-spacing:3px;font-size:15px;">
       </div>
       <div class="form-group">
-        <label>تاريخ الميلاد</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;" id="familyDobContainer"></div>
+        <label>رقم الجوال</label>
+        <input type="tel" id="familyLoginPhone" placeholder="05XXXXXXXX" maxlength="10" dir="ltr" style="text-align:center;letter-spacing:2px;font-size:15px;">
       </div>
       <button class="btn btn-success" onclick="doFamilyLogin()" id="familyLoginBtn" style="width:100%;padding:13px;font-size:15px;justify-content:center;">🔑 دخول</button>
       <div id="familyLoginError" style="display:none;margin-top:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);border-radius:8px;padding:10px;font-size:12px;text-align:center;"></div>
@@ -4302,6 +4302,7 @@ async function loadCampsList() {
         ${isOwner?`<button onclick="assignCampManager('${c.id}','${(c.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="background:rgba(139,92,246,0.1);border:1px solid var(--purple);color:var(--purple);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">👤 مدير</button>`:''}
         ${!isDelegate?`<button onclick="editCamp('${c.id}')" style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✏️ تعديل</button>`:''}
         ${isOwner&&fc===0&&navigator.onLine?`<button onclick="deleteCamp('${c.id}','${(c.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>`:''}
+        <button onclick="togglePortal('${c.id}',${!!c.portal_open})" style="background:${c.portal_open?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.1)'};border:1px solid ${c.portal_open?'var(--green)':'var(--border)'};color:${c.portal_open?'var(--green)':'var(--muted)'};border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">${c.portal_open?'🔓 بوابة مفتوحة':'🔒 بوابة مغلقة'}</button>
       </div>
     </div>`
   }).join('')
@@ -7485,8 +7486,7 @@ function switchLoginTab(tab) {
     familyBtn.style.background = 'var(--green)'; familyBtn.style.color = '#fff'
     staffBtn.style.background  = 'transparent';  staffBtn.style.color  = 'var(--muted)'
     famForm.style.display = 'block'; staffForm.style.display = 'none'
-    // بناء قوائم التاريخ
-    buildFamilyDobSelect()
+    document.getElementById('familyLoginPhone')?.focus()
   }
 }
 
@@ -7509,15 +7509,16 @@ let familyLoginBlockedUntil = 0
 
 async function doFamilyLogin() {
   const nationalId = document.getElementById('familyLoginId').value.trim()
-  const d = document.getElementById('famDobD')?.value
-  const m = document.getElementById('famDobM')?.value
-  const y = document.getElementById('famDobY')?.value
+  let   phone      = document.getElementById('familyLoginPhone').value.trim()
   const btn   = document.getElementById('familyLoginBtn')
   const errEl = document.getElementById('familyLoginError')
 
   errEl.style.display = 'none'
-  if (!nationalId || nationalId.length < 9) { errEl.textContent = 'يرجى إدخال رقم الهوية'; errEl.style.display='block'; return }
-  if (!d || !m || !y) { errEl.textContent = 'يرجى إدخال تاريخ الميلاد كاملاً'; errEl.style.display='block'; return }
+  if (!nationalId || nationalId.length < 9) { errEl.textContent = 'يرجى إدخال رقم الهوية (9 أرقام)'; errEl.style.display='block'; return }
+  if (!phone) { errEl.textContent = 'يرجى إدخال رقم الجوال'; errEl.style.display='block'; return }
+
+  // تطبيع الجوال — أضف 0 إذا ناقص
+  if (phone.length === 9 && !phone.startsWith('0')) phone = '0' + phone
 
   // تحقق من الحظر المؤقت
   const now = Date.now()
@@ -7527,8 +7528,7 @@ async function doFamilyLogin() {
     errEl.style.display = 'block'; return
   }
 
-  btn.disabled = true; btn.textContent = 'جارٍ التحقق...'
-  const dob = `${y}-${m}-${d}`
+  btn.disabled = true; btn.textContent = '⏳ جارٍ التحقق...'
 
   try {
     const { data: families, error } = await db.from('families')
@@ -7543,32 +7543,273 @@ async function doFamilyLogin() {
     }
 
     const family = families[0]
-    if (!family.head_dob || family.head_dob !== dob) {
+    // مقارنة مرنة للجوال (مع/بدون صفر)
+    const norm = p => (p||'').replace(/\s/g,'').replace(/^0/,'')
+    if (norm(family.phone1) !== norm(phone) && norm(family.phone2||'') !== norm(phone)) {
       familyLoginFailCount++
       if (familyLoginFailCount >= 5)      familyLoginBlockedUntil = Date.now() + 60000
       else if (familyLoginFailCount >= 3) familyLoginBlockedUntil = Date.now() + 15000
-      errEl.textContent = '❌ تاريخ الميلاد غير صحيح'
+      errEl.textContent = '❌ رقم الجوال غير صحيح'
       errEl.style.display = 'block'; return
     }
 
     familyLoginFailCount = 0
     familyLoginBlockedUntil = 0
+
+    // تحقق من حالة البوابة للمخيم
+    try {
+      const { data: campData } = await db.from('camps')
+        .select('portal_open').eq('id', family.camp_id).single()
+      if (!campData?.portal_open) {
+        errEl.textContent = '🔒 بوابة الأسرة مغلقة حالياً — تواصل مع مسؤول المخيم'
+        errEl.style.display = 'block'; return
+      }
+    } catch(pe) { /* إذا فشل التحقق اسمح بالدخول */ }
+
     await showFamilyPortal(family)
   } catch(e) {
-    errEl.textContent = 'خطأ: ' + e.message; errEl.style.display='block'
+    errEl.textContent = 'خطأ في الاتصال: ' + e.message; errEl.style.display='block'
   } finally {
     btn.disabled = false; btn.textContent = '🔑 دخول'
   }
 }
 
+
+// ══ PORTAL TOGGLE ══
+async function togglePortal(campId, currentState) {
+  const newState = !currentState
+  if (!confirm(newState ? 'هل تريد فتح بوابة الأسرة لهذا المخيم؟' : 'هل تريد إغلاق بوابة الأسرة؟')) return
+  try {
+    const { error } = await db.from('camps').update({ portal_open: newState }).eq('id', campId)
+    if (error) { showToast('❌ ' + error.message, true); return }
+    const camp = allCamps.find(c => c.id === campId)
+    if (camp) camp.portal_open = newState
+    try { await localDB.camps.where('id').equals(campId).modify({ portal_open: newState }) } catch(_) {}
+    showToast(newState ? '🔓 تم فتح البوابة' : '🔒 تم إغلاق البوابة')
+    loadCampsList()
+  } catch(e) { showToast('❌ ' + e.message, true) }
+}
+
+// ══ PORTAL ACTIONS ══
+function portalEditFamily() {
+  const f = document.getElementById('portalEditForm')
+  if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none'
+}
+
+async function portalSaveFamily() {
+  const family = window._portalFamily
+  if (!family) return
+  const phone1 = document.getElementById('pEditPhone1')?.value.trim()
+  const phone2 = document.getElementById('pEditPhone2')?.value.trim()
+  const notes  = document.getElementById('pEditNotes')?.value.trim()
+  if (!phone1) { showToast('⚠️ رقم الجوال مطلوب', true); return }
+  try {
+    const upd = { phone1: phone1||null, phone2: phone2||null, notes: notes||null, updated_at: new Date().toISOString() }
+    const { error } = await db.from('families').update(upd).eq('id', family.id)
+    if (error) { showToast('❌ ' + error.message, true); return }
+    Object.assign(window._portalFamily, upd)
+    showToast('✅ تم حفظ التعديلات')
+    await renderFamilyPortal()
+  } catch(e) { showToast('❌ ' + e.message, true) }
+}
+
+function portalAddMember() {
+  document.getElementById('pMemberId').value = ''
+  document.getElementById('pMemberName').value = ''
+  document.getElementById('pMemberRelation').value = ''
+  document.getElementById('pMemberGender').value = ''
+  document.getElementById('pMemberNid').value = ''
+  document.getElementById('pMemberDob').value = ''
+  document.getElementById('portalMemberFormTitle').textContent = '➕ إضافة فرد'
+  document.getElementById('portalMemberError').style.display = 'none'
+  document.getElementById('portalMemberForm').style.display = 'block'
+  document.getElementById('pMemberName').focus()
+}
+
+function portalEditMember(memberId) {
+  const m = (window._portalMembers||[]).find(m => m.id === memberId)
+  if (!m) return
+  document.getElementById('pMemberId').value = m.id
+  document.getElementById('pMemberName').value = m.name || ''
+  document.getElementById('pMemberRelation').value = m.relation || ''
+  document.getElementById('pMemberGender').value = m.gender || ''
+  document.getElementById('pMemberNid').value = m.national_id || ''
+  document.getElementById('pMemberDob').value = m.dob || ''
+  document.getElementById('portalMemberFormTitle').textContent = '✏️ تعديل بيانات الفرد'
+  document.getElementById('portalMemberError').style.display = 'none'
+  document.getElementById('portalMemberForm').style.display = 'block'
+  document.getElementById('pMemberName').focus()
+}
+
+async function portalSaveMember() {
+  const family   = window._portalFamily
+  const memberId = document.getElementById('pMemberId').value
+  const name     = document.getElementById('pMemberName').value.trim()
+  const relation = document.getElementById('pMemberRelation').value
+  const gender   = document.getElementById('pMemberGender').value
+  const nid      = document.getElementById('pMemberNid').value.trim()
+  const dob      = document.getElementById('pMemberDob').value
+  const errEl    = document.getElementById('portalMemberError')
+  errEl.style.display = 'none'
+  if (!name || name.split(/\s+/).filter(Boolean).length < 2) {
+    errEl.textContent = '⚠️ الاسم يجب أن يكون ثنائياً على الأقل'
+    errEl.style.display = 'block'; return
+  }
+  const data = { family_id: family.id, name, relation: relation||null, gender: gender||null, national_id: nid||null, dob: dob||null, health: 'سليم' }
+  try {
+    if (memberId) {
+      const { error } = await db.from('family_members').update(data).eq('id', memberId)
+      if (error) { errEl.textContent = '❌ ' + error.message; errEl.style.display='block'; return }
+      showToast('✅ تم تعديل بيانات الفرد')
+    } else {
+      const { error } = await db.from('family_members').insert(data)
+      if (error) { errEl.textContent = '❌ ' + error.message; errEl.style.display='block'; return }
+      showToast('✅ تم إضافة الفرد')
+    }
+    await renderFamilyPortal()
+  } catch(e) { errEl.textContent = '❌ ' + e.message; errEl.style.display='block' }
+}
+
+async function portalDeleteMember(memberId, memberName) {
+  if (!confirm(`هل تريد حذف "${memberName}" من قائمة الأسرة؟`)) return
+  try {
+    const { error } = await db.from('family_members').delete().eq('id', memberId)
+    if (error) { showToast('❌ ' + error.message, true); return }
+    showToast('✅ تم حذف الفرد')
+    await renderFamilyPortal()
+  } catch(e) { showToast('❌ ' + e.message, true) }
+}
+
+async function renderFamilyPortal() {
+  const family  = window._portalFamily
+  const content = document.getElementById('familyPortalContent')
+  if (!content || !family) return
+  content.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
+  try {
+    const { data: members } = await db.from('family_members').select('*').eq('family_id', family.id)
+    const { data: dists }   = await db.from('camp_dist_families')
+      .select('*, camp_distributions(name, type, created_at, dist_rounds(name, status))')
+      .eq('family_id', family.id).order('created_at', {ascending:false}).limit(20)
+    const gLabel = {'ذكر':'👨','أنثى':'👩'}
+    const fmtDate = d => d ? new Date(d).toLocaleDateString('ar-SA') : '—'
+    const camp = allCamps.find(c => c.id === family.camp_id)?.name || '—'
+    const sLabel = {ok:'✅ مستقر', need:'⚠️ يحتاج مساعدة', urgent:'🚨 عاجل'}
+
+    content.innerHTML = `
+      <div class="card" style="border-color:rgba(16,185,129,0.3);margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div class="card-title" style="color:var(--green);margin:0;">👤 بيانات رب الأسرة</div>
+          <button onclick="portalEditFamily()" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:5px 12px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">✏️ تعديل</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          ${[['الاسم',esc(family.head_name)],['الهوية',esc(family.head_id)],
+             ['الجنس',esc(family.head_gender||'—')],['الحالة الاجتماعية',esc(family.head_marital||'—')],
+             ['الجوال',esc(family.phone1||'—')],['جوال بديل',esc(family.phone2||'—')],
+             ['المخيم',esc(camp)],['الحالة',sLabel[family.status]||'—']
+          ].map(([l,v])=>`<div style="background:var(--surface2);border-radius:8px;padding:10px;">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">${l}</div>
+            <div style="font-size:13px;font-weight:700;">${v}</div></div>`).join('')}
+        </div>
+      </div>
+
+      <div id="portalEditForm" style="display:none;" class="card">
+        <div class="card-title" style="color:var(--blue);">✏️ تعديل البيانات</div>
+        <div class="form-group"><label style="font-size:11px;color:var(--muted);">رقم الجوال</label>
+          <input id="pEditPhone1" type="tel" value="${esc(family.phone1||'')}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;" dir="ltr"></div>
+        <div class="form-group"><label style="font-size:11px;color:var(--muted);">الجوال البديل</label>
+          <input id="pEditPhone2" type="tel" value="${esc(family.phone2||'')}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;" dir="ltr"></div>
+        <div class="form-group"><label style="font-size:11px;color:var(--muted);">ملاحظات</label>
+          <textarea id="pEditNotes" rows="2" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;resize:none;">${esc(family.notes||'')}</textarea></div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="portalSaveFamily()" style="flex:1;background:var(--green);border:none;border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;color:#fff;">💾 حفظ</button>
+          <button onclick="document.getElementById('portalEditForm').style.display='none'" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;cursor:pointer;color:var(--text);">إلغاء</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div class="card-title" style="margin:0;">👨‍👩‍👧 الأفراد (${members?.length||0})</div>
+          <button onclick="portalAddMember()" style="background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:5px 12px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">➕ إضافة</button>
+        </div>
+        <div id="portalMembersList">
+          ${members?.length ? members.map(m=>`
+            <div style="background:var(--surface2);border-radius:10px;padding:10px;margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <div style="font-size:20px;">${gLabel[m.gender]||'👤'}</div>
+                  <div>
+                    <div style="font-size:13px;font-weight:700;">${esc(m.name)}</div>
+                    <div style="font-size:10px;color:var(--muted);">${esc(m.relation||'—')}${m.dob?' • '+m.dob:''}${m.national_id?' • '+m.national_id:''}</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:5px;">
+                  <button onclick="portalEditMember('${m.id}')" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">✏️</button>
+                  <button onclick="portalDeleteMember('${m.id}','${esc(m.name)}')" style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">🗑️</button>
+                </div>
+              </div>
+            </div>`).join('')
+          : '<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px;">لا يوجد أفراد — اضغط إضافة</div>'}
+        </div>
+        <div id="portalMemberForm" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:10px;" id="portalMemberFormTitle">➕ إضافة فرد</div>
+          <input type="hidden" id="pMemberId">
+          <div class="form-group"><label style="font-size:11px;color:var(--muted);">الاسم *</label>
+            <input id="pMemberName" type="text" placeholder="الاسم الكامل" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div class="form-group"><label style="font-size:11px;color:var(--muted);">الصلة</label>
+              <select id="pMemberRelation" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+                <option value="">اختر</option><option>زوجة</option><option>زوج</option>
+                <option>ابن</option><option>ابنة</option><option>أب</option><option>أم</option>
+                <option>أخ</option><option>أخت</option><option>جد</option><option>جدة</option>
+              </select></div>
+            <div class="form-group"><label style="font-size:11px;color:var(--muted);">الجنس</label>
+              <select id="pMemberGender" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+                <option value="">اختر</option><option>ذكر</option><option>أنثى</option>
+              </select></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div class="form-group"><label style="font-size:11px;color:var(--muted);">الهوية</label>
+              <input id="pMemberNid" type="tel" maxlength="9" dir="ltr" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;"></div>
+            <div class="form-group"><label style="font-size:11px;color:var(--muted);">الميلاد</label>
+              <input id="pMemberDob" type="date" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;"></div>
+          </div>
+          <div id="portalMemberError" style="display:none;color:var(--red);font-size:11px;margin-bottom:8px;"></div>
+          <div style="display:flex;gap:8px;">
+            <button onclick="portalSaveMember()" style="flex:1;background:var(--green);border:none;border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;color:#fff;">💾 حفظ</button>
+            <button onclick="document.getElementById('portalMemberForm').style.display='none'" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;cursor:pointer;color:var(--text);">إلغاء</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">📦 التوزيعات</div>
+        ${dists?.length ? dists.map(d=>`
+          <div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:8px;">
+            <div style="font-size:13px;font-weight:700;">${esc(d.camp_distributions?.name||'توزيع')}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;">📅 ${fmtDate(d.received_at)}</div>
+          </div>`).join('')
+        : '<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px;">لا توجد توزيعات</div>'}
+      </div>
+
+      <div style="text-align:center;color:var(--muted);font-size:11px;padding:16px 0;">🔒 بياناتك سرية</div>
+    `
+    window._portalMembers = members || []
+  } catch(e) {
+    content.innerHTML = `<div style="text-align:center;color:var(--red);padding:40px;">${e.message}</div>`
+  }
+}
+
 async function showFamilyPortal(family) {
+  window._portalFamily = family
   document.getElementById('loginScreen').style.display = 'none'
   document.getElementById('familyPortal').style.display = 'block'
   document.getElementById('portalFamilyName').textContent = family.head_name
+  await renderFamilyPortal()
+}
 
+async function _showFamilyPortalLegacy(family) {
   const content = document.getElementById('familyPortalContent')
   content.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
-
   try {
     // جلب الأفراد
     const { data: members } = await db.from('family_members')
@@ -7702,8 +7943,8 @@ async function getCampNameById(id) {
 function familyPortalLogout() {
   document.getElementById('familyPortal').style.display = 'none'
   document.getElementById('familyLoginId').value = ''
-  const c = document.getElementById('familyDobContainer')
-  if (c) c.innerHTML = ''
+  const phoneEl = document.getElementById('familyLoginPhone')
+  if (phoneEl) phoneEl.value = ''
   document.getElementById('loginScreen').style.display = 'flex'
   switchLoginTab('family')
 }
