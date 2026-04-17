@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="سجل الأسر">
+<link rel="manifest" href="manifest.json">
 <title>سجل أسر المخيم</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -650,6 +656,17 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       </button>
       <button onclick="requestPushPermission()" style="width:100%;padding:11px;background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">
         🔔 تفعيل إشعارات التطبيق
+      </button>
+    </div>
+
+    <!-- تثبيت التطبيق — لجميع المستخدمين -->
+    <div class="card">
+      <div class="card-title">📱 تثبيت التطبيق</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.8;">
+        ثبّت سجل الأسر على شاشة جوالك للوصول السريع والعمل بدون إنترنت.
+      </div>
+      <button onclick="_deferredInstallPrompt ? doInstallPWA() : showToast('⚠️ التطبيق مثبّت مسبقاً أو المتصفح لا يدعم التثبيت التلقائي — جرب: ثلاث نقاط ← إضافة إلى الشاشة الرئيسية')" style="width:100%;padding:11px;background:rgba(245,158,11,0.1);border:1px solid var(--accent);color:var(--accent);border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">
+        📲 تثبيت على الجوال
       </button>
     </div>
   </div>
@@ -1611,7 +1628,7 @@ function buildSidebar() {
   if (canViewReports()) html += navItem('📊', 'التقارير', 'page-analysis')
   if (canViewReports()) html += navItem('📈', 'تحليل البيانات', 'page-analysis2')
   if (canViewReports()) html += navItem('🚶', 'حركات الأسر', 'page-movements')
-  if (canViewReports()) html += navItem('📋', 'سجل التغييرات', 'page-history')
+  if (canViewReports()) html += navItem('📝', 'سجل تغييرات الأسر', 'page-history')
   if (['platform_owner','super_admin','camp_delegate'].includes(role)) html += `
     <button class="nav-item" onclick="showPage('page-alerts');closeSidebar()">
       <span style="width:20px;text-align:center;">🔔</span> التنبيهات
@@ -1631,7 +1648,7 @@ function buildSidebar() {
     html += '<div class="nav-section">الإدارة</div>'
     html += navItem('👥', 'المستخدمون', 'page-users')
     if (['platform_owner','super_admin'].includes(currentMember.role)) {
-      html += navItem('📋', 'سجل النشاط', 'page-audit')
+      html += navItem('📋', 'سجل نشاط المستخدمين', 'page-audit')
     }
     if (currentMember.role === 'platform_owner') {
       html += `<button class="nav-item" onclick="showPage('page-devices');closeSidebar()">
@@ -2921,6 +2938,8 @@ async function startEditFamily(id) {
   if (!f) { showToast('لم يتم العثور على الأسرة', true); return }
   members = filterOutHead(f, members||[])
 
+  // نستخدم setTimeout لضمان تعيين القيم بعد اكتمال أي تحديثات DOM
+  setTimeout(() => {
   document.getElementById('headName').value    = f.head_name || ''
   document.getElementById('headId').value      = f.head_id || ''
   document.getElementById('phone1').value      = f.phone1 || ''
@@ -2941,6 +2960,7 @@ async function startEditFamily(id) {
     const dy = document.getElementById('headDobY'); const dm = document.getElementById('headDobM'); const dd = document.getElementById('headDobD')
     if (dy) dy.value = y; if (dm) dm.value = m; if (dd) dd.value = d
   }
+  }, 50)
 
   formMembers = (members||[]).map(m => ({ id: Date.now() + Math.random(), ...m }))
   renderMemberForms()
@@ -3883,33 +3903,32 @@ async function toggleUserStatus(id, isActive) {
 }
 
 async function resetUserPassword(id, name) {
-  if (!confirm(`إعادة تعيين كلمة مرور ${name} بكلمة مرور عشوائية جديدة؟`)) return
   try {
     const { data: member } = await db.from('org_members').select('user_id,phone').eq('id', id).single()
     if (!member) { showToast('❌ لم يُعثر على المستخدم', true); return }
 
-    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!'
-    const newPass = Array.from({length:12}, () => chars[Math.floor(Math.random()*chars.length)]).join('')
+    const phone = (member.phone || '').trim()
+    if (!phone) { showToast('❌ لا يوجد رقم جوال لهذا المستخدم', true); return }
 
-    await callAdminFn('reset_password', { userId: member.user_id, newPassword: newPass })
+    if (!confirm(`سيتم إعادة تعيين كلمة مرور ${name} إلى رقم جواله (${phone}) — هل تريد المتابعة؟`)) return
+
+    await callAdminFn('reset_password', { userId: member.user_id, newPassword: phone })
     await db.from('org_members').update({ must_change_pass: true }).eq('id', id)
     logAction('إعادة كلمة مرور', id, name)
 
-    // عرض كلمة المرور في نافذة داخل التطبيق بدل alert
     const modalDiv = document.createElement('div')
     modalDiv.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;'
     modalDiv.innerHTML = `
       <div style="background:var(--surface);border:1px solid var(--accent);border-radius:16px;padding:24px;max-width:360px;width:100%;text-align:center;">
-        <div style="font-size:18px;font-weight:700;color:var(--accent);margin-bottom:8px;">🔑 كلمة المرور الجديدة</div>
+        <div style="font-size:18px;font-weight:700;color:var(--accent);margin-bottom:8px;">🔑 تمت إعادة التعيين</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">المستخدم: ${esc(name)}</div>
-        <div style="font-size:22px;font-family:monospace;letter-spacing:2px;background:var(--bg);border:1px solid var(--border);padding:14px;border-radius:10px;margin-bottom:12px;word-break:break-all;color:var(--green);">${newPass}</div>
-        <button onclick="navigator.clipboard?.writeText('${newPass}');showToast('✅ تم النسخ')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 16px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:12px;">📋 نسخ</button>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:16px;line-height:1.8;">أعطِ هذه الكلمة للمستخدم شخصياً<br>سيُطلب منه تغييرها عند أول دخول</div>
+        <div style="font-size:16px;background:var(--bg);border:1px solid var(--border);padding:14px;border-radius:10px;margin-bottom:12px;color:var(--green);letter-spacing:2px;" dir="ltr">${esc(phone)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:16px;line-height:1.8;">كلمة المرور الجديدة هي <strong>رقم الجوال</strong><br>سيُطلب من المستخدم تغييرها عند أول دخول</div>
         <button onclick="this.closest('div[style]').remove()" style="background:var(--accent);color:#000;border:none;border-radius:8px;padding:10px 24px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;width:100%;">إغلاق</button>
       </div>`
     document.body.appendChild(modalDiv)
 
-    showToast(`✅ تم إعادة تعيين كلمة مرور ${name}`)
+    showToast(`✅ تم إعادة تعيين كلمة مرور ${name} إلى رقم الجوال`)
     loadUsers()
   } catch(e) { showToast('❌ ' + e.message, true) }
 }
@@ -4222,12 +4241,21 @@ async function loadDevices() {
   const userIds = [...new Set(devices.map(d=>d.user_id).filter(Boolean))]
   let userMap = {}
   if (userIds.length) {
-    const { data: members } = await db.from('org_members').select('user_id,full_name,role').in('user_id', userIds)
-    members?.forEach(m => userMap[m.user_id] = { name: m.full_name, role: m.role })
+    const { data: members } = await db.from('org_members').select('user_id,full_name,role,camp_id').in('user_id', userIds)
+    members?.forEach(m => userMap[m.user_id] = { name: m.full_name, role: m.role, camp_id: m.camp_id })
+  }
+
+  // المندوب يرى أجهزة مستخدمي مخيمه فقط
+  let filteredDevices = devices
+  if (currentMember.camp_id) {
+    filteredDevices = devices.filter(d => {
+      const u = userMap[d.user_id]
+      return !d.user_id || (u && u.camp_id === currentMember.camp_id)
+    })
   }
 
   // إضافة بيانات المستخدم لكل جهاز
-  allDevicesData = devices.map(d => ({ ...d, userName: userMap[d.user_id]?.name || '—', userRole: userMap[d.user_id]?.role || '' }))
+  allDevicesData = filteredDevices.map(d => ({ ...d, userName: userMap[d.user_id]?.name || '—', userRole: userMap[d.user_id]?.role || '' }))
 
   // إحصائيات
   const pending  = allDevicesData.filter(d => !d.is_approved && !d.is_blocked).length
@@ -6754,9 +6782,11 @@ async function loadAuditLog() {
   const action = document.getElementById('auditFilterAction')?.value || ''
   const userId = document.getElementById('auditFilterUser')?.value || ''
 
-  let q = db.from('audit_logs').select('*').eq('org_id', ORG_ID).order('created_at', { ascending: false }).limit(100)
+  let q = db.from('audit_logs').select('*').eq('org_id', ORG_ID).order('created_at', { ascending: false }).limit(200)
   if (action) q = q.eq('action', action)
   if (userId) q = q.eq('user_id', userId)
+  // المندوب يرى نشاط مخيمه فقط
+  if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
 
   const { data: logs, error } = await q
   if (error) { container.innerHTML=`<div style="color:var(--red);padding:12px;">${error.message}</div>`; return }
@@ -8560,26 +8590,43 @@ async function createBackup() {
   if (statusEl) statusEl.innerHTML = ''
 
   try {
-    // جلب كل البيانات
-    const [
-      { data: families },
-      { data: members },
-      { data: camps },
-      { data: rounds },
-      { data: batches },
-      { data: dists },
-      { data: orgMembers },
-      { data: movements },
-    ] = await Promise.all([
-      db.from('families').select('*').eq('org_id', ORG_ID),
-      db.from('family_members').select('*'),
-      db.from('camps').select('*').eq('org_id', ORG_ID),
-      db.from('dist_rounds').select('*').eq('org_id', ORG_ID),
-      db.from('camp_distributions').select('*').eq('org_id', ORG_ID),
-      db.from('camp_dist_families').select('*'),
-      db.from('org_members').select('id,full_name,role,national_id,phone,camp_id,is_active,created_at').eq('org_id', ORG_ID),
-      db.from('family_movements').select('*').eq('org_id', ORG_ID),
-    ])
+    const campFilter = currentMember.camp_id  // المندوب محدود بمخيمه
+
+    let famQ = db.from('families').select('*').eq('org_id', ORG_ID)
+    if (campFilter) famQ = famQ.eq('camp_id', campFilter)
+    const { data: families } = await famQ
+
+    // جلب أفراد الأسر المفلترة فقط
+    const famIds = (families||[]).map(f => f.id)
+    let members = []
+    if (famIds.length) {
+      const { data: m } = await db.from('family_members').select('*').in('family_id', famIds)
+      members = m || []
+    }
+
+    let campsQ = db.from('camps').select('*').eq('org_id', ORG_ID)
+    if (campFilter) campsQ = campsQ.eq('id', campFilter)
+    const { data: camps } = await campsQ
+
+    let roundsQ = db.from('dist_rounds').select('*').eq('org_id', ORG_ID)
+    if (campFilter) roundsQ = roundsQ.eq('camp_id', campFilter)
+    const { data: rounds } = await roundsQ
+
+    let batchesQ = db.from('camp_distributions').select('*').eq('org_id', ORG_ID)
+    if (campFilter) batchesQ = batchesQ.eq('camp_id', campFilter)
+    const { data: batches } = await batchesQ
+
+    let distsQ = db.from('camp_dist_families').select('*')
+    if (famIds.length) distsQ = distsQ.in('family_id', famIds)
+    const { data: dists } = famIds.length ? await distsQ : { data: [] }
+
+    let movQ = db.from('family_movements').select('*').eq('org_id', ORG_ID)
+    if (campFilter) movQ = movQ.eq('camp_id', campFilter)
+    const { data: movements } = await movQ
+
+    const { data: orgMembers } = campFilter
+      ? await db.from('org_members').select('id,full_name,role,national_id,phone,camp_id,is_active,created_at').eq('org_id', ORG_ID).eq('camp_id', campFilter)
+      : await db.from('org_members').select('id,full_name,role,national_id,phone,camp_id,is_active,created_at').eq('org_id', ORG_ID)
 
     const backup = {
       version:    '1.0',
@@ -8690,6 +8737,57 @@ async function checkDeviceApproval() {
 
 // ══ START ══
 init()
+
+// ══ PWA INSTALL PROMPT ══
+let _deferredInstallPrompt = null
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  _deferredInstallPrompt = e
+  // أظهر زر التثبيت بعد 3 ثوانٍ من تسجيل الدخول
+  setTimeout(() => showInstallBanner(), 3000)
+})
+
+window.addEventListener('appinstalled', () => {
+  _deferredInstallPrompt = null
+  const banner = document.getElementById('installBanner')
+  if (banner) banner.remove()
+  showToast('✅ تم تثبيت التطبيق بنجاح!')
+})
+
+function showInstallBanner() {
+  if (!_deferredInstallPrompt) return
+  if (document.getElementById('installBanner')) return
+  // لا تعرض البانر في شاشة تسجيل الدخول
+  if (document.getElementById('loginScreen').style.display !== 'none') {
+    setTimeout(() => showInstallBanner(), 5000); return
+  }
+  const banner = document.createElement('div')
+  banner.id = 'installBanner'
+  banner.style.cssText = 'position:fixed;bottom:70px;left:12px;right:12px;background:var(--surface);border:1px solid var(--accent);border-radius:14px;padding:14px 16px;z-index:8000;display:flex;align-items:center;gap:12px;box-shadow:0 4px 20px rgba(0,0,0,0.3);'
+  banner.innerHTML = `
+    <div style="font-size:28px;">📱</div>
+    <div style="flex:1;">
+      <div style="font-size:13px;font-weight:700;color:var(--accent);">ثبّت التطبيق على جوالك</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px;">للوصول السريع وبدون انترنت</div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button onclick="doInstallPWA()" style="background:var(--accent);color:#000;border:none;border-radius:8px;padding:7px 14px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">تثبيت</button>
+      <button onclick="document.getElementById('installBanner').remove()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:7px 10px;font-family:Cairo,sans-serif;font-size:12px;cursor:pointer;">✕</button>
+    </div>`
+  document.body.appendChild(banner)
+}
+
+async function doInstallPWA() {
+  if (!_deferredInstallPrompt) return
+  _deferredInstallPrompt.prompt()
+  const { outcome } = await _deferredInstallPrompt.userChoice
+  if (outcome === 'accepted') {
+    _deferredInstallPrompt = null
+    const banner = document.getElementById('installBanner')
+    if (banner) banner.remove()
+  }
+}
 
 </script>
 </body>
