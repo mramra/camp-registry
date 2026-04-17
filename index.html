@@ -999,35 +999,22 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
 <!-- Export Modal -->
 <div id="exportModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;overflow-y:auto;padding:16px;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;max-width:440px;margin:0 auto;">
-    <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:16px;">📊 اختيار أعمدة التصدير</div>
-
-    <!-- فلتر المخيم -->
-    <div style="margin-bottom:14px;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">⛺ المخيم</div>
-      <select id="exportCampFilter" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;">
-        <option value="">كل المخيمات</option>
-      </select>
-    </div>
-
-    <!-- تبويبات -->
-    <div style="display:flex;background:var(--surface2);border-radius:8px;padding:3px;margin-bottom:16px;gap:3px;">
-      <button id="tabFam" onclick="switchExportTab('fam')" style="flex:1;border:none;border-radius:6px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:var(--accent);color:#000;">👨‍👩‍👧 الأسر</button>
-      <button id="tabMem" onclick="switchExportTab('mem')" style="flex:1;border:none;border-radius:6px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:var(--muted);">👤 الأفراد</button>
-    </div>
+    <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:16px;" id="exportModalTitle">📊 تصدير</div>
+    <input type="hidden" id="exportMode" value="fam">
 
     <!-- أعمدة الأسر -->
     <div id="colsFam">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">اختر الأعمدة التي تريدها في ورقة الأسر:</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="famColsGrid"></div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">اكتب رقم الترتيب لكل عمود تريده (1، 2، 3...) — اتركه فارغاً لاستبعاده:</div>
+      <div style="display:flex;flex-direction:column;gap:6px;" id="famColsGrid"></div>
       <div style="display:flex;gap:8px;margin-top:10px;">
-        <button onclick="selectAllCols('fam',true)" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer;">تحديد الكل</button>
-        <button onclick="selectAllCols('fam',false)" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer;">إلغاء الكل</button>
+        <button onclick="selectAllCols('fam',true)" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer;">ترقيم تلقائي</button>
+        <button onclick="selectAllCols('fam',false)" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer;">مسح الكل</button>
       </div>
     </div>
 
     <!-- أعمدة الأفراد -->
     <div id="colsMem" style="display:none;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">اختر الأعمدة التي تريدها في ورقة الأفراد:</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">اكتب رقم الترتيب لكل عمود تريده (1، 2، 3...) — اتركه فارغاً لاستبعاده:</div>
       <!-- فلتر العمر -->
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px;">
         <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px;">🎂 فلتر الأعمار</div>
@@ -1039,16 +1026,16 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
           <span style="font-size:11px;color:var(--muted);">سنة</span>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
-          <button onclick="setAgeRange(0,18)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 10px;font-family:Cairo,sans-serif;font-size:10px;cursor:pointer;">أطفال 0-17</button>
-          <button onclick="setAgeRange(18,60)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 10px;font-family:Cairo,sans-serif;font-size:10px;cursor:pointer;">بالغون 18-59</button>
+          <button onclick="setAgeRange(0,17)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 10px;font-family:Cairo,sans-serif;font-size:10px;cursor:pointer;">أطفال 0-17</button>
+          <button onclick="setAgeRange(18,59)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 10px;font-family:Cairo,sans-serif;font-size:10px;cursor:pointer;">بالغون 18-59</button>
           <button onclick="setAgeRange(60,120)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 10px;font-family:Cairo,sans-serif;font-size:10px;cursor:pointer;">كبار 60+</button>
           <button onclick="setAgeRange(0,120)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 10px;font-family:Cairo,sans-serif;font-size:10px;cursor:pointer;">الكل</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="memColsGrid"></div>
+      <div style="display:flex;flex-direction:column;gap:6px;" id="memColsGrid"></div>
       <div style="display:flex;gap:8px;margin-top:10px;">
-        <button onclick="selectAllCols('mem',true)" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer;">تحديد الكل</button>
-        <button onclick="selectAllCols('mem',false)" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer;">إلغاء الكل</button>
+        <button onclick="selectAllCols('mem',true)" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer;">ترقيم تلقائي</button>
+        <button onclick="selectAllCols('mem',false)" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer;">مسح الكل</button>
       </div>
     </div>
 
@@ -1993,7 +1980,9 @@ const FAM_COLS = [
   { key:'spouse_name',  label:'اسم الزوجة/الزوج',    def:false },
   { key:'spouse_id',    label:'هوية الزوجة/الزوج',   def:false },
   { key:'spouse2_name', label:'اسم الزوجة الثانية',   def:false },
-  { key:'spouse2_id',   label:'هوية الزوجة الثانية',  def:false },
+  { key:'spouse2_id',  label:'هوية الزوجة الثانية',  def:false },
+  { key:'original_address', label:'عنوان السكن الأصلي', def:false },
+  { key:'address_details',  label:'العنوان بالتفصيل',   def:false },
 ]
 
 const MEM_COLS = [
@@ -2012,200 +2001,41 @@ const MEM_COLS = [
 
 
 
-// ══ كشف الزوج والزوجة ══
-async function exportCoupleSheet() {
-  if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
-  showToast('⏳ جارٍ التصدير...')
+async function openFamExportModal() {
+  document.getElementById('exportModalTitle').textContent = '📊 تصدير كشف الأسر'
+  document.getElementById('colsFam').style.display = 'block'
+  document.getElementById('colsMem').style.display = 'none'
+  document.getElementById('exportMode').value = 'fam'
 
-  let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  const exportCamp = document.getElementById('exportCampFilter')?.value || ''
-  if (currentMember.camp_id) families = families.filter(f => f.camp_id === currentMember.camp_id)
-  else if (exportCamp) families = families.filter(f => f.camp_id === exportCamp)
-
-  const members = await localDB.family_members.toArray()
-  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
-  const mByFam  = {}
-  members.forEach(m => { if(!mByFam[m.family_id]) mByFam[m.family_id]=[]; mByFam[m.family_id].push(m) })
-
-  const rows = families.map((f, i) => {
-    const fMems = filterOutHead(f, mByFam[f.id] || [])
-    const campName = campMap[f.camp_id] || ''
-
-    // تحديد الزوج والزوجة
-    // إذا رب الأسرة ذكر → هو الزوج، والزوجة = أول عضو relation=زوجة
-    // إذا رب الأسرة أنثى → هي الزوجة، والزوج = أول عضو relation=زوج
-    let husband = null, wife = null
-
-    if (f.head_gender === 'ذكر' || f.head_gender === 'male') {
-      husband = { name: f.head_name, id: f.head_id, dob: f.head_dob }
-      const wifeMem = fMems.find(m => ['زوجة','wife'].includes((m.relation||'').trim()))
-      if (wifeMem) wife = { name: wifeMem.name, id: wifeMem.national_id, dob: wifeMem.dob }
-    } else {
-      wife = { name: f.head_name, id: f.head_id, dob: f.head_dob }
-      const husbMem = fMems.find(m => ['زوج','husband'].includes((m.relation||'').trim()))
-      if (husbMem) husband = { name: husbMem.name, id: husbMem.national_id, dob: husbMem.dob }
-    }
-
-    // العمر
-    const husbAge = husband?.dob ? calcAge(husband.dob) : ''
-    const wifeAge = wife?.dob   ? calcAge(wife.dob)    : ''
-
-    // السكن الحالي: إذا المخيم اسمه يحتوي "خارجي" → خارجي وإلا داخلي
-    const currentAddr = campName.includes('خارجي') ? 'خارجي' : 'داخلي'
-
-    return {
-      '#':                         i + 1,
-      'رقم الخيمة':               f.tent  || '',
-      'اسم الزوج رباعي':          husband?.name || '',
-      'رقم هوية الزوج':           husband?.id   || '',
-      'تاريخ ميلاد الزوج':        husband?.dob  || '',
-      'عمر الزوج':                husbAge !== '' && husbAge !== null ? husbAge : '',
-      'اسم الزوجة رباعي':         wife?.name || '',
-      'رقم هوية الزوجة':          wife?.id   || '',
-      'تاريخ ميلاد الزوجة':       wife?.dob  || '',
-      'عمر الزوجة':               wifeAge !== '' && wifeAge !== null ? wifeAge : '',
-      'عنوان السكن الأصلي':       f.original_address || f.address || '',
-      'العنوان بالتفصيل':          f.address_details  || '',
-      'السكن الحالي داخلي/خارجي': currentAddr,
-      'المخيم':                    campName,
-    }
-  })
-
-  const wb = XLSX.utils.book_new()
-
-  // ورقة معلومات المخيم
-  const activeCampId = currentMember.camp_id || exportCamp
-  const campInfo = await getCampInfoForExcel(activeCampId)
-  if (campInfo.campName) {
-    const infoSheet = XLSX.utils.json_to_sheet([
-      { 'البيان':'اسم المخيم',    'القيمة': campInfo.campName },
-      { 'البيان':'اسم المندوب',   'القيمة': campInfo.delegateName || '—' },
-      { 'البيان':'تاريخ التصدير','القيمة': campInfo.exportDate },
-      { 'البيان':'عدد الأسر',     'القيمة': families.length },
-    ])
-    infoSheet['!cols'] = [{wch:20},{wch:35}]
-    XLSX.utils.book_append_sheet(wb, infoSheet, 'معلومات المخيم')
-  }
-
-  const ws = XLSX.utils.json_to_sheet(rows)
-  ws['!cols'] = [
-    {wch:5},{wch:12},{wch:28},{wch:14},{wch:16},{wch:8},
-    {wch:28},{wch:14},{wch:16},{wch:8},{wch:25},{wch:20},{wch:18}
-  ]
-  XLSX.utils.book_append_sheet(wb, ws, 'كشف الزوج والزوجة')
-
-  const date = new Date().toLocaleDateString('ar-SA').replace(/\//g,'-')
-  const name = campInfo?.campName || 'المخيم'
-  XLSX.writeFile(wb, `كشف_الأزواج_${name}_${date}.xlsx`)
-  showToast('✅ تم تصدير ' + families.length + ' أسرة')
-  logAction('تصدير كشف الأزواج', null, families.length + ' أسرة')
-}
-
-// ══ كشف الأسر الجاهز ══
-async function exportFamilySheet() {
-  if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
-  showToast('⏳ جارٍ التصدير...')
-
-  let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  const exportCamp = document.getElementById('exportCampFilter')?.value || ''
-  if (currentMember.camp_id) families = families.filter(f => f.camp_id === currentMember.camp_id)
-  else if (exportCamp) families = families.filter(f => f.camp_id === exportCamp)
-
-  const members = await localDB.family_members.toArray()
-  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
-  const mByFam  = {}
-  members.forEach(m => { if(!mByFam[m.family_id]) mByFam[m.family_id]=[]; mByFam[m.family_id].push(m) })
-
-  const rows = families.map((f, i) => {
-    const allMems = mByFam[f.id] || []
-    // استثناء رب الأسرة من الأفراد
-    const fMems = filterOutHead(f, allMems)
-    // الزوجات — مرتبة حسب الترتيب
-    const spouses = fMems.filter(m => ['زوجة','زوج'].includes((m.relation||'').trim()))
-
-    return {
-      '#':                        i + 1,
-      'اسم رب الأسرة':           f.head_name  || '',
-      'رقم الهوية':              f.head_id    || '',
-      'الجنس':                   f.head_gender || '',
-      'الحالة الاجتماعية':       f.head_marital || '',
-      'رقم الجوال':              f.phone1     || '',
-      'رقم الجوال البديل':       f.phone2     || '',
-      'اسم الزوجة الأولى':       spouses[0]?.name        || '',
-      'هوية الزوجة الأولى':      spouses[0]?.national_id || '',
-      'اسم الزوجة الثانية':      spouses[1]?.name        || '',
-      'هوية الزوجة الثانية':     spouses[1]?.national_id || '',
-    }
-  })
-
-  const wb  = XLSX.utils.book_new()
-  const ws  = XLSX.utils.json_to_sheet(rows)
-
-  // عرض الأعمدة
-  ws['!cols'] = [
-    {wch:5}, {wch:28}, {wch:14}, {wch:8}, {wch:16},
-    {wch:14}, {wch:14}, {wch:26}, {wch:14}, {wch:26}, {wch:14}
-  ]
-
-  // تجميد الصف الأول
-  ws['!freeze'] = { xSplit:0, ySplit:1 }
-
-  // ورقة معلومات المخيم
-  const activeCampId = currentMember.camp_id || exportCamp
-  const campInfo = await getCampInfoForExcel(activeCampId)
-  if (campInfo.campName) {
-    const infoSheet = XLSX.utils.json_to_sheet([
-      { 'البيان':'اسم المخيم',    'القيمة': campInfo.campName },
-      { 'البيان':'اسم المندوب',   'القيمة': campInfo.delegateName || '—' },
-      { 'البيان':'تاريخ التصدير','القيمة': campInfo.exportDate },
-      { 'البيان':'عدد الأسر',     'القيمة': families.length },
-    ])
-    infoSheet['!cols'] = [{wch:20},{wch:35}]
-    XLSX.utils.book_append_sheet(wb, infoSheet, 'معلومات المخيم')
-  }
-
-  XLSX.utils.book_append_sheet(wb, ws, 'كشف الأسر')
-  const date = new Date().toLocaleDateString('ar-SA').replace(/\//g,'-')
-  const name  = campInfo?.campName || 'المخيم'
-  XLSX.writeFile(wb, `كشف_${name}_${date}.xlsx`)
-  showToast('✅ تم تصدير ' + families.length + ' أسرة')
-  logAction('تصدير كشف الأسر', null, families.length + ' أسرة')
-}
-async function openExportModal() {
-  // بناء شبكة أعمدة الأسر
-  document.getElementById('famColsGrid').innerHTML = FAM_COLS.map(col =>
-    `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;">
-      <input type="checkbox" id="fc_${col.key}" ${col.def?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);flex-shrink:0;">
-      <span>${col.label}</span>
-    </label>`
+  document.getElementById('famColsGrid').innerHTML = FAM_COLS.map((col, i) =>
+    `<div style="display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
+      <input type="number" id="fc_${col.key}" min="1" max="${FAM_COLS.length}" placeholder="—"
+        value="${col.def ? (i+1) : ''}"
+        style="width:48px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px;color:var(--accent);font-family:Cairo,sans-serif;font-size:13px;font-weight:700;text-align:center;outline:none;">
+      <span style="font-size:12px;flex:1;">${col.label}</span>
+    </div>`
   ).join('')
 
-  // بناء شبكة أعمدة الأفراد
-  document.getElementById('memColsGrid').innerHTML = MEM_COLS.map(col =>
-    `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;">
-      <input type="checkbox" id="mc_${col.key}" ${col.def?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);flex-shrink:0;">
-      <span>${col.label}</span>
-    </label>`
+  document.getElementById('exportModal').style.display = 'block'
+}
+
+async function openMemExportModal() {
+  document.getElementById('exportModalTitle').textContent = '📊 تصدير كشف الأفراد'
+  document.getElementById('colsFam').style.display = 'none'
+  document.getElementById('colsMem').style.display = 'block'
+  document.getElementById('exportMode').value = 'mem'
+
+  document.getElementById('memColsGrid').innerHTML = MEM_COLS.map((col, i) =>
+    `<div style="display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
+      <input type="number" id="mc_${col.key}" min="1" max="${MEM_COLS.length}" placeholder="—"
+        value="${col.def ? (i+1) : ''}"
+        style="width:48px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px;color:var(--accent);font-family:Cairo,sans-serif;font-size:13px;font-weight:700;text-align:center;outline:none;">
+      <span style="font-size:12px;flex:1;">${col.label}</span>
+    </div>`
   ).join('')
 
-  // ملء فلتر المخيمات مع عدد الأسر
-  const campSel = document.getElementById('exportCampFilter')
-  if (campSel) {
-    const saved = campSel.value
-    // احسب عدد الأسر لكل مخيم من IndexedDB
-    const fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-    const campCount = {}
-    fams.forEach(f => campCount[f.camp_id] = (campCount[f.camp_id]||0)+1)
-
-    const totalLabel = currentMember.camp_id ? '' : ` (${fams.length} أسرة)`
-    campSel.innerHTML = `<option value="">كل المخيمات${totalLabel}</option>`
-    allCamps.forEach(camp => {
-      const n = campCount[camp.id] || 0
-      campSel.innerHTML += `<option value="${camp.id}">${camp.name} — ${n} أسرة</option>`
-    })
-    if (currentMember.camp_id) campSel.value = currentMember.camp_id
-    else if (saved) campSel.value = saved
-  }
+  document.getElementById('ageFrom').value = 0
+  document.getElementById('ageTo').value   = 120
   document.getElementById('exportModal').style.display = 'block'
 }
 
@@ -2213,21 +2043,12 @@ function closeExportModal() {
   document.getElementById('exportModal').style.display = 'none'
 }
 
-function switchExportTab(tab) {
-  document.getElementById('colsFam').style.display = tab==='fam' ? 'block' : 'none'
-  document.getElementById('colsMem').style.display = tab==='mem' ? 'block' : 'none'
-  document.getElementById('tabFam').style.background = tab==='fam' ? 'var(--accent)' : 'transparent'
-  document.getElementById('tabFam').style.color = tab==='fam' ? '#000' : 'var(--muted)'
-  document.getElementById('tabMem').style.background = tab==='mem' ? 'var(--accent)' : 'transparent'
-  document.getElementById('tabMem').style.color = tab==='mem' ? '#000' : 'var(--muted)'
-}
-
 function selectAllCols(type, val) {
   const prefix = type === 'fam' ? 'fc_' : 'mc_'
   const cols = type === 'fam' ? FAM_COLS : MEM_COLS
-  cols.forEach(col => {
+  cols.forEach((col, i) => {
     const el = document.getElementById(prefix + col.key)
-    if (el) el.checked = val
+    if (el) el.value = val ? (i + 1) : ''
   })
 }
 
@@ -2239,105 +2060,87 @@ function setAgeRange(from, to) {
 async function doCustomExport() {
   if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
 
-  // جمع الأعمدة المختارة
-  const selFam = FAM_COLS.filter(col => document.getElementById('fc_'+col.key)?.checked)
-  const selMem = MEM_COLS.filter(col => document.getElementById('mc_'+col.key)?.checked)
+  const mode    = document.getElementById('exportMode').value
   const ageFrom = parseInt(document.getElementById('ageFrom').value) || 0
-  const ageTo   = parseInt(document.getElementById('ageTo').value) || 120
+  const ageTo   = parseInt(document.getElementById('ageTo').value)   || 120
 
-  if (!selFam.length && !selMem.length) { showToast('اختر عموداً واحداً على الأقل', true); return }
+  const selFam = FAM_COLS
+    .map(col => ({ ...col, order: parseInt(document.getElementById('fc_'+col.key)?.value)||0 }))
+    .filter(col => col.order > 0).sort((a,b) => a.order - b.order)
 
-  // اقرأ فلتر المخيم قبل إغلاق الـ modal
+  const selMem = MEM_COLS
+    .map(col => ({ ...col, order: parseInt(document.getElementById('mc_'+col.key)?.value)||0 }))
+    .filter(col => col.order > 0).sort((a,b) => a.order - b.order)
+
+  if (mode === 'fam' && !selFam.length) { showToast('اختر عموداً واحداً على الأقل', true); return }
+  if (mode === 'mem' && !selMem.length) { showToast('اختر عموداً واحداً على الأقل', true); return }
+
   const exportCamp = document.getElementById('exportCampFilter')?.value || ''
-
   showToast('⏳ جارٍ التصدير...')
   closeExportModal()
 
   let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  // المندوب محدود بمخيمه، غيره يختار
   if (currentMember.camp_id) families = families.filter(f => f.camp_id === currentMember.camp_id)
   else if (exportCamp) families = families.filter(f => f.camp_id === exportCamp)
 
-  const members  = await localDB.family_members.toArray()
-  const campMap  = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+  const members   = await localDB.family_members.toArray()
+  const campMap   = {}; allCamps.forEach(c => campMap[c.id] = c.name)
   const mByFamily = {}
   members.forEach(m => { if(!mByFamily[m.family_id]) mByFamily[m.family_id]=[]; mByFamily[m.family_id].push(m) })
 
-  const wb = XLSX.utils.book_new()
-
-  // ── ورقة معلومات المخيم ──
   const activeCampId = currentMember.camp_id || exportCamp
   const campInfo = await getCampInfoForExcel(activeCampId)
-  if (campInfo.campName) {
-    const infoRows = [
-      { 'البيان': 'اسم المخيم',    'القيمة': campInfo.campName },
-      { 'البيان': 'العنوان',        'القيمة': campInfo.campAddress || '—' },
-      { 'البيان': 'اسم المندوب',   'القيمة': campInfo.delegateName || '—' },
-      { 'البيان': 'السعة',          'القيمة': campInfo.capacity ? campInfo.capacity + ' أسرة' : '—' },
-      { 'البيان': 'تاريخ التصدير', 'القيمة': campInfo.exportDate },
-      { 'البيان': 'عدد الأسر',     'القيمة': families.length },
-    ]
-    const infoSheet = XLSX.utils.json_to_sheet(infoRows)
-    infoSheet['!cols'] = [{ wch: 20 }, { wch: 35 }]
-    XLSX.utils.book_append_sheet(wb, infoSheet, 'معلومات المخيم')
-  }
-  if (selFam.length) {
+  const date     = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
+  const campLabel = campInfo?.campName || 'المخيم'
+  const wb = XLSX.utils.book_new()
+
+  if (mode === 'fam') {
     const famRows = families.map(f => {
       const fMems = filterOutHead(f, mByFamily[f.id]||[])
-      const row = {}
+      const row   = {}
       selFam.forEach(col => {
         switch(col.key) {
-          case 'head_name':     row[col.label] = f.head_name||''; break
-          case 'head_id':       row[col.label] = f.head_id||''; break
-          case 'phone1':        row[col.label] = f.phone1||''; break
-          case 'phone2':        row[col.label] = f.phone2||''; break
-          case 'camp':          row[col.label] = campMap[f.camp_id]||''; break
-          case 'tent':          row[col.label] = f.tent||''; break
-          case 'head_dob':      row[col.label] = f.head_dob||''; break
-          case 'age':           row[col.label] = calcAge(f.head_dob)??''; break
-          case 'head_gender':   row[col.label] = f.head_gender||''; break
-          case 'head_marital':  row[col.label] = f.head_marital||''; break
-          case 'status':        row[col.label] = f.status==='ok'?'مستقر':f.status==='need'?'يحتاج':'عاجل'; break
-          case 'members_count': row[col.label] = fMems.length + 1; break
-          case 'tags':          row[col.label] = (f.tags||[]).join(', '); break
-          case 'notes':         row[col.label] = f.notes||''; break
+          case 'head_name':        row[col.label] = f.head_name||''; break
+          case 'head_id':          row[col.label] = f.head_id||''; break
+          case 'phone1':           row[col.label] = f.phone1||''; break
+          case 'phone2':           row[col.label] = f.phone2||''; break
+          case 'camp':             row[col.label] = campMap[f.camp_id]||''; break
+          case 'tent':             row[col.label] = f.tent||''; break
+          case 'head_dob':         row[col.label] = f.head_dob||''; break
+          case 'age':              row[col.label] = calcAge(f.head_dob)??''; break
+          case 'head_gender':      row[col.label] = f.head_gender||''; break
+          case 'head_marital':     row[col.label] = f.head_marital||''; break
+          case 'status':           row[col.label] = f.status==='ok'?'مستقر':f.status==='need'?'يحتاج':'عاجل'; break
+          case 'members_count':    row[col.label] = fMems.length + 1; break
+          case 'tags':             row[col.label] = (f.tags||[]).join(', '); break
+          case 'notes':            row[col.label] = f.notes||''; break
+          case 'original_address': row[col.label] = f.original_address||''; break
+          case 'address_details':  row[col.label] = f.address_details||''; break
           case 'spouse_name': {
-            const sp = (mByFamily[f.id]||[]).find(m =>
-              ['زوجة','زوج'].includes(m.relation||'') &&
-              m.national_id !== f.head_id && m.name !== f.head_name
-            )
+            const sp = (mByFamily[f.id]||[]).find(m => ['زوجة','زوج'].includes(m.relation||'') && m.national_id !== f.head_id && m.name !== f.head_name)
             row[col.label] = sp?.name||''; break
           }
           case 'spouse_id': {
-            const sp = (mByFamily[f.id]||[]).find(m =>
-              ['زوجة','زوج'].includes(m.relation||'') &&
-              m.national_id !== f.head_id && m.name !== f.head_name
-            )
+            const sp = (mByFamily[f.id]||[]).find(m => ['زوجة','زوج'].includes(m.relation||'') && m.national_id !== f.head_id && m.name !== f.head_name)
             row[col.label] = sp?.national_id||''; break
           }
           case 'spouse2_name': {
-            const spouses = (mByFamily[f.id]||[]).filter(m =>
-              ['زوجة','زوج'].includes(m.relation||'') &&
-              m.national_id !== f.head_id && m.name !== f.head_name
-            )
-            row[col.label] = spouses[1]?.name||''; break
+            const sps = (mByFamily[f.id]||[]).filter(m => ['زوجة','زوج'].includes(m.relation||'') && m.national_id !== f.head_id && m.name !== f.head_name)
+            row[col.label] = sps[1]?.name||''; break
           }
           case 'spouse2_id': {
-            const spouses2 = (mByFamily[f.id]||[]).filter(m =>
-              ['زوجة','زوج'].includes(m.relation||'') &&
-              m.national_id !== f.head_id && m.name !== f.head_name
-            )
-            row[col.label] = spouses2[1]?.national_id||''; break
+            const sps2 = (mByFamily[f.id]||[]).filter(m => ['زوجة','زوج'].includes(m.relation||'') && m.national_id !== f.head_id && m.name !== f.head_name)
+            row[col.label] = sps2[1]?.national_id||''; break
           }
         }
       })
       return row
     })
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(famRows), 'الأسر')
-  }
+    XLSX.writeFile(wb, `كشف_الأسر_${campLabel}_${date}.xlsx`)
+    showToast(`✅ تم التصدير — ${families.length} أسرة`)
 
-  // ── ورقة الأفراد ──
-  if (selMem.length) {
+  } else {
     const memRows = []
     families.forEach(f => {
       const allPersons = [
@@ -2346,32 +2149,34 @@ async function doCustomExport() {
       ]
       allPersons.forEach(p => {
         const age = p._isHead ? calcAge(f.head_dob) : calcAge(p.dob)
-        if (age !== null && (age < ageFrom || age > ageTo)) return
+        const filterActive = ageFrom > 0 || ageTo < 120
+        if (filterActive) {
+          if (age === null) return
+          if (age < ageFrom || age > ageTo) return
+        }
         const row = {}
         selMem.forEach(col => {
           switch(col.key) {
-            case 'fam_name':   row[col.label] = f.head_name||''; break
-            case 'camp':       row[col.label] = campMap[f.camp_id]||''; break
-            case 'name':       row[col.label] = p._isHead ? f.head_name : (p.name||''); break
-            case 'relation':   row[col.label] = p._isHead ? 'رب الأسرة' : (p.relation||''); break
-            case 'national_id':row[col.label] = p._isHead ? (f.head_id||'') : (p.national_id||''); break
-            case 'dob':        row[col.label] = p._isHead ? (f.head_dob||'') : (p.dob||''); break
-            case 'age':        row[col.label] = age??''; break
-            case 'gender':     row[col.label] = p._isHead ? (f.head_gender||'') : (p.gender||''); break
-            case 'health':     row[col.label] = p._isHead ? '' : (p.health||''); break
-            case 'head_id':    row[col.label] = f.head_id||''; break
-            case 'head_phone': row[col.label] = f.phone1||''; break
+            case 'fam_name':    row[col.label] = f.head_name||''; break
+            case 'camp':        row[col.label] = campMap[f.camp_id]||''; break
+            case 'name':        row[col.label] = p._isHead ? f.head_name : (p.name||''); break
+            case 'relation':    row[col.label] = p._isHead ? 'رب الأسرة' : (p.relation||''); break
+            case 'national_id': row[col.label] = p._isHead ? (f.head_id||'') : (p.national_id||''); break
+            case 'dob':         row[col.label] = p._isHead ? (f.head_dob||'') : (p.dob||''); break
+            case 'age':         row[col.label] = age??''; break
+            case 'gender':      row[col.label] = p._isHead ? (f.head_gender||'') : (p.gender||''); break
+            case 'health':      row[col.label] = p._isHead ? '' : (p.health||''); break
+            case 'head_id':     row[col.label] = f.head_id||''; break
+            case 'head_phone':  row[col.label] = f.phone1||''; break
           }
         })
         memRows.push(row)
       })
     })
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(memRows), 'الأفراد')
+    XLSX.writeFile(wb, `كشف_الأفراد_${campLabel}_${date}.xlsx`)
+    showToast(`✅ تم التصدير — ${memRows.length} فرد`)
   }
-
-  const date = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
-  XLSX.writeFile(wb, `سجل_الأسر_${date}.xlsx`)
-  showToast(`✅ تم التصدير — ${families.length} أسرة`)
 }
 
 // ══ AGE CALC (early) ══
@@ -4572,6 +4377,8 @@ function checkFamilyIssues(f, members = []) {
     issues.push('🎂 تاريخ ميلاد ناقص: ' + hName)
   if (!f.head_marital)
     issues.push('💍 الحالة الاجتماعية ناقصة: ' + hName)
+  if (!f.original_address)
+    issues.push('📍 عنوان السكن الأصلي ناقص: ' + hName)
 
 
   // ── الأفراد ──
@@ -6544,18 +6351,17 @@ async function loadDataPage() {
     <div class="card" style="margin-bottom:12px;">
       <div class="card-title">📥 تصدير البيانات</div>
       ${exportOk ? `
-        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.8;">صدّر بيانات الأسر والأفراد إلى Excel بالأعمدة التي تختارها.</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.8;">صدّر بيانات الأسر أو الأفراد إلى Excel بالأعمدة التي تختارها وبالترتيب الذي تحدده.</div>
         <div style="margin-bottom:10px;">
           <select id="exportCampFilter" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;margin-bottom:8px;">
             <option value="">كل المخيمات</option>${campOptsHtml}
           </select>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button onclick="openExportModal()" class="btn btn-primary" style="flex:1;">📊 تصدير مخصص</button>
-          <button onclick="exportExcelMissing()" style="flex:1;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">⚠️ الناقصة</button>
+          <button onclick="openFamExportModal()" class="btn btn-primary" style="flex:1;">👨‍👩‍👧 كشف الأسر</button>
+          <button onclick="openMemExportModal()" style="flex:1;background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">👤 كشف الأفراد</button>
         </div>
-        <button onclick="exportFamilySheet()" style="width:100%;margin-top:8px;background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">📋 كشف الأسر الكامل</button>
-        <button onclick="exportCoupleSheet()" style="width:100%;margin-top:8px;background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">👫 كشف الزوج والزوجة</button>` :
+        <button onclick="exportExcelMissing()" style="width:100%;margin-top:8px;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">⚠️ الأسر الناقصة</button>` :
         `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;font-size:12px;color:var(--red);text-align:center;">🔒 لا تملك صلاحية التصدير</div>`}
     </div>
     <div class="card" style="margin-bottom:12px;">
