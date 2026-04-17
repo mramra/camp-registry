@@ -428,6 +428,18 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
         <div class="form-group"><label>المخيم *</label><select id="familyCamp"><option value="">اختر المخيم</option></select></div>
         <div class="form-group"><label>الحالة</label><select id="familyStatus"><option value="ok">✅ مستقر</option><option value="need">⚠️ يحتاج مساعدة</option><option value="urgent">🚨 عاجل</option></select></div>
       </div>
+      <div class="form-grid-2">
+        <div class="form-group"><label>📍 عنوان السكن الأصلي</label>
+          <select id="familyOriginalAddress">
+            <option value="">اختر المنطقة</option>
+            <option value="شمال غزة">🏘️ شمال غزة</option>
+            <option value="غزة">🏙️ غزة</option>
+            <option value="الوسطى">🏞️ الوسطى</option>
+            <option value="جنوب غزة">🌾 جنوب غزة</option>
+          </select>
+        </div>
+        <div class="form-group"><label>🏠 العنوان بالتفصيل</label><input type="text" id="familyAddressDetails" placeholder="مثال: حي الشجاعية - شارع صلاح الدين"></div>
+      </div>
       <div class="form-group"><label>ملاحظات</label><textarea id="familyNotes" rows="3" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'Cairo',sans-serif;font-size:13px;direction:rtl;outline:none;resize:vertical;width:100%;" placeholder="أي ملاحظات..."></textarea></div>
       <div class="form-group">
         <label>🏷️ الاحتياجات</label>
@@ -1359,7 +1371,7 @@ async function init() {
       await loadCampsFromServer()
       try {
         let q = db.from('families')
-          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,updated_at')
+          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,original_address,address_details,updated_at')
           .eq('org_id', ORG_ID).limit(1000)
         if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
         const { data: fams } = await q
@@ -1431,7 +1443,7 @@ async function loadMember() {
     setSyncing()
     try {
       let q = db.from('families')
-        .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,updated_at')
+        .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,original_address,address_details,updated_at')
         .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
       if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
       const { data: fams } = await q
@@ -2052,7 +2064,8 @@ async function exportCoupleSheet() {
       'رقم هوية الزوجة':          wife?.id   || '',
       'تاريخ ميلاد الزوجة':       wife?.dob  || '',
       'عمر الزوجة':               wifeAge !== '' && wifeAge !== null ? wifeAge : '',
-      'عنوان السكن الأصلي':       f.address  || '',
+      'عنوان السكن الأصلي':       f.original_address || f.address || '',
+      'العنوان بالتفصيل':          f.address_details  || '',
       'السكن الحالي داخلي/خارجي': currentAddr,
       'المخيم':                    campName,
     }
@@ -2406,7 +2419,7 @@ async function loadDashboard() {
     if (navigator.onLine) {
       try {
         let q = db.from('families')
-          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,updated_at')
+          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,original_address,address_details,updated_at')
           .eq('org_id', ORG_ID).limit(1000)
         if (currentMember.role === 'super_admin') {
           const { data: mc } = await db.from('camps').select('id').eq('org_id',ORG_ID).eq('manager_id',currentMember.id)
@@ -2683,7 +2696,7 @@ async function loadFamilies() {
     }
 
     let q = db.from('families')
-      .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,updated_at')
+      .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,original_address,address_details,updated_at')
       .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
     if (currentMember.role === 'super_admin') {
       const { data: myCampsData } = await db.from('camps')
@@ -2836,7 +2849,8 @@ async function openFamily(id) {
         ${[['الاسم',esc(f.head_name)],['الهوية',esc(f.head_id)],['الميلاد',esc(f.head_dob)],['الجنس',esc(f.head_gender)],['الجوال',esc(f.phone1)],['الحالة الاجتماعية',esc(f.head_marital)],['المخيم',esc(camp?.name)],['الخيمة',esc(f.tent||(f.tent2?f.tent2:null))],['الحالة',sLabels[f.status]||'—'],['الأفراد',(members?.length||0)+1]].map(([l,v])=>`<div><div style="font-size:10px;color:var(--muted);">${l}</div><div style="font-size:13px;font-weight:600;">${v}</div></div>`).join('')}
       </div>
       ${f.tags&&f.tags.length?getTagsHtml(f.tags):''}
-      ${f.notes?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"><div style="font-size:10px;color:var(--muted);">ملاحظات</div><div style="font-size:12px;margin-top:4px;">${f.notes}</div></div>`:''}
+      ${(f.original_address||f.address_details)?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"><div style="font-size:10px;color:var(--muted);">📍 السكن الأصلي</div><div style="font-size:12px;margin-top:4px;font-weight:600;">${esc(f.original_address||'—')}${f.address_details?' — '+esc(f.address_details):''}</div></div>`:''}
+      ${f.notes?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"><div style="font-size:10px;color:var(--muted);">ملاحظات</div><div style="font-size:12px;margin-top:4px;">${esc(f.notes)}</div></div>`:''}
     </div>
 
     ${drawerIssues.length ? `
@@ -3111,6 +3125,8 @@ async function startEditFamily(id) {
   const hmEl = document.getElementById('headMarital'); if(hmEl) hmEl.value = f.head_marital || ''
   const t1 = document.getElementById('familyTent'); if(t1) t1.value = f.tent || ''
   const t2 = document.getElementById('familyTent2'); if(t2) t2.value = f.tent2 || ''
+  const oa = document.getElementById('familyOriginalAddress'); if(oa) oa.value = f.original_address || ''
+  const ad = document.getElementById('familyAddressDetails'); if(ad) ad.value = f.address_details || ''
   setTagsToForm(f.tags||[])
   document.getElementById('familyStatus').value = f.status || 'ok'
   document.getElementById('familyCamp').value  = f.camp_id || ''
@@ -3500,6 +3516,8 @@ async function doSaveFamily() {
       notes:       document.getElementById('familyNotes').value.trim()||null,
       tent:        document.getElementById('familyTent')?.value.trim()||null,
       tent2:       document.getElementById('familyTent2')?.value.trim()||null,
+      original_address: document.getElementById('familyOriginalAddress')?.value||null,
+      address_details:  document.getElementById('familyAddressDetails')?.value.trim()||null,
       tags:        getTagsFromForm(),
       status:      document.getElementById('familyStatus').value,
       created_by:  currentUser.id,
@@ -3582,6 +3600,8 @@ async function doUpdateFamily(id) {
       notes:       document.getElementById('familyNotes').value.trim()||null,
       tent:        document.getElementById('familyTent')?.value.trim()||null,
       tent2:       document.getElementById('familyTent2')?.value.trim()||null,
+      original_address: document.getElementById('familyOriginalAddress')?.value||null,
+      address_details:  document.getElementById('familyAddressDetails')?.value.trim()||null,
       tags:        getTagsFromForm(),
       status:      document.getElementById('familyStatus').value,
       updated_at:  new Date().toISOString(),
@@ -3668,8 +3688,8 @@ function buildDob(yId, mId, dId) {
 }
 
 function clearFamilyForm() {
-  ;['headName','headId','phone1','phone2','familyNotes','familyTent','familyTent2'].forEach(id => { const el = document.getElementById(id); if(el) el.value='' })
-  ;['headGender','headMarital','familyStatus','familyCamp'].forEach(id => { const el = document.getElementById(id); if(el) el.value = id==='familyStatus'?'ok':'' })
+  ;['headName','headId','phone1','phone2','familyNotes','familyTent','familyTent2','familyAddressDetails'].forEach(id => { const el = document.getElementById(id); if(el) el.value='' })
+  ;['headGender','headMarital','familyStatus','familyCamp','familyOriginalAddress'].forEach(id => { const el = document.getElementById(id); if(el) el.value = id==='familyStatus'?'ok':'' })
   ;['headDobY','headDobM','headDobD'].forEach(id => { const el = document.getElementById(id); if(el) el.value='' })
   setTagsToForm([])
   ;['tagFood','tagMedicine','tagClothes','tagShelter','tagSpecial'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false})
@@ -7605,6 +7625,8 @@ function portalEditFamily() {
         if (dy) dy.value = y; if (dm) dm.value = m; if (dd) dd.value = d
       }
       const mEl = document.getElementById('pEditMarital'); if (mEl) mEl.value = family?.head_marital || ''
+      const oaEl = document.getElementById('pEditOriginalAddress'); if (oaEl) oaEl.value = family?.original_address || ''
+      const adEl = document.getElementById('pEditAddressDetails'); if (adEl) adEl.value = family?.address_details || ''
     }
   }
 }
@@ -7617,9 +7639,11 @@ async function portalSaveFamily() {
   const notes  = document.getElementById('pEditNotes')?.value.trim()
   const headDob = buildDob('pEditDobY','pEditDobM','pEditDobD')
   const headMarital = document.getElementById('pEditMarital')?.value || null
+  const originalAddress = document.getElementById('pEditOriginalAddress')?.value || null
+  const addressDetails = document.getElementById('pEditAddressDetails')?.value.trim() || null
   if (headDob && new Date(headDob) > new Date()) { showToast('⚠️ تاريخ الميلاد في المستقبل', true); return }
   try {
-    const upd = { phone1: phone1||null, phone2: phone2||null, notes: notes||null, head_dob: headDob||family.head_dob||null, head_marital: headMarital||family.head_marital||null, updated_at: new Date().toISOString() }
+    const upd = { phone1: phone1||null, phone2: phone2||null, notes: notes||null, head_dob: headDob||family.head_dob||null, head_marital: headMarital||family.head_marital||null, original_address: originalAddress, address_details: addressDetails, updated_at: new Date().toISOString() }
     const { error } = await db.from('families').update(upd).eq('id', family.id)
     if (error) { showToast('❌ ' + error.message, true); return }
     Object.assign(window._portalFamily, upd)
@@ -7730,7 +7754,8 @@ async function renderFamilyPortal() {
              ['الجنس',esc(family.head_gender||'—')],['الميلاد',esc(family.head_dob||'—')],
              ['الحالة الاجتماعية',esc(family.head_marital||'—')],
              ['الجوال',esc(family.phone1||'—')],['جوال بديل',esc(family.phone2||'—')],
-             ['المخيم',esc(camp)],['الحالة',sLabel[family.status]||'—']
+             ['المخيم',esc(camp)],['الحالة',sLabel[family.status]||'—'],
+             ['السكن الأصلي',esc(family.original_address||'—')]
           ].map(([l,v])=>`<div style="background:var(--surface2);border-radius:8px;padding:10px;">
             <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">${l}</div>
             <div style="font-size:13px;font-weight:700;">${v}</div></div>`).join('')}
@@ -7749,6 +7774,16 @@ async function renderFamilyPortal() {
           <input id="pEditPhone1" type="tel" value="${esc(family.phone1||'')}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;" dir="ltr"></div>
         <div class="form-group"><label style="font-size:11px;color:var(--muted);">الجوال البديل</label>
           <input id="pEditPhone2" type="tel" value="${esc(family.phone2||'')}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;" dir="ltr"></div>
+        <div class="form-group"><label style="font-size:11px;color:var(--muted);">📍 عنوان السكن الأصلي</label>
+          <select id="pEditOriginalAddress" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+            <option value="">اختر المنطقة</option>
+            <option value="شمال غزة">🏘️ شمال غزة</option>
+            <option value="غزة">🏙️ غزة</option>
+            <option value="الوسطى">🏞️ الوسطى</option>
+            <option value="جنوب غزة">🌾 جنوب غزة</option>
+          </select></div>
+        <div class="form-group"><label style="font-size:11px;color:var(--muted);">🏠 العنوان بالتفصيل</label>
+          <input id="pEditAddressDetails" type="text" placeholder="مثال: حي الشجاعية - شارع صلاح الدين" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;"></div>
         <div class="form-group"><label style="font-size:11px;color:var(--muted);">ملاحظات</label>
           <textarea id="pEditNotes" rows="2" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;resize:none;">${esc(family.notes||'')}</textarea></div>
         <div style="display:flex;gap:8px;">
@@ -7822,6 +7857,11 @@ async function renderFamilyPortal() {
         : '<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px;">لا توجد توزيعات</div>'}
       </div>
 
+      ${family.address_details?`
+      <div class="card" style="margin-bottom:14px;border-color:rgba(59,130,246,0.25);">
+        <div class="card-title" style="color:var(--blue);margin-bottom:8px;">🏠 العنوان بالتفصيل</div>
+        <div style="font-size:13px;">${esc(family.address_details)}</div>
+      </div>`:''}
       <div style="text-align:center;color:var(--muted);font-size:11px;padding:16px 0;">🔒 بياناتك سرية</div>
     `
     window._portalMembers = members || []
