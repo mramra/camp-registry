@@ -691,6 +691,15 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <div id="settingsPassError" style="display:none;color:var(--red);font-size:12px;margin-top:8px;"></div>
       <button class="btn btn-primary" onclick="changeMyPassword()" style="margin-top:12px;width:100%;">💾 تغيير كلمة المرور</button>
     </div>
+
+    <!-- تشخيص — يظهر آخر الأخطاء للمطور -->
+    <div class="card">
+      <div class="card-title" style="color:var(--accent);">🔬 تشخيص الأخطاء</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">يعرض آخر الأخطاء التي حدثت عند حفظ التعديلات — مفيد على الجوال عندما لا يمكن فتح Console</div>
+      <button onclick="showLastErrors()" class="btn btn-primary" style="width:100%;">📋 عرض آخر الأخطاء</button>
+      <div id="lastErrorsDisplay" style="display:none;margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--red);border-radius:8px;font-size:11px;color:var(--red);line-height:1.8;max-height:300px;overflow-y:auto;white-space:pre-wrap;font-family:monospace;direction:ltr;text-align:left;"></div>
+    </div>
+
     <!-- أداة تنظيف قاعدة البيانات — للمالك فقط -->
     <div class="card" id="cleanupCard" style="display:none;">
       <div class="card-title" style="color:var(--red);">🧹 تنظيف قاعدة البيانات</div>
@@ -4380,41 +4389,95 @@ async function doUpdateFamily(id) {
 
     if (navigator.onLine) {
       setSyncing()
-      const { data: cur } = await db.from('families').select('version').eq('id', id).single()
-      const { error } = await db.from('families').update({ ...updateData, updated_by: currentUser.id, version: (cur?.version||1)+1 }).eq('id', id)
-      if (error) throw error
+      // محاولة قراءة version — إذا العمود غير موجود، تجاهل
+      let newVersion = null
+      try {
+        const { data: cur } = await db.from('families').select('version').eq('id', id).single()
+        newVersion = (cur?.version||1)+1
+      } catch(e) { /* column version may not exist */ }
 
-      // حذف المحذوفين من الخادم
+      const serverUpdateData = { ...updateData, updated_by: currentUser.id }
+      if (newVersion !== null) serverUpdateData.version = newVersion
+
+      // ═══ تتبّع الأخطاء لعرضها للمستخدم ═══
+      const allErrors = []
+      let famUpdated = false, memsOk = 0, memsFailed = 0, delsOk = 0, delsFailed = 0
+
+      // 1. تحديث الأسرة (بدون throw — نكمل حتى لو فشل)
+      const { error: famErr } = await db.from('families').update(serverUpdateData).eq('id', id)
+      if (famErr) {
+        console.error('[doUpdateFamily] family update error:', famErr)
+        allErrors.push('الأسرة: ' + (famErr.message || famErr.code || 'خطأ'))
+      } else {
+        famUpdated = true
+      }
+
+      // 2. حذف المحذوفين من الخادم
       if (toDelete.length) {
         const serverDeleteIds = toDelete.filter(m => !m.id.toString().startsWith('local_m_')).map(m => m.id)
         if (serverDeleteIds.length) {
-          await db.from('family_members').delete().in('id', serverDeleteIds)
-        }
-      }
-      // تعديل الموجودين في الخادم
-      for (const item of toUpdate) {
-        if (item._existingDbId && !item._existingDbId.toString().startsWith('local_m_')) {
-          await db.from('family_members').update(item.data).eq('id', item._existingDbId)
-        } else {
-          // كان محلياً فقط → أضفه كجديد
-          const { data: ins } = await db.from('family_members').insert(item.data).select('id').single()
-          if (ins?.id) {
-            await localDB.family_members.delete(item._existingDbId)
-            await localDB.family_members.put({ ...item.data, id: ins.id })
+          const { error: delErr } = await db.from('family_members').delete().in('id', serverDeleteIds)
+          if (delErr) {
+            console.error('[doUpdateFamily] delete members error:', delErr)
+            allErrors.push('حذف الأفراد: ' + (delErr.message || delErr.code))
+            delsFailed = serverDeleteIds.length
+          } else {
+            delsOk = serverDeleteIds.length
           }
         }
       }
-      // إضافة الجدد في الخادم
+
+      // 3. تعديل الأفراد — كل فرد باستعلام مستقل (كما في portalSaveMember الذي يعمل)
+      for (const item of toUpdate) {
+        const { family_id: _fid, ...updateFields } = item.data
+        if (item._existingDbId && !item._existingDbId.toString().startsWith('local_m_')) {
+          const { error: updErr } = await db.from('family_members').update(updateFields).eq('id', item._existingDbId)
+          if (updErr) {
+            console.error('[doUpdateFamily] update member error:', updErr, 'id:', item._existingDbId)
+            allErrors.push(`الفرد "${item.data.name}": ${updErr.message||updErr.code}`)
+            memsFailed++
+          } else {
+            memsOk++
+          }
+        } else {
+          // كان محلياً فقط → أضفه كجديد
+          const { data: ins, error: insErr } = await db.from('family_members').insert(item.data).select('id').single()
+          if (insErr) {
+            console.error('[doUpdateFamily] insert-as-new member error:', insErr)
+            allErrors.push(`إضافة "${item.data.name}": ${insErr.message||insErr.code}`)
+            memsFailed++
+          }
+          if (ins?.id) {
+            await localDB.family_members.delete(item._existingDbId)
+            await localDB.family_members.put({ ...item.data, id: ins.id })
+            memsOk++
+          }
+        }
+      }
+
+      // 4. إضافة الأفراد الجدد
       if (newInserts.length) {
         const serverInserts = newInserts.map(({ id: _id, ...m }) => m)
-        const { data: inserted } = await db.from('family_members').insert(serverInserts).select('id')
-        // استبدل IDs المحلية بـ IDs الخادم
+        const { data: inserted, error: insErr } = await db.from('family_members').insert(serverInserts).select('id')
+        if (insErr) {
+          console.error('[doUpdateFamily] insert new members error:', insErr)
+          allErrors.push(`إضافة ${newInserts.length} فرد: ${insErr.message||insErr.code}`)
+        }
         if (inserted && inserted.length === newInserts.length) {
           for (let i = 0; i < newInserts.length; i++) {
             await localDB.family_members.delete(newInserts[i].id)
             await localDB.family_members.put({ ...newInserts[i], id: inserted[i].id })
           }
         }
+      }
+
+      // ═══ إذا كان هناك أي خطأ، اعرضه للمستخدم ═══
+      if (allErrors.length) {
+        // احفظه في window للمستخدم يمكن نسخه
+        window._lastUpdateErrors = allErrors
+        const summary = allErrors.slice(0,3).join(' | ')
+        showToast('❌ فشل جزئياً: ' + summary, true)
+        console.error('=== كل الأخطاء ===\n', allErrors.join('\n'))
       }
     } else {
       // offline → queue operations
@@ -7942,7 +8005,25 @@ async function loadAuditLog() {
 function showToast(msg, isError=false) {
   const t = document.getElementById('toast')
   t.textContent = msg; t.className = `toast${isError?' error':''} show`
-  setTimeout(() => t.classList.remove('show'), 3000)
+  // رسائل الأخطاء تبقى 8 ثواني — المستخدم يحتاج وقتاً لقراءتها خاصة على الجوال
+  setTimeout(() => t.classList.remove('show'), isError ? 8000 : 3000)
+}
+
+// ══ عرض آخر الأخطاء — للتشخيص على الجوال ══
+function showLastErrors() {
+  const el = document.getElementById('lastErrorsDisplay')
+  if (!el) return
+  const errors = window._lastUpdateErrors || []
+  if (!errors.length) {
+    el.innerHTML = '<div style="color:var(--green);">✅ لا توجد أخطاء محفوظة — كل شيء يعمل بشكل جيد</div>'
+    el.style.color = 'var(--green)'
+    el.style.borderColor = 'var(--green)'
+  } else {
+    el.innerHTML = '❌ آخر الأخطاء (' + errors.length + '):\n\n' + errors.map((e,i) => (i+1) + '. ' + e).join('\n\n')
+    el.style.color = 'var(--red)'
+    el.style.borderColor = 'var(--red)'
+  }
+  el.style.display = 'block'
 }
 
 // ══ KEYBOARD ══
