@@ -408,8 +408,8 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;" id="headDobContainer"></div>
           <div class="v-msg" id="vm-headDob"></div>
         </div>
-        <div class="form-group"><label>الجنس</label><select id="headGender"><option value="">اختر</option><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option></select></div>
-        <div class="form-group"><label>الحالة الاجتماعية</label><select id="headMarital"><option value="">اختر</option><option value="متزوج">💍 متزوج</option><option value="متزوجة">💍 متزوجة</option><option value="أعزب">🧑 أعزب</option><option value="مطلق">💔 مطلق</option><option value="مطلقة">💔 مطلقة</option><option value="أرمل">🕊️ أرمل</option><option value="أرملة">🕊️ أرملة</option></select></div>
+        <div class="form-group"><label>الجنس</label><select id="headGender" onchange="updateHeadMaritalOptions()"><option value="">اختر</option><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option></select></div>
+        <div class="form-group"><label>الحالة الاجتماعية</label><select id="headMarital"><option value="">اختر الجنس أولاً</option></select></div>
       </div>
       <div class="form-grid-2">
         <div class="form-group" id="fg-phone1">
@@ -1563,7 +1563,7 @@ async function init() {
       await loadCampsFromServer()
       try {
         let q = db.from('families')
-          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,original_address,address_details,updated_at')
+          .select('*')
           .eq('org_id', ORG_ID).limit(1000)
         if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
         const { data: fams } = await q
@@ -1577,7 +1577,7 @@ async function init() {
           }).map(f => f.id)
           if (toDel2.length) await localDB.families.bulkDelete(toDel2)
           const { data: mems } = await db.from('family_members')
-            .select('id,family_id,national_id,name,dob,relation,gender,health')
+            .select('*')
             .in('family_id', fams.map(f => f.id)).limit(2000)
           if (mems?.length) { await localDB.family_members.clear(); await safeBulkPut(localDB.family_members, mems) }
         } else {
@@ -1635,14 +1635,14 @@ async function loadMember() {
     setSyncing()
     try {
       let q = db.from('families')
-        .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,original_address,address_details,updated_at')
+        .select('*')
         .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
       if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
       const { data: fams } = await q
       if (fams?.length) {
         await safeBulkPut(localDB.families, fams)
         const { data: mems } = await db.from('family_members')
-          .select('id,family_id,national_id,name,dob,relation,gender,health')
+          .select('*')
           .in('family_id', fams.map(f => f.id)).limit(2000)
         if (mems?.length) {
           await localDB.family_members.clear()
@@ -2566,7 +2566,7 @@ async function loadDashboard() {
     if (navigator.onLine) {
       try {
         let q = db.from('families')
-          .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,original_address,address_details,updated_at')
+          .select('*')
           .eq('org_id', ORG_ID).limit(1000)
         if (currentMember.role === 'super_admin') {
           const { data: mc } = await db.from('camps').select('id').eq('org_id',ORG_ID).eq('manager_id',currentMember.id)
@@ -2589,7 +2589,7 @@ async function loadDashboard() {
           if (toDel.length) await localDB.families.bulkDelete(toDel)
           fams = srv
           const { data: mems } = await db.from('family_members')
-            .select('id,family_id,national_id,name,dob,relation,gender,health')
+            .select('*')
             .in('family_id', srv.map(f => f.id)).limit(2000)
           if (mems?.length) { await localDB.family_members.clear(); await safeBulkPut(localDB.family_members, mems); members = mems }
         }
@@ -2857,7 +2857,7 @@ async function loadFamilies() {
     }
 
     let q = db.from('families')
-      .select('id,head_name,head_id,head_gender,head_marital,phone1,phone2,head_dob,status,camp_id,org_id,tent,tent2,tags,notes,address,original_address,address_details,updated_at')
+      .select('*')
       .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
     if (currentMember.role === 'super_admin') {
       const { data: myCampsData } = await db.from('camps')
@@ -2904,7 +2904,7 @@ async function loadFamilies() {
     // مزامنة الأفراد — فقط للأسر المجلوبة
     const srvFamIds = srv.map(f => f.id)
     const { data: mems } = await db.from('family_members')
-      .select('id,family_id,national_id,name,dob,relation,gender,health')
+      .select('*')
       .in('family_id', srvFamIds)
       .limit(2000)
     if (mems?.length) {
@@ -3814,6 +3814,7 @@ async function startEditFamily(id) {
   document.getElementById('phone2').value      = f.phone2 || ''
   document.getElementById('familyNotes').value = f.notes || ''
   document.getElementById('headGender').value  = f.head_gender || ''
+  updateHeadMaritalOptions()  // املأ قائمة الحالة الاجتماعية حسب الجنس
   const hmEl = document.getElementById('headMarital'); if(hmEl) hmEl.value = f.head_marital || ''
   const t1 = document.getElementById('familyTent'); if(t1) t1.value = f.tent || ''
   const t2 = document.getElementById('familyTent2'); if(t2) t2.value = f.tent2 || ''
@@ -3838,8 +3839,14 @@ async function startEditFamily(id) {
       const orig = members[i]; if (!orig) return
       const n = document.getElementById(`mName_${m.id}`); const r = document.getElementById(`mRelation_${m.id}`)
       const ni = document.getElementById(`mId_${m.id}`); const g = document.getElementById(`mGender_${m.id}`)
-      if (n) n.value = orig.name||''; if (r) r.value = orig.relation||''
-      if (ni) ni.value = orig.national_id||''; if (g) g.value = orig.gender||''
+      if (n) n.value = orig.name||''
+      if (ni) ni.value = orig.national_id||''
+      // عيّن الجنس أولاً ثم حدّث قائمة القرابة
+      if (g) {
+        g.value = orig.gender||''
+        updateMemberRelationOptions(m.id)  // تملأ القائمة حسب الجنس
+      }
+      if (r && orig.relation) r.value = orig.relation  // ثم عيّن القيمة
       const mh = document.getElementById(`mHealth_${m.id}`); if(mh && orig.health) mh.value = orig.health
       if (orig.dob) {
         const [y,mo,d] = orig.dob.split('-')
@@ -4130,6 +4137,26 @@ function runFormValidation() {
   const dob = buildDob('headDobY','headDobM','headDobD')
   if (dob && new Date(dob) > new Date())
     errors.push('تاريخ الميلاد في المستقبل')
+
+  // ═══ تحقق من أفراد الأسرة ═══
+  formMembers.forEach((m, idx) => {
+    const memName = document.getElementById(`mName_${m.id}`)?.value.trim() || ''
+    const memId   = document.getElementById(`mId_${m.id}`)?.value.trim() || ''
+    // تحقق صوري لإظهار رسائل الخطأ على الحقول
+    vMemberName(m.id); vMemberId(m.id)
+    // أخطاء صارمة
+    if (memName && memName.split(/\s+/).filter(Boolean).length < 2) {
+      errors.push(`الفرد ${idx+1}: الاسم يجب أن يكون ثنائياً على الأقل`)
+    }
+    if (memId && memId.length > 0 && !luhnCheck(memId)) {
+      errors.push(`الفرد ${idx+1}${memName?' ('+memName+')':''}: رقم الهوية غير صحيح`)
+    }
+    const memDob = buildDob(`mDobY_${m.id}`,`mDobM_${m.id}`,`mDobD_${m.id}`)
+    if (memDob && new Date(memDob) > new Date()) {
+      errors.push(`الفرد ${idx+1}${memName?' ('+memName+')':''}: تاريخ الميلاد في المستقبل`)
+    }
+  })
+
   return errors
 }
 
@@ -4554,6 +4581,9 @@ function clearFamilyForm() {
   ;['headName','headId','phone1','phone2','familyNotes','familyTent','familyTent2','familyAddressDetails'].forEach(id => { const el = document.getElementById(id); if(el) el.value='' })
   ;['headGender','headMarital','familyStatus','familyCamp','familyOriginalAddress'].forEach(id => { const el = document.getElementById(id); if(el) el.value = id==='familyStatus'?'ok':'' })
   ;['headDobY','headDobM','headDobD'].forEach(id => { const el = document.getElementById(id); if(el) el.value='' })
+  // أعد قائمة الحالة الاجتماعية للحالة الأولية (تطلب اختيار الجنس)
+  const hm = document.getElementById('headMarital')
+  if (hm) hm.innerHTML = '<option value="">اختر الجنس أولاً</option>'
   setTagsToForm([])
   ;['tagFood','tagMedicine','tagClothes','tagShelter','tagSpecial'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false})
   formMembers = []; renderMemberForms()
@@ -4585,6 +4615,68 @@ function getTagsHtml(tags) {
 function addMemberRow() { formMembers.push({ id: Date.now() }); renderMemberForms() }
 function removeMember(id) { formMembers = formMembers.filter(m => m.id !== id); renderMemberForms() }
 
+// ══ قوائم ذكية حسب الجنس ══
+const MARITAL_BY_GENDER = {
+  'ذكر':  [
+    { v:'متزوج',   label:'💍 متزوج' },
+    { v:'أعزب',    label:'🧑 أعزب' },
+    { v:'مطلق',    label:'💔 مطلق' },
+    { v:'أرمل',    label:'🕊️ أرمل' },
+  ],
+  'أنثى': [
+    { v:'متزوجة',  label:'💍 متزوجة' },
+    { v:'عزباء',   label:'👩 عزباء' },
+    { v:'مطلقة',   label:'💔 مطلقة' },
+    { v:'أرملة',   label:'🕊️ أرملة' },
+  ],
+}
+
+const RELATION_BY_GENDER = {
+  'ذكر':  ['زوج','ابن','أب','أخ','جد','حفيد','عم','خال','أخرى'],
+  'أنثى': ['زوجة','ابنة','أم','أخت','جدة','حفيدة','عمة','خالة','أخرى'],
+}
+
+// تحديث الحالة الاجتماعية لرب الأسرة حسب الجنس
+function updateHeadMaritalOptions() {
+  const gender = document.getElementById('headGender')?.value || ''
+  const sel = document.getElementById('headMarital')
+  if (!sel) return
+  const currentVal = sel.value  // احفظ القيمة الحالية
+  let html = '<option value="">اختر</option>'
+  if (gender && MARITAL_BY_GENDER[gender]) {
+    MARITAL_BY_GENDER[gender].forEach(o => {
+      html += `<option value="${o.v}">${o.label}</option>`
+    })
+  } else {
+    html = '<option value="">اختر الجنس أولاً</option>'
+  }
+  sel.innerHTML = html
+  // حاول استعادة القيمة السابقة إن كانت منطقية للجنس الجديد
+  if (currentVal && gender && MARITAL_BY_GENDER[gender].some(o => o.v === currentVal)) {
+    sel.value = currentVal
+  }
+}
+
+// تحديث صلة القرابة لفرد حسب الجنس
+function updateMemberRelationOptions(memberId) {
+  const gender = document.getElementById(`mGender_${memberId}`)?.value || ''
+  const sel = document.getElementById(`mRelation_${memberId}`)
+  if (!sel) return
+  const currentVal = sel.value
+  let html = '<option value="">اختر</option>'
+  if (gender && RELATION_BY_GENDER[gender]) {
+    RELATION_BY_GENDER[gender].forEach(r => {
+      html += `<option value="${r}">${r}</option>`
+    })
+  } else {
+    // إذا لم يُختر الجنس — أظهر كل الخيارات
+    const all = [...new Set([...RELATION_BY_GENDER['ذكر'], ...RELATION_BY_GENDER['أنثى']])]
+    all.forEach(r => { html += `<option value="${r}">${r}</option>` })
+  }
+  sel.innerHTML = html
+  if (currentVal) sel.value = currentVal  // حاول استعادة القيمة
+}
+
 function renderMemberForms() {
   const container = document.getElementById('membersContainer')
   if (!formMembers.length) {
@@ -4598,15 +4690,43 @@ function renderMemberForms() {
         <button onclick="removeMember(${m.id})" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">حذف</button>
       </div>
       <div class="form-grid-2">
-        <div class="form-group"><label>الاسم *</label><input type="text" id="mName_${m.id}" placeholder="الاسم الرباعي"></div>
-        <div class="form-group"><label>العلاقة</label><select id="mRelation_${m.id}"><option value="">اختر</option><option>زوجة</option><option>زوج</option><option>ابن</option><option>ابنة</option><option>أب</option><option>أم</option><option>أخ</option><option>أخت</option><option>أخرى</option></select></div>
-        <div class="form-group"><label>رقم الهوية</label><input type="text" id="mId_${m.id}" placeholder="9 أرقام" dir="ltr" maxlength="9"></div>
-        <div class="form-group"><label>الجنس</label><select id="mGender_${m.id}"><option value="">اختر</option><option>ذكر</option><option>أنثى</option></select></div>
+        <div class="form-group" id="fg-mName_${m.id}"><label>الاسم *</label><input type="text" id="mName_${m.id}" placeholder="الاسم الرباعي" oninput="vMemberName('${m.id}')"><div class="v-msg" id="vm-mName_${m.id}"></div></div>
+        <div class="form-group"><label>الجنس</label><select id="mGender_${m.id}" onchange="updateMemberRelationOptions('${m.id}')"><option value="">اختر</option><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option></select></div>
+        <div class="form-group"><label>صلة القرابة</label><select id="mRelation_${m.id}"><option value="">اختر الجنس أولاً</option></select></div>
+        <div class="form-group" id="fg-mId_${m.id}"><label>رقم الهوية</label><input type="text" id="mId_${m.id}" placeholder="9 أرقام" dir="ltr" maxlength="9" inputmode="numeric" oninput="vMemberId('${m.id}')"><div class="v-msg" id="vm-mId_${m.id}"></div></div>
       </div>
       <div class="form-group"><label>تاريخ الميلاد</label><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;" id="mDobContainer_${m.id}"></div></div>
       <div class="form-group"><label>الحالة الصحية</label><select id="mHealth_${m.id}" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;width:100%;"><option value="سليم">✅ سليم</option><option value="مريض">🤒 مريض</option><option value="معاق">♿ معاق</option><option value="مزمن">💊 مرض مزمن</option></select></div>
     </div>`).join('')
-  formMembers.forEach(m => buildDateSelect(`mDobD_${m.id}`,`mDobM_${m.id}`,`mDobY_${m.id}`,`mDobContainer_${m.id}`,'var(--bg)'))
+  formMembers.forEach(m => {
+    buildDateSelect(`mDobD_${m.id}`,`mDobM_${m.id}`,`mDobY_${m.id}`,`mDobContainer_${m.id}`,'var(--bg)')
+    // عبّئ قائمة القرابة حسب الجنس الحالي (إن وُجد)
+    updateMemberRelationOptions(m.id)
+  })
+}
+
+// ══ تحقق من هوية الفرد (نفس منطق رب الأسرة) ══
+function vMemberId(memberId) {
+  const v = document.getElementById(`mId_${memberId}`)?.value.trim() || ''
+  const fgId = `fg-mId_${memberId}`
+  const vmId = `vm-mId_${memberId}`
+  if (!v) { setField(fgId, vmId, null, ''); return }
+  if (!/^\d+$/.test(v))  { setField(fgId, vmId, 'err', '❌ أرقام فقط'); return }
+  if (v.length < 9)       { setField(fgId, vmId, 'err', `❌ ناقص ${9-v.length} رقم`); return }
+  if (luhnCheck(v))        setField(fgId, vmId, 'ok',  '✅ هوية صحيحة')
+  else                     setField(fgId, vmId, 'err', '❌ رقم الهوية غير صحيح')
+}
+
+// ══ تحقق من اسم الفرد ══
+function vMemberName(memberId) {
+  const v = document.getElementById(`mName_${memberId}`)?.value.trim() || ''
+  const words = v.split(/\s+/).filter(Boolean)
+  const fgId = `fg-mName_${memberId}`
+  const vmId = `vm-mName_${memberId}`
+  if (!v) { setField(fgId, vmId, null, ''); return }
+  if (words.length < 2)      setField(fgId, vmId, 'err', '❌ الاسم يجب أن يكون ثنائياً على الأقل')
+  else if (words.length < 4) setField(fgId, vmId, 'warn', '⚠️ يُفضّل الاسم الرباعي (' + words.length + '/4)')
+  else                        setField(fgId, vmId, 'ok', '✅ الاسم رباعي')
 }
 
 // ══ DATE SELECTS ══
@@ -6229,8 +6349,15 @@ async function doImportExcel() {
 
   for (const row of rows) {
     const name = String(row[nameCol]||'').trim()
-    const nid  = String(row[idCol]||'').trim().replace(/\.0$/,'')
+    let   nid  = String(row[idCol]||'').trim().replace(/\.0$/,'').replace(/\D/g,'')  // أرقام فقط
     if (!name) { skipped++; continue }
+    // التحقق من صحة الهوية — إذا موجودة يجب أن تكون 9 أرقام + Luhn صحيح
+    if (nid) {
+      if (nid.length !== 9 || !luhnCheck(nid)) {
+        // رقم الهوية موجود لكن غير صحيح → اطرحه بدل رفض الصف بالكامل
+        nid = ''
+      }
+    }
     if (nid && existIds.has(nid)) { skipped++; continue }
 
     // تطبيع الجوال + إصلاح الأخطاء الشائعة
@@ -6303,11 +6430,16 @@ async function doImportExcel() {
       if (!famId) continue
       const mname = String(row[mName]||'').trim()
       if (!mname) continue
+      // تحقق من هوية الفرد
+      let memNid = mNid ? String(row[mNid]||'').trim().replace(/\.0$/,'').replace(/\D/g,'') : ''
+      if (memNid && (memNid.length !== 9 || !luhnCheck(memNid))) {
+        memNid = ''  // هوية غير صحيحة → اتركها فارغة
+      }
       batch.push({
         family_id:   famId,
         name:        mname,
         relation:    mRel    ? String(row[mRel]||'').trim()||null    : null,
-        national_id: mNid    ? String(row[mNid]||'').trim().replace(/\.0$/,'')||null : null,
+        national_id: memNid || null,
         dob:         mDob    ? String(row[mDob]||'').trim()||null    : null,
         gender:      mGender ? String(row[mGender]||'').trim()||null : null,
         health:      mHealth ? String(row[mHealth]||'').trim()||'سليم' : 'سليم',
@@ -8696,12 +8828,32 @@ async function portalSaveFamily() {
   } catch(e) { showToast('❌ ' + esc(e.message), true) }
 }
 
+// ══ بوابة الأسرة: تحديث صلة القرابة ديناميكياً حسب الجنس ══
+function updatePortalMemberRelation() {
+  const gender = document.getElementById('pMemberGender')?.value || ''
+  const sel = document.getElementById('pMemberRelation')
+  if (!sel) return
+  const currentVal = sel.value
+  let html = '<option value="">اختر</option>'
+  if (gender && RELATION_BY_GENDER[gender]) {
+    RELATION_BY_GENDER[gender].forEach(r => { html += `<option value="${r}">${r}</option>` })
+  } else {
+    html = '<option value="">اختر الجنس أولاً</option>'
+  }
+  sel.innerHTML = html
+  if (currentVal && gender && RELATION_BY_GENDER[gender].includes(currentVal)) {
+    sel.value = currentVal
+  }
+}
+
 function portalAddMember() {
   document.getElementById('pMemberId').value = ''
   document.getElementById('pMemberName').value = ''
-  document.getElementById('pMemberRelation').value = ''
   document.getElementById('pMemberGender').value = ''
   document.getElementById('pMemberNid').value = ''
+  // أعد قائمة القرابة
+  const pr = document.getElementById('pMemberRelation')
+  if (pr) pr.innerHTML = '<option value="">اختر الجنس أولاً</option>'
   buildDateSelect('pMemberDobD','pMemberDobM','pMemberDobY','pMemberDobContainer')
   document.getElementById('portalMemberFormTitle').textContent = '➕ إضافة فرد'
   document.getElementById('portalMemberError').style.display = 'none'
@@ -8714,8 +8866,10 @@ function portalEditMember(memberId) {
   if (!m) return
   document.getElementById('pMemberId').value = m.id
   document.getElementById('pMemberName').value = m.name || ''
-  document.getElementById('pMemberRelation').value = m.relation || ''
+  // عيّن الجنس أولاً ثم حدّث قائمة القرابة
   document.getElementById('pMemberGender').value = m.gender || ''
+  updatePortalMemberRelation()
+  document.getElementById('pMemberRelation').value = m.relation || ''
   document.getElementById('pMemberNid').value = m.national_id || ''
   buildDateSelect('pMemberDobD','pMemberDobM','pMemberDobY','pMemberDobContainer')
   if (m.dob) {
@@ -8742,6 +8896,17 @@ async function portalSaveMember() {
   if (!name || name.split(/\s+/).filter(Boolean).length < 2) {
     errEl.textContent = '⚠️ الاسم يجب أن يكون ثنائياً على الأقل'
     errEl.style.display = 'block'; return
+  }
+  // تحقق من رقم الهوية إذا أُدخل (9 أرقام + Luhn)
+  if (nid) {
+    if (!/^\d{9}$/.test(nid)) {
+      errEl.textContent = '⚠️ رقم الهوية يجب أن يكون 9 أرقام'
+      errEl.style.display = 'block'; return
+    }
+    if (!luhnCheck(nid)) {
+      errEl.textContent = '⚠️ رقم الهوية غير صحيح'
+      errEl.style.display = 'block'; return
+    }
   }
   if (dob && new Date(dob) > new Date()) {
     errEl.textContent = '⚠️ تاريخ الميلاد في المستقبل'
@@ -8866,15 +9031,13 @@ async function renderFamilyPortal() {
           <div class="form-group"><label style="font-size:11px;color:var(--muted);">الاسم *</label>
             <input id="pMemberName" type="text" placeholder="الاسم الكامل" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <div class="form-group"><label style="font-size:11px;color:var(--muted);">الصلة</label>
-              <select id="pMemberRelation" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
-                <option value="">اختر</option><option>زوجة</option><option>زوج</option>
-                <option>ابن</option><option>ابنة</option><option>أب</option><option>أم</option>
-                <option>أخ</option><option>أخت</option><option>جد</option><option>جدة</option>
-              </select></div>
             <div class="form-group"><label style="font-size:11px;color:var(--muted);">الجنس</label>
-              <select id="pMemberGender" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
-                <option value="">اختر</option><option>ذكر</option><option>أنثى</option>
+              <select id="pMemberGender" onchange="updatePortalMemberRelation()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+                <option value="">اختر</option><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option>
+              </select></div>
+            <div class="form-group"><label style="font-size:11px;color:var(--muted);">صلة القرابة</label>
+              <select id="pMemberRelation" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+                <option value="">اختر الجنس أولاً</option>
               </select></div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
