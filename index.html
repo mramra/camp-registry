@@ -511,13 +511,6 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
     </div>
     <div id="memberNeedsHeader" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px;font-size:13px;"></div>
 
-    <!-- الحالات التلقائية (قراءة فقط) -->
-    <div class="card" style="margin-bottom:12px;">
-      <div class="card-title">⭐ الحالات التلقائية</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">تُحسب من تاريخ الميلاد — لا تحتاج إدخال</div>
-      <div id="autoStatusContainer" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-    </div>
-
     <!-- اليتيم (للقاصرين فقط) -->
     <div class="card" id="orphanCard" style="margin-bottom:12px;display:none;">
       <div class="card-title">👶 حالة اليتم</div>
@@ -3092,7 +3085,15 @@ async function saveFamilyNeeds() {
   try {
     if (navigator.onLine) {
       const { error } = await db.from('families').update(update).eq('id', _editingNeedsFamilyId)
-      if (error) throw error
+      if (error) {
+        // إذا الحقول غير موجودة في DB
+        if (error.message.includes('column') || error.code === '42703' || error.code === 'PGRST204') {
+          showToast('⚠️ يجب تطبيق SQL migration أولاً — راجع needs_migration.sql', true)
+          console.error('Migration missing:', error)
+          return
+        }
+        throw error
+      }
     } else {
       await localDB.sync_queue.add({
         action:'update_family', record_id: _editingNeedsFamilyId,
@@ -3100,7 +3101,7 @@ async function saveFamilyNeeds() {
         status:'pending', created_at: new Date().toISOString()
       })
     }
-    // تحديث محلي
+    // تحديث محلي (يعمل حتى لو فشل الخادم)
     const existing = await localDB.families.get(_editingNeedsFamilyId)
     if (existing) await localDB.families.put({ ...existing, ...update })
     invalidateMembersCache()
@@ -3108,7 +3109,8 @@ async function saveFamilyNeeds() {
     showToast('✅ تم حفظ الاحتياجات')
     showPage('page-families'); loadFamilies()
   } catch(e) {
-    showToast('❌ ' + esc(e.message), true)
+    console.error('saveFamilyNeeds error:', e)
+    showToast('❌ ' + esc(e.message || 'خطأ غير معروف'), true)
   }
 }
 
@@ -3153,21 +3155,20 @@ async function openMemberNeeds(memberId, familyId) {
   // جلب كل أفراد الأسرة للكشف عن الرضّع
   const famMembers = family ? await localDB.family_members.where('family_id').equals(family.id).toArray() : []
 
-  // رأس الصفحة
+  // رأس الصفحة — مع الحالات التلقائية inline
   const age = calcAge(member.dob)
-  document.getElementById('memberNeedsHeader').innerHTML = `
-    <div style="font-weight:700;margin-bottom:4px;">${esc(member.name||'—')}${isHead?' <span style="background:rgba(139,92,246,.15);color:#8b5cf6;font-size:10px;padding:2px 8px;border-radius:8px;margin-right:6px;">رب الأسرة</span>':''}</div>
-    <div style="color:var(--muted);font-size:11px;">
-      ${esc(member.relation||'')} • ${esc(member.gender||'')} ${age!==null?`• ${age} سنة`:''}
-    </div>`
-
-  // الحالات التلقائية (بما فيها مرضعة)
   const autoTags = autoAgeStatus(member.dob)
   const nursing = isNursingMother(member, filterOutHead(family, famMembers), family?.head_dob)
-  if (nursing) autoTags.push('مرضعة (تلقائي)')
-  document.getElementById('autoStatusContainer').innerHTML = autoTags.length
-    ? autoTags.map(t => `<span style="background:rgba(59,130,246,0.15);color:var(--blue);padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;">${t}</span>`).join('')
-    : '<span style="color:var(--muted);font-size:11px;">لا توجد (أدخل تاريخ الميلاد أولاً)</span>'
+  if (nursing) autoTags.push('مرضعة')
+  const tagsInline = autoTags.map(t => `<span style="background:rgba(59,130,246,0.15);color:var(--blue);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px;">${t}</span>`).join('')
+
+  document.getElementById('memberNeedsHeader').innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px;">${esc(member.name||'—')}${isHead?' <span style="background:rgba(139,92,246,.15);color:#8b5cf6;font-size:10px;padding:2px 8px;border-radius:8px;margin-right:6px;">رب الأسرة</span>':''}</div>
+    <div style="color:var(--muted);font-size:11px;margin-bottom:${tagsInline?'6px':'0'};">
+      ${esc(member.relation||'')} • ${esc(member.gender||'')} ${age!==null?`• ${age} سنة`:''}
+    </div>
+    ${tagsInline?`<div style="display:flex;flex-wrap:wrap;gap:4px;">${tagsInline}</div>`:''}
+  `
 
   // اليتيم — يظهر للقاصرين فقط
   const orphanCard = document.getElementById('orphanCard')
@@ -3295,7 +3296,14 @@ async function saveMemberNeeds() {
       }
       if (navigator.onLine) {
         const { error } = await db.from('families').update(update).eq('id', familyId)
-        if (error) throw error
+        if (error) {
+          if (error.message.includes('column') || error.code === '42703' || error.code === 'PGRST204') {
+            showToast('⚠️ يجب تطبيق SQL migration أولاً — راجع needs_migration.sql', true)
+            console.error('Migration missing:', error)
+            return
+          }
+          throw error
+        }
       } else {
         await localDB.sync_queue.add({
           action:'update_family', record_id: familyId,
@@ -3317,7 +3325,14 @@ async function saveMemberNeeds() {
       }
       if (navigator.onLine) {
         const { error } = await db.from('family_members').update(update).eq('id', _editingNeedsMemberId)
-        if (error) throw error
+        if (error) {
+          if (error.message.includes('column') || error.code === '42703' || error.code === 'PGRST204') {
+            showToast('⚠️ يجب تطبيق SQL migration أولاً — راجع needs_migration.sql', true)
+            console.error('Migration missing:', error)
+            return
+          }
+          throw error
+        }
       } else {
         await localDB.sync_queue.add({
           action:'update_member', record_id: _editingNeedsMemberId,
@@ -3333,7 +3348,8 @@ async function saveMemberNeeds() {
     showToast('✅ تم حفظ الحالات الصحية')
     backFromMemberNeeds()
   } catch(e) {
-    showToast('❌ ' + esc(e.message), true)
+    console.error('saveMemberNeeds error:', e)
+    showToast('❌ ' + esc(e.message || 'خطأ غير معروف'), true)
   }
 }
 
@@ -3380,6 +3396,17 @@ async function openFamily(id) {
   }
   if (!f) { showToast('لم يتم العثور على الأسرة', true); return }
   members = filterOutHead(f, members||[])
+
+  // ترتيب: الزوج/الزوجة أولاً، ثم من الأكبر للأصغر سناً
+  members.sort((a, b) => {
+    const aIsSpouse = ['زوجة','زوج','wife','husband'].includes((a.relation||'').trim())
+    const bIsSpouse = ['زوجة','زوج','wife','husband'].includes((b.relation||'').trim())
+    if (aIsSpouse && !bIsSpouse) return -1
+    if (!aIsSpouse && bIsSpouse) return 1
+    const aDob = a.dob || '9999'
+    const bDob = b.dob || '9999'
+    return aDob.localeCompare(bDob)
+  })
 
   const camp = allCamps.find(c => c.id === f.camp_id)
   const sLabels = { ok:'✅ مستقر', need:'⚠️ يحتاج مساعدة', urgent:'🚨 عاجل' }
@@ -3498,7 +3525,7 @@ async function openFamily(id) {
     </div>
     ${(canWrite()||canEdit())?`<div style="display:flex;gap:8px;flex-wrap:wrap;">
       ${canEdit()?`<button class="btn btn-primary" onclick="startEditFamily('${f.id}')" style="flex:1;">✏️ تعديل</button>`:''}
-      ${canEdit()?`<button onclick="openFamilyNeeds('${f.id}')" style="flex:1;background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:8px;padding:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">📋 الاحتياجات</button>`:''}
+      ${canEdit()?`<button data-needs-family-id="${esc(f.id)}" class="btn-open-family-needs" style="flex:1;background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:8px;padding:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">📋 الاحتياجات</button>`:''}
       ${f.phone1 ? `<button class="btn btn-success" onclick="smsSendOne('${f.id}')">📨 SMS</button>` : ''}
       <button class="btn" style="background:var(--surface2);border:1px solid var(--border);" onclick="printFamily('${f.id}')">🖨️ طباعة</button>
       ${canDelete()?`<button class="btn" style="background:transparent;border:1px solid var(--red);color:var(--red);" onclick="deleteFamily('${f.id}')">🗑️ حذف</button>`:''}
@@ -3525,6 +3552,13 @@ async function openFamily(id) {
   if (drawerBody && !drawerBody._needsListenerAttached) {
     drawerBody._needsListenerAttached = true
     drawerBody.addEventListener('click', (e) => {
+      const famNeedsBtn = e.target.closest('.btn-open-family-needs')
+      if (famNeedsBtn) {
+        e.stopPropagation()
+        const famId = famNeedsBtn.dataset.needsFamilyId
+        if (famId) { closeDrawer(); openFamilyNeeds(famId) }
+        return
+      }
       const headBtn = e.target.closest('.btn-open-head-needs')
       if (headBtn) {
         e.stopPropagation()
