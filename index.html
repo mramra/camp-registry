@@ -2972,6 +2972,31 @@ let _editingNeedsMemberId = null
 let _editingNeedsMemberData = null
 let _returnToFamilyId = null  // للعودة إلى drawer الأسرة
 
+// Wrappers بسيطة للأزرار — تضمن الاستدعاء حتى لو فشلت event delegation
+function openFamilyNeedsById(familyId) {
+  closeDrawer()
+  setTimeout(() => openFamilyNeeds(familyId).catch(e => {
+    console.error('openFamilyNeeds error:', e)
+    showToast('خطأ: '+esc(e.message||''), true)
+  }), 100)
+}
+
+function openHeadNeedsById(familyId) {
+  closeDrawer()
+  setTimeout(() => openMemberNeeds('head_' + familyId, familyId).catch(e => {
+    console.error('openHeadNeeds error:', e)
+    showToast('خطأ: '+esc(e.message||''), true)
+  }), 100)
+}
+
+function openMemberNeedsById(memberId, familyId) {
+  closeDrawer()
+  setTimeout(() => openMemberNeeds(memberId, familyId).catch(e => {
+    console.error('openMemberNeeds error:', e)
+    showToast('خطأ: '+esc(e.message||''), true)
+  }), 100)
+}
+
 // فتح صفحة احتياجات الأسرة
 async function openFamilyNeeds(familyId) {
   _editingNeedsFamilyId = familyId
@@ -3483,7 +3508,7 @@ async function openFamily(id) {
           </div>
           <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
             <span style="background:rgba(139,92,246,0.15);color:#8b5cf6;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;">رب الأسرة</span>
-            ${canEdit()?`<button data-needs-head="${esc(f.id)}" class="btn-open-head-needs" title="الحالات الصحية" style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🩺 حالات صحية</button>`:''}
+            ${canEdit()?`<button onclick="openHeadNeedsById('${f.id}')" title="الحالات الصحية" style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🩺 حالات صحية</button>`:''}
           </div>
         </div>
       </div>
@@ -3517,7 +3542,7 @@ async function openFamily(id) {
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
               <span style="background:rgba(59,130,246,0.15);color:#3b82f6;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;">${esc(m.relation||'—')}</span>
-              ${canEdit()?`<button data-needs-member="${esc(m.id)}" data-needs-family="${esc(f.id)}" class="btn-open-member-needs" title="الحالات الصحية" style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🩺${mNeedsCount>0?' '+mNeedsCount:''}</button>`:''}
+              ${canEdit()?`<button onclick="openMemberNeedsById('${m.id}','${f.id}')" title="الحالات الصحية" style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🩺${mNeedsCount>0?' '+mNeedsCount:''}</button>`:''}
             </div>
           </div>
         </div>`
@@ -3525,7 +3550,7 @@ async function openFamily(id) {
     </div>
     ${(canWrite()||canEdit())?`<div style="display:flex;gap:8px;flex-wrap:wrap;">
       ${canEdit()?`<button class="btn btn-primary" onclick="startEditFamily('${f.id}')" style="flex:1;">✏️ تعديل</button>`:''}
-      ${canEdit()?`<button data-needs-family-id="${esc(f.id)}" class="btn-open-family-needs" style="flex:1;background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:8px;padding:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">📋 الاحتياجات</button>`:''}
+      ${canEdit()?`<button onclick="openFamilyNeedsById('${f.id}')" style="flex:1;background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:8px;padding:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">📋 الاحتياجات</button>`:''}
       ${f.phone1 ? `<button class="btn btn-success" onclick="smsSendOne('${f.id}')">📨 SMS</button>` : ''}
       <button class="btn" style="background:var(--surface2);border:1px solid var(--border);" onclick="printFamily('${f.id}')">🖨️ طباعة</button>
       ${canDelete()?`<button class="btn" style="background:transparent;border:1px solid var(--red);color:var(--red);" onclick="deleteFamily('${f.id}')">🗑️ حذف</button>`:''}
