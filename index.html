@@ -2054,12 +2054,13 @@ function checkOnlineStatus() {
   update()
   window.addEventListener('online', async () => {
     setSyncing()
-    showToast('🔄 جارٍ التحديث...')
+    showToast('🔄 جارٍ المزامنة...')
     const controller = new AbortController()
     const offlineAbort = () => controller.abort()
     window.addEventListener('offline', offlineAbort, { once: true })
     try {
       const wt = (p, ms = 15000) => Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))])
+      const queueLen = (await localDB.sync_queue.where('status').anyOf(['pending','error']).toArray()).length
       await wt(processSyncQueue()).catch(e => console.warn('sync:', e.message))
       updatePendingBadge()
       await wt(loadCampsFromServer()).catch(e => console.warn('camps:', e.message))
@@ -2068,7 +2069,7 @@ function checkOnlineStatus() {
         if (activePage === 'page-camps')     loadCampsList()
         if (activePage === 'page-families')  loadFamilies()
         if (activePage === 'page-dashboard') loadDashboard()
-        showToast('✅ تم التحديث')
+        showToast(queueLen > 0 ? `✅ تم مزامنة ${queueLen} عملية` : '✅ تم التحديث')
       }
     } catch(e) {
       console.warn('online handler:', e.message)
@@ -2542,6 +2543,16 @@ function calcAge(dob) {
 async function loadDashboard() {
   try {
     if (!currentMember) return
+    
+    // ═══ تحقق احتياطي: إذا كان هناك عمليات معلقة و نحن متصلون، زامنها ═══
+    if (navigator.onLine && !_syncInProgress) {
+      const pending = await localDB.sync_queue.where('status').anyOf(['pending','error']).toArray()
+      if (pending.length) {
+        console.log(`⚠️ وجدت ${pending.length} عملية معلقة — جارٍ المزامنة...`)
+        processSyncQueue().catch(e => console.warn('auto-sync:', e.message))
+      }
+    }
+    
     // بطاقة المخيم
     loadCampInfoCard()
 
@@ -2701,6 +2712,16 @@ async function loadDashboard() {
 // المبدأ: اعرض المحلي فوراً ← زامن الخلفية صامتاً ← أعد العرض لو في تحديث
 async function loadFamilies() {
   if (!currentMember) return
+  
+  // ═══ تحقق احتياطي: إذا كان هناك عمليات معلقة و نحن متصلون، زامنها ═══
+  if (navigator.onLine && !_syncInProgress) {
+    const pending = await localDB.sync_queue.where('status').anyOf(['pending','error']).toArray()
+    if (pending.length) {
+      console.log(`⚠️ وجدت ${pending.length} عملية معلقة — جارٍ المزامنة...`)
+      processSyncQueue().catch(e => console.warn('auto-sync:', e.message))
+    }
+  }
+  
   // إظهار/إخفاء زر الإضافة حسب الصلاحية
   const btnAdd = document.getElementById('btnAddFamily')
   if (btnAdd) {
@@ -5868,7 +5889,13 @@ async function processSyncQueue() {
     if (done > 0) showToast('✅ تمت مزامنة ' + done + ' عملية')
     updatePendingBadge()
   } catch(e) { console.warn('sync queue:', e.message) }
-  finally { _syncInProgress = false }
+  finally { 
+    _syncInProgress = false
+    // اطبع ملخص المزامنة
+    if (done > 0) {
+      console.log(`✅ تمت مزامنة ${done} عملية بنجاح`)
+    }
+  }
 }
 
 // ══ DB CLEANUP ══
