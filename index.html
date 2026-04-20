@@ -4148,7 +4148,7 @@ function runFormValidation() {
   // أخطاء صارمة تمنع الحفظ
   if (name.split(/\s+/).filter(Boolean).length < 2)
     errors.push('اسم رب الأسرة يجب أن يكون ثنائياً على الأقل')
-  if (idVal && idVal.length > 0 && !luhnCheck(idVal))
+  if (idVal && idVal.length === 9 && !luhnCheck(idVal))
     errors.push('رقم الهوية غير صحيح')
   if (ph && !/^(059|056)\d{7}$/.test(ph))
     errors.push('رقم الجوال يجب أن يبدأ بـ 059 أو 056 ويكون 10 أرقام')
@@ -4159,23 +4159,22 @@ function runFormValidation() {
   if (dob && new Date(dob) > new Date())
     errors.push('تاريخ الميلاد في المستقبل')
 
-  // ═══ تحقق من أفراد الأسرة ═══
+  // ═══ تحقق من أفراد الأسرة (تحذيرات فقط — لا تمنع الحفظ) ═══
   formMembers.forEach((m, idx) => {
     const memName = document.getElementById(`mName_${m.id}`)?.value.trim() || ''
     const memId   = document.getElementById(`mId_${m.id}`)?.value.trim() || ''
     // تحقق صوري لإظهار رسائل الخطأ على الحقول
     vMemberName(m.id); vMemberId(m.id)
-    // أخطاء صارمة
-    if (memName && memName.split(/\s+/).filter(Boolean).length < 2) {
-      errors.push(`الفرد ${idx+1}: الاسم يجب أن يكون ثنائياً على الأقل`)
-    }
-    if (memId && memId.length > 0 && !luhnCheck(memId)) {
+    // هوية خاطئة = خطأ صارم فقط إذا أدخلها المستخدم بشكل كامل (9 أرقام)
+    if (memId && memId.length === 9 && !luhnCheck(memId)) {
       errors.push(`الفرد ${idx+1}${memName?' ('+memName+')':''}: رقم الهوية غير صحيح`)
     }
+    // تاريخ ميلاد مستقبلي = خطأ صارم
     const memDob = buildDob(`mDobY_${m.id}`,`mDobM_${m.id}`,`mDobD_${m.id}`)
     if (memDob && new Date(memDob) > new Date()) {
       errors.push(`الفرد ${idx+1}${memName?' ('+memName+')':''}: تاريخ الميلاد في المستقبل`)
     }
+    // اسم قصير = تحذير فقط — لا يمنع الحفظ (البيانات القديمة قد تكون بكلمة واحدة)
   })
 
   return errors
