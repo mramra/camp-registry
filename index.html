@@ -464,6 +464,7 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <div id="membersContainer"><div style="text-align:center;color:var(--muted);font-size:12px;padding:14px;border:1px dashed var(--border);border-radius:8px;">لا يوجد أفراد مضافون بعد</div></div>
       <button onclick="addMemberRow()" style="width:100%;margin-top:10px;padding:10px;background:rgba(16,185,129,0.1);color:var(--green);border:1px dashed var(--green);border-radius:8px;font-family:'Cairo',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">➕ إضافة فرد</button>
     </div>
+    <div id="saveErrorDisplay" style="display:none;padding:12px;background:rgba(239,68,68,0.1);border:2px solid var(--red);border-radius:10px;color:var(--red);font-size:13px;font-weight:700;margin-bottom:10px;line-height:1.8;white-space:pre-wrap;"></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <button class="btn btn-primary" onclick="saveFamily()" id="btnSaveFamily">💾 حفظ الأسرة</button>
       <button class="btn" style="background:var(--surface2);border:1px solid var(--border);" onclick="showPage('page-families')">إلغاء</button>
@@ -3816,6 +3817,17 @@ async function startEditFamily(id) {
   document.getElementById('topTitle')?.childNodes[0] && (document.getElementById('topTitle').childNodes[0].textContent = '✏️ تعديل أسرة')
   const sub = document.getElementById('topSubtitle'); if(sub) sub.textContent = ''
 
+  // ابنِ محددات التاريخ للرأس (ضرورية للحفظ الصحيح)
+  buildAllDateSelects()
+
+  // تأكد من تحميل المخيمات (لا تنتظر إذا فشلت)
+  if (!allCamps.length) {
+    try {
+      allCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
+      fillCampSelect('familyCamp')
+    } catch(e) { console.warn('load camps:', e.message) }
+  }
+
   editingFamilyId = id
   document.getElementById('addFamilyTitle').textContent = '✏️ تعديل أسرة'
   document.getElementById('btnSaveFamily').textContent  = '💾 حفظ التعديلات'
@@ -3824,9 +3836,15 @@ async function startEditFamily(id) {
   // جلب بيانات الأسرة
   let f, members
   if (navigator.onLine) {
-    const r1 = await db.from('families').select('*').eq('id', id).single()
-    const r2 = await db.from('family_members').select('*').eq('family_id', id)
-    f = r1.data; members = r2.data||[]
+    try {
+      const r1 = await db.from('families').select('*').eq('id', id).single()
+      const r2 = await db.from('family_members').select('*').eq('family_id', id)
+      f = r1.data; members = r2.data||[]
+    } catch(e) {
+      console.warn('fetch from server failed, using local:', e.message)
+      f = await localDB.families.get(id)
+      members = await localDB.family_members.where('family_id').equals(id).toArray()
+    }
   } else {
     f = await localDB.families.get(id)
     members = await localDB.family_members.where('family_id').equals(id).toArray()
@@ -3884,7 +3902,7 @@ async function startEditFamily(id) {
         if (dy) dy.value = y; if (dm) dm.value = mo; if (dd) dd.value = d
       }
     })
-  }, 80)
+  }, 100)
 }
 
 // ══ DUPLICATE DETECTION ══
@@ -4328,19 +4346,28 @@ async function doSaveFamily() {
 }
 
 async function updateFamily(id) {
-  if (!(await canEditSafe())) { showToast('⚠️ لا تملك صلاحية التعديل', true); return }
+  // امسح رسائل الأخطاء السابقة
+  const errEl = document.getElementById('saveErrorDisplay')
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = '' }
+
+  const showErr = (msg) => {
+    if (errEl) { errEl.textContent = '❌ ' + msg; errEl.style.display = 'block'; errEl.scrollIntoView({behavior:'smooth', block:'center'}) }
+    showToast('❌ ' + msg, true)
+  }
+
+  if (!(await canEditSafe())) { showErr('لا تملك صلاحية التعديل'); return }
   const headName = document.getElementById('headName').value.trim()
-  if (!headName) { showToast('يرجى إدخال اسم رب الأسرة', true); return }
+  if (!headName) { showErr('يرجى إدخال اسم رب الأسرة'); return }
 
   // فحص سعة المخيم عند التعديل
   const campId = document.getElementById('familyCamp').value
   if (campId && !(await checkCampCapacity(campId, id))) {
-    showToast('⚠️ المخيم ممتلئ', true); return
+    showErr('المخيم ممتلئ'); return
   }
 
   // ضوابط الحقول
   const errs = runFormValidation()
-  if (errs.length) { showToast('❌ ' + errs[0], true); return }
+  if (errs.length) { showErr(errs.join('\n• ')); return }
 
   // عند التعديل — نفحص التكرار برقم الهوية والجوال فقط (بدون اسم مشابه)
   {
@@ -4572,7 +4599,16 @@ async function doUpdateFamily(id) {
     showPage('page-families')
     loadFamilies()
     setTimeout(() => openFamily(id), 400)
-  } catch(err) { showToast('خطأ: '+esc(err.message), true) }
+  } catch(err) {
+    console.error('doUpdateFamily error:', err)
+    const errEl = document.getElementById('saveErrorDisplay')
+    if (errEl) {
+      errEl.textContent = '❌ خطأ في الحفظ: ' + (err.message || err.code || 'غير معروف')
+      errEl.style.display = 'block'
+      errEl.scrollIntoView({behavior:'smooth', block:'center'})
+    }
+    showToast('خطأ: '+esc(err.message||''), true)
+  }
   finally { btn.disabled = false }
 }
 
