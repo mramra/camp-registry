@@ -3811,16 +3811,24 @@ async function deleteFamily(id) {
 async function startEditFamily(id) {
   closeDrawer()
 
-  // انتقل للصفحة مباشرة بدون clearFamilyForm (حتى لا تُفرغ formMembers)
+  // 1. انتقل للصفحة
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
   document.getElementById('page-add-family')?.classList.add('active')
-  document.getElementById('topTitle')?.childNodes[0] && (document.getElementById('topTitle').childNodes[0].textContent = '✏️ تعديل أسرة')
-  const sub = document.getElementById('topSubtitle'); if(sub) sub.textContent = ''
 
-  // ابنِ محددات التاريخ للرأس (ضرورية للحفظ الصحيح)
+  // 2. عطّل الزر أثناء التحميل (حتى لا يُحفظ قبل أن تُعبَّأ البيانات!)
+  const saveBtn = document.getElementById('btnSaveFamily')
+  saveBtn.disabled = true
+  saveBtn.textContent = '⏳ جارٍ التحميل...'
+
+  // 3. امسح النموذج بالكامل
+  clearFamilyForm()
   buildAllDateSelects()
 
-  // تأكد من تحميل المخيمات (لا تنتظر إذا فشلت)
+  // 4. امسح رسالة الخطأ السابقة
+  const errEl = document.getElementById('saveErrorDisplay')
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = '' }
+
+  // 5. تأكد من تحميل المخيمات
   if (!allCamps.length) {
     try {
       allCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
@@ -3828,59 +3836,61 @@ async function startEditFamily(id) {
     } catch(e) { console.warn('load camps:', e.message) }
   }
 
-  editingFamilyId = id
-  document.getElementById('addFamilyTitle').textContent = '✏️ تعديل أسرة'
-  document.getElementById('btnSaveFamily').textContent  = '💾 حفظ التعديلات'
-  document.getElementById('btnSaveFamily').onclick      = () => updateFamily(id)
-
-  // جلب بيانات الأسرة
+  // 6. جلب بيانات الأسرة
   let f, members
-  if (navigator.onLine) {
-    try {
+  try {
+    if (navigator.onLine) {
       const r1 = await db.from('families').select('*').eq('id', id).single()
       const r2 = await db.from('family_members').select('*').eq('family_id', id)
       f = r1.data; members = r2.data||[]
-    } catch(e) {
-      console.warn('fetch from server failed, using local:', e.message)
+    } else {
       f = await localDB.families.get(id)
       members = await localDB.family_members.where('family_id').equals(id).toArray()
     }
-  } else {
+  } catch(e) {
+    console.warn('fetch failed, using localDB:', e.message)
     f = await localDB.families.get(id)
     members = await localDB.family_members.where('family_id').equals(id).toArray()
   }
-  if (!f) { showToast('لم يتم العثور على الأسرة', true); return }
+
+  if (!f) {
+    saveBtn.disabled = false
+    saveBtn.textContent = '💾 حفظ الأسرة'
+    showToast('لم يتم العثور على الأسرة', true)
+    return
+  }
+
   members = filterOutHead(f, members||[])
 
-  // عبّئ formMembers قبل renderMemberForms
+  // 7. عبّئ formMembers ورندِر الأفراد
   formMembers = members.map(m => ({ ...m, _dbId: m.id }))
   renderMemberForms()
 
-  // عبّئ حقول رب الأسرة بعد ضمان وجود DOM
-  setTimeout(() => {
-    document.getElementById('headName').value    = f.head_name || ''
-    document.getElementById('headId').value      = f.head_id || ''
-    document.getElementById('phone1').value      = f.phone1 || ''
-    document.getElementById('phone2').value      = f.phone2 || ''
-    document.getElementById('familyNotes').value = f.notes || ''
-    document.getElementById('headGender').value  = f.head_gender || ''
-    updateHeadMaritalOptions()
-    const hmEl = document.getElementById('headMarital'); if(hmEl) hmEl.value = f.head_marital || ''
-    const t1 = document.getElementById('familyTent'); if(t1) t1.value = f.tent || ''
-    const t2 = document.getElementById('familyTent2'); if(t2) t2.value = f.tent2 || ''
-    const oa = document.getElementById('familyOriginalAddress'); if(oa) oa.value = f.original_address || ''
-    const ad = document.getElementById('familyAddressDetails'); if(ad) ad.value = f.address_details || ''
-    setTagsToForm(f.tags||[])
-    document.getElementById('familyStatus').value = f.status || 'ok'
-    document.getElementById('familyCamp').value  = f.camp_id || ''
-    if (f.head_dob) {
-      const [y,mo,d] = f.head_dob.split('-')
-      const dy = document.getElementById('headDobY'); const dm = document.getElementById('headDobM'); const dd = document.getElementById('headDobD')
-      if (dy) dy.value = y; if (dm) dm.value = mo; if (dd) dd.value = d
-    }
+  // 8. عبّئ حقول رب الأسرة
+  document.getElementById('headName').value    = f.head_name || ''
+  document.getElementById('headId').value      = f.head_id || ''
+  document.getElementById('phone1').value      = f.phone1 || ''
+  document.getElementById('phone2').value      = f.phone2 || ''
+  document.getElementById('familyNotes').value = f.notes || ''
+  document.getElementById('headGender').value  = f.head_gender || ''
+  updateHeadMaritalOptions()
+  const hmEl = document.getElementById('headMarital'); if(hmEl) hmEl.value = f.head_marital || ''
+  const t1 = document.getElementById('familyTent'); if(t1) t1.value = f.tent || ''
+  const t2 = document.getElementById('familyTent2'); if(t2) t2.value = f.tent2 || ''
+  const oa = document.getElementById('familyOriginalAddress'); if(oa) oa.value = f.original_address || ''
+  const ad = document.getElementById('familyAddressDetails'); if(ad) ad.value = f.address_details || ''
+  setTagsToForm(f.tags||[])
+  document.getElementById('familyStatus').value = f.status || 'ok'
+  document.getElementById('familyCamp').value  = f.camp_id || ''
+  if (f.head_dob) {
+    const [y,mo,d] = f.head_dob.split('-')
+    const dy = document.getElementById('headDobY'); const dm = document.getElementById('headDobM'); const dd = document.getElementById('headDobD')
+    if (dy) dy.value = y; if (dm) dm.value = mo; if (dd) dd.value = d
+  }
 
-    // عبّئ حقول الأفراد
-    formMembers.forEach((m, i) => {
+  // 9. عبّئ حقول الأفراد (بعد setTimeout صغير لضمان وجود DOM)
+  setTimeout(() => {
+    formMembers.forEach(m => {
       const n  = document.getElementById(`mName_${m.id}`)
       const ni = document.getElementById(`mId_${m.id}`)
       const g  = document.getElementById(`mGender_${m.id}`)
@@ -3902,7 +3912,14 @@ async function startEditFamily(id) {
         if (dy) dy.value = y; if (dm) dm.value = mo; if (dd) dd.value = d
       }
     })
-  }, 100)
+
+    // 10. الآن فعّل الزر (البيانات محمّلة بالكامل!)
+    editingFamilyId = id
+    document.getElementById('addFamilyTitle').textContent = '✏️ تعديل أسرة'
+    saveBtn.textContent = '💾 حفظ التعديلات'
+    saveBtn.onclick = () => updateFamily(id)
+    saveBtn.disabled = false
+  }, 50)
 }
 
 // ══ DUPLICATE DETECTION ══
