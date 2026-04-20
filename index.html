@@ -3546,9 +3546,9 @@ async function openFamily(id) {
         const hasId  = !!m.national_id
         const hasDob = !!m.dob
         const nameParts = (m.name||'').trim().split(/\s+/).filter(Boolean)
-        const nameOk = nameParts.length >= 4
+        const nameOk = nameParts.length >= 2
         const mMissing = []
-        if (!nameOk && nameParts.length) mMissing.push('✍️ اسم غير رباعي')
+        if (!nameOk && nameParts.length) mMissing.push('✍️ اسم غير ثنائي')
         if (!hasId)  mMissing.push('🪪 هوية ناقصة')
         if (!hasDob) mMissing.push('🎂 ميلاد ناقص')
         // Needs badges
@@ -4545,18 +4545,24 @@ async function doUpdateFamily(id) {
       clearFamilyForm()
       document.getElementById('btnSaveFamily').textContent = '💾 حفظ الأسرة'
       document.getElementById('btnSaveFamily').onclick = saveFamily
-      showPage('page-families'); loadDashboard()
+      showPage('page-families')
+      loadFamilies()
+      setTimeout(() => openFamily(id), 400)
       return
     }
 
     logAction('تعديل أسرة', id, updateData.head_name)
     recordFamilyHistory('update', id, oldData, updateData)
     clearSyncing()
-    showToast(`✅ تم حفظ التعديلات${toDelete.length?` — حُذف ${toDelete.length} فرد`:''}${newInserts.length?` — أُضيف ${newInserts.length} فرد`:''}`)
+    const savedMsg = `✅ تم حفظ التعديلات${toDelete.length?` — حُذف ${toDelete.length} فرد`:''}${newInserts.length?` — أُضيف ${newInserts.length} فرد`:''}`
+    showToast(savedMsg)
     clearFamilyForm()
     document.getElementById('btnSaveFamily').textContent = '💾 حفظ الأسرة'
     document.getElementById('btnSaveFamily').onclick = saveFamily
-    showPage('page-families'); loadDashboard()
+    // العودة لقائمة الأسر وفتح الـ drawer بالبيانات المحدّثة مباشرة
+    showPage('page-families')
+    loadFamilies()
+    setTimeout(() => openFamily(id), 400)
   } catch(err) { showToast('خطأ: '+esc(err.message), true) }
   finally { btn.disabled = false }
 }
@@ -5577,8 +5583,8 @@ function checkFamilyIssues(f, members = []) {
   // ── رب الأسرة ──
   if (!f.phone1)
     issues.push('📵 لا يوجد جوال: ' + hName)
-  if ((f.head_name||'').trim().split(/\s+/).filter(Boolean).length < 4)
-    issues.push('✍️ اسم غير رباعي: ' + hName)
+  if ((f.head_name||'').trim().split(/\s+/).filter(Boolean).length < 2)
+    issues.push('✍️ اسم غير ثنائي: ' + hName)
   if (!f.head_id)
     issues.push('🪪 هوية ناقصة: ' + hName)
   if (!f.head_dob)
@@ -5593,8 +5599,8 @@ function checkFamilyIssues(f, members = []) {
   if (members && members.length) {
     members.forEach((m, i) => {
       const mName = (m.name||'').trim() || ('فرد ' + (i+1))
-      if ((m.name||'').trim().split(/\s+/).filter(Boolean).length < 4 && (m.name||'').trim())
-        issues.push('✍️ اسم غير رباعي: ' + mName)
+      if ((m.name||'').trim().split(/\s+/).filter(Boolean).length < 2 && (m.name||'').trim())
+        issues.push('✍️ اسم غير ثنائي: ' + mName)
       if (!m.national_id)
         issues.push('🪪 هوية ناقصة: ' + mName)
       if (!m.dob)
