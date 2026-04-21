@@ -1468,6 +1468,27 @@ async function safeBulkPut(table, records) {
   if (safe.length) await table.bulkPut(safe)
 }
 
+// استبدال آمن — يحذف السجلات التي ليست في الخادم ولا في sync_queue فقط
+// لا يستخدم clear() لأنها تمسح التعديلات المحلية غير المزامنة
+async function safeReplaceAll(table, serverRecords, filterFn = null) {
+  const pendingIds = await getPendingRecordIds()
+  const serverIds = new Set(serverRecords.map(r => r.id))
+  
+  // اقرأ كل السجلات المحلية الحالية
+  let localRecords = await table.toArray()
+  if (filterFn) localRecords = localRecords.filter(filterFn)
+  
+  // احذف فقط: السجلات المحلية التي ليست في الخادم وليست معلقة
+  const toDelete = localRecords
+    .filter(r => !serverIds.has(r.id) && !pendingIds.has(r.id))
+    .map(r => r.id)
+  if (toDelete.length) await table.bulkDelete(toDelete)
+  
+  // أضف السجلات من الخادم — باستثناء المعلقة محلياً
+  const safe = serverRecords.filter(r => !pendingIds.has(r.id))
+  if (safe.length) await table.bulkPut(safe)
+}
+
 let editingFamilyId = null
 
 // ══ XSS PROTECTION ══
@@ -1580,7 +1601,7 @@ async function init() {
           const { data: mems } = await db.from('family_members')
             .select('*')
             .in('family_id', fams.map(f => f.id)).limit(2000)
-          if (mems?.length) { await localDB.family_members.clear(); await safeBulkPut(localDB.family_members, mems) }
+          if (mems?.length) { await safeReplaceAll(localDB.family_members, mems, r => fams.some(f => f.id === r.family_id)) }
         } else {
           if (currentMember.camp_id) {
             const oldFams = await localDB.families.where('camp_id').equals(currentMember.camp_id).toArray()
@@ -1646,8 +1667,7 @@ async function loadMember() {
           .select('*')
           .in('family_id', fams.map(f => f.id)).limit(2000)
         if (mems?.length) {
-          await localDB.family_members.clear()
-          await safeBulkPut(localDB.family_members, mems)
+          await safeReplaceAll(localDB.family_members, mems, r => fams.some(f => f.id === r.family_id))
         }
       }
     } catch(e) {}
@@ -2603,7 +2623,7 @@ async function loadDashboard() {
           const { data: mems } = await db.from('family_members')
             .select('*')
             .in('family_id', srv.map(f => f.id)).limit(2000)
-          if (mems?.length) { await localDB.family_members.clear(); await safeBulkPut(localDB.family_members, mems); members = mems }
+          if (mems?.length) { await safeReplaceAll(localDB.family_members, mems, r => srv.some(f => f.id === r.family_id)); members = mems }
         }
       } catch(e) { console.warn('dashboard sync:', e.message) }
     }
@@ -2931,8 +2951,7 @@ async function loadFamilies() {
       .limit(2000)
     if (mems?.length) {
       try {
-        await localDB.family_members.clear()
-        await safeBulkPut(localDB.family_members, mems)
+        await safeReplaceAll(localDB.family_members, mems, r => srvFamIds.includes(r.family_id))
       } catch(e) {}
     }
 
@@ -3547,9 +3566,9 @@ async function openFamily(id) {
         const hasId  = !!m.national_id
         const hasDob = !!m.dob
         const nameParts = (m.name||'').trim().split(/\s+/).filter(Boolean)
-        const nameOk = nameParts.length >= 2
+        const nameOk = nameParts.length >= 4
         const mMissing = []
-        if (!nameOk && nameParts.length) mMissing.push('✍️ اسم غير ثنائي')
+        if (!nameOk && nameParts.length) mMissing.push('✍️ اسم غير رباعي')
         if (!hasId)  mMissing.push('🪪 هوية ناقصة')
         if (!hasDob) mMissing.push('🎂 ميلاد ناقص')
         // Needs badges
@@ -4189,36 +4208,57 @@ function runFormValidation() {
   const idVal  = document.getElementById('headId')?.value.trim()   || ''
   const ph     = document.getElementById('phone1')?.value.trim()   || ''
   const errors = []
-  // أخطاء صارمة تمنع الحفظ
+
+  // ═══ أخطاء صارمة تمنع الحفظ ═══
+  // الاسم ثنائي على الأقل (تحذير للرباعي فقط في الواجهة)
   if (name.split(/\s+/).filter(Boolean).length < 2)
     errors.push('اسم رب الأسرة يجب أن يكون ثنائياً على الأقل')
-  if (idVal && idVal.length === 9 && !luhnCheck(idVal))
-    errors.push('رقم الهوية غير صحيح')
+  
+  // رقم الهوية: إلزامي أن يكون 9 أرقام + Luhn صحيح (إذا أُدخل)
+  if (idVal) {
+    if (!/^\d+$/.test(idVal))
+      errors.push('رقم الهوية يجب أن يحتوي أرقاماً فقط')
+    else if (idVal.length !== 9)
+      errors.push('رقم الهوية يجب أن يكون 9 أرقام بالضبط')
+    else if (!luhnCheck(idVal))
+      errors.push('رقم الهوية غير صحيح (فحص Luhn فشل)')
+  }
+  
+  // رقم الجوال
   if (ph && !/^(059|056)\d{7}$/.test(ph))
     errors.push('رقم الجوال يجب أن يبدأ بـ 059 أو 056 ويكون 10 أرقام')
   const ph2 = document.getElementById('phone2')?.value.trim() || ''
   if (ph2 && !/^(059|056)\d{7}$/.test(ph2))
     errors.push('الرقم البديل يجب أن يبدأ بـ 059 أو 056 ويكون 10 أرقام')
+  
+  // تاريخ الميلاد
   const dob = buildDob('headDobY','headDobM','headDobD')
   if (dob && new Date(dob) > new Date())
     errors.push('تاريخ الميلاد في المستقبل')
 
-  // ═══ تحقق من أفراد الأسرة (تحذيرات فقط — لا تمنع الحفظ) ═══
+  // ═══ تحقق من أفراد الأسرة ═══
   formMembers.forEach((m, idx) => {
     const memName = document.getElementById(`mName_${m.id}`)?.value.trim() || ''
     const memId   = document.getElementById(`mId_${m.id}`)?.value.trim() || ''
     // تحقق صوري لإظهار رسائل الخطأ على الحقول
     vMemberName(m.id); vMemberId(m.id)
-    // هوية خاطئة = خطأ صارم فقط إذا أدخلها المستخدم بشكل كامل (9 أرقام)
-    if (memId && memId.length === 9 && !luhnCheck(memId)) {
-      errors.push(`الفرد ${idx+1}${memName?' ('+memName+')':''}: رقم الهوية غير صحيح`)
+    
+    // هوية الفرد — إلزامية إذا أُدخلت (9 أرقام + Luhn)
+    if (memId) {
+      if (!/^\d+$/.test(memId))
+        errors.push(`الفرد ${idx+1}${memName?' ('+memName+')':''}: الهوية يجب أن تحتوي أرقاماً فقط`)
+      else if (memId.length !== 9)
+        errors.push(`الفرد ${idx+1}${memName?' ('+memName+')':''}: الهوية يجب أن تكون 9 أرقام`)
+      else if (!luhnCheck(memId))
+        errors.push(`الفرد ${idx+1}${memName?' ('+memName+')':''}: رقم الهوية غير صحيح`)
     }
-    // تاريخ ميلاد مستقبلي = خطأ صارم
+    
+    // تاريخ ميلاد مستقبلي
     const memDob = buildDob(`mDobY_${m.id}`,`mDobM_${m.id}`,`mDobD_${m.id}`)
     if (memDob && new Date(memDob) > new Date()) {
       errors.push(`الفرد ${idx+1}${memName?' ('+memName+')':''}: تاريخ الميلاد في المستقبل`)
     }
-    // اسم قصير = تحذير فقط — لا يمنع الحفظ (البيانات القديمة قد تكون بكلمة واحدة)
+    // ملاحظة: الاسم الرباعي/الثلاثي تحذير فقط — لا يمنع الحفظ
   })
 
   return errors
@@ -4778,18 +4818,37 @@ function renderMemberForms() {
         <button onclick="removeMember(${m.id})" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">حذف</button>
       </div>
       <div class="form-grid-2">
-        <div class="form-group" id="fg-mName_${m.id}"><label>الاسم *</label><input type="text" id="mName_${m.id}" placeholder="الاسم الرباعي" oninput="vMemberName('${m.id}')"><div class="v-msg" id="vm-mName_${m.id}"></div></div>
-        <div class="form-group"><label>الجنس</label><select id="mGender_${m.id}" onchange="updateMemberRelationOptions('${m.id}')"><option value="">اختر</option><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option></select></div>
+        <div class="form-group" id="fg-mName_${m.id}"><label>الاسم *</label><input type="text" id="mName_${m.id}" placeholder="الاسم الرباعي" value="${esc(m.name||'')}" oninput="vMemberName('${m.id}')"><div class="v-msg" id="vm-mName_${m.id}"></div></div>
+        <div class="form-group"><label>الجنس</label><select id="mGender_${m.id}" onchange="updateMemberRelationOptions('${m.id}')"><option value="">اختر</option><option value="ذكر" ${m.gender==='ذكر'?'selected':''}>ذكر</option><option value="أنثى" ${m.gender==='أنثى'?'selected':''}>أنثى</option></select></div>
         <div class="form-group"><label>صلة القرابة</label><select id="mRelation_${m.id}"><option value="">اختر الجنس أولاً</option></select></div>
-        <div class="form-group" id="fg-mId_${m.id}"><label>رقم الهوية</label><input type="text" id="mId_${m.id}" placeholder="9 أرقام" dir="ltr" maxlength="9" inputmode="numeric" oninput="vMemberId('${m.id}')"><div class="v-msg" id="vm-mId_${m.id}"></div></div>
+        <div class="form-group" id="fg-mId_${m.id}"><label>رقم الهوية</label><input type="text" id="mId_${m.id}" placeholder="9 أرقام" dir="ltr" maxlength="9" inputmode="numeric" value="${esc(m.national_id||'')}" oninput="vMemberId('${m.id}')"><div class="v-msg" id="vm-mId_${m.id}"></div></div>
       </div>
       <div class="form-group"><label>تاريخ الميلاد</label><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;" id="mDobContainer_${m.id}"></div></div>
       <div class="form-group"><label>الحالة الصحية</label><select id="mHealth_${m.id}" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;width:100%;"><option value="سليم">✅ سليم</option><option value="مريض">🤒 مريض</option><option value="معاق">♿ معاق</option><option value="مزمن">💊 مرض مزمن</option></select></div>
     </div>`).join('')
   formMembers.forEach(m => {
     buildDateSelect(`mDobD_${m.id}`,`mDobM_${m.id}`,`mDobY_${m.id}`,`mDobContainer_${m.id}`,'var(--bg)')
-    // عبّئ قائمة القرابة حسب الجنس الحالي (إن وُجد)
+    // عبّئ تاريخ الميلاد إذا كان موجوداً
+    if (m.dob) {
+      const parts = m.dob.split('-')
+      if (parts.length === 3) {
+        const yEl = document.getElementById(`mDobY_${m.id}`)
+        const mEl = document.getElementById(`mDobM_${m.id}`)
+        const dEl = document.getElementById(`mDobD_${m.id}`)
+        if (yEl) yEl.value = parts[0]
+        if (mEl) mEl.value = parts[1]
+        if (dEl) dEl.value = parts[2]
+      }
+    }
+    // عبّئ الحالة الصحية
+    const hEl = document.getElementById(`mHealth_${m.id}`)
+    if (hEl && m.health) hEl.value = m.health
+    // عبّئ قائمة القرابة حسب الجنس الحالي ثم اختر القيمة المحفوظة
     updateMemberRelationOptions(m.id)
+    if (m.relation) {
+      const rEl = document.getElementById(`mRelation_${m.id}`)
+      if (rEl) rEl.value = m.relation
+    }
   })
 }
 
@@ -5645,8 +5704,8 @@ function checkFamilyIssues(f, members = []) {
   // ── رب الأسرة ──
   if (!f.phone1)
     issues.push('📵 لا يوجد جوال: ' + hName)
-  if ((f.head_name||'').trim().split(/\s+/).filter(Boolean).length < 2)
-    issues.push('✍️ اسم غير ثنائي: ' + hName)
+  if ((f.head_name||'').trim().split(/\s+/).filter(Boolean).length < 4)
+    issues.push('✍️ اسم غير رباعي: ' + hName)
   if (!f.head_id)
     issues.push('🪪 هوية ناقصة: ' + hName)
   if (!f.head_dob)
@@ -5661,8 +5720,8 @@ function checkFamilyIssues(f, members = []) {
   if (members && members.length) {
     members.forEach((m, i) => {
       const mName = (m.name||'').trim() || ('فرد ' + (i+1))
-      if ((m.name||'').trim().split(/\s+/).filter(Boolean).length < 2 && (m.name||'').trim())
-        issues.push('✍️ اسم غير ثنائي: ' + mName)
+      if ((m.name||'').trim().split(/\s+/).filter(Boolean).length < 4 && (m.name||'').trim())
+        issues.push('✍️ اسم غير رباعي: ' + mName)
       if (!m.national_id)
         issues.push('🪪 هوية ناقصة: ' + mName)
       if (!m.dob)
