@@ -3437,7 +3437,18 @@ async function openFamily(id) {
   if (navigator.onLine) {
     const r1 = await db.from('families').select('*').eq('id', id).single()
     const r2 = await db.from('family_members').select('*').eq('family_id', id)
-    f = r1.data; members = r2.data
+    f = r1.data
+    if (r2.error) {
+      console.error('[openFamily] members fetch error:', r2.error)
+      members = await localDB.family_members.where('family_id').equals(id).toArray()
+    } else {
+      members = r2.data || []
+      // إذا السيرفر رجع فارغاً ولكن عندنا بيانات محلية — استخدم المحلية
+      if (!members.length) {
+        const localMems = await localDB.family_members.where('family_id').equals(id).toArray()
+        if (localMems.length) members = localMems
+      }
+    }
   } else {
     f = await localDB.families.get(id)
     members = await localDB.family_members.where('family_id').equals(id).toArray()
@@ -3833,7 +3844,13 @@ async function startEditFamily(id) {
     if (navigator.onLine) {
       const r1 = await db.from('families').select('*').eq('id', id).single()
       const r2 = await db.from('family_members').select('*').eq('family_id', id)
-      f = r1.data; members = r2.data||[]
+      f = r1.data
+      members = r2.data||[]
+      // fallback للمحلي لو السيرفر رجع فارغاً
+      if (!members.length) {
+        const localMems = await localDB.family_members.where('family_id').equals(id).toArray()
+        if (localMems.length) members = localMems
+      }
     } else {
       f = await localDB.families.get(id)
       members = await localDB.family_members.where('family_id').equals(id).toArray()
