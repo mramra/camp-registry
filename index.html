@@ -3878,38 +3878,12 @@ async function startEditFamily(id) {
     if (dy) dy.value = y; if (dm) dm.value = mo; if (dd) dd.value = d
   }
 
-  // 9. عبّئ حقول الأفراد (بعد setTimeout صغير لضمان وجود DOM)
-  setTimeout(() => {
-    formMembers.forEach(m => {
-      const n  = document.getElementById(`mName_${m.id}`)
-      const ni = document.getElementById(`mId_${m.id}`)
-      const g  = document.getElementById(`mGender_${m.id}`)
-      const mh = document.getElementById(`mHealth_${m.id}`)
-      if (n)  n.value  = m.name        || ''
-      if (ni) ni.value = m.national_id || ''
-      if (g) {
-        g.value = m.gender || ''
-        updateMemberRelationOptions(m.id)
-      }
-      const r = document.getElementById(`mRelation_${m.id}`)
-      if (r && m.relation) r.value = m.relation
-      if (mh && m.health) mh.value = m.health
-      if (m.dob) {
-        const [y,mo,d] = m.dob.split('-')
-        const dy = document.getElementById(`mDobY_${m.id}`)
-        const dm = document.getElementById(`mDobM_${m.id}`)
-        const dd = document.getElementById(`mDobD_${m.id}`)
-        if (dy) dy.value = y; if (dm) dm.value = mo; if (dd) dd.value = d
-      }
-    })
-
-    // 10. الآن فعّل الزر (البيانات محمّلة بالكامل!)
-    editingFamilyId = id
-    document.getElementById('addFamilyTitle').textContent = '✏️ تعديل أسرة'
-    saveBtn.textContent = '💾 حفظ التعديلات'
-    saveBtn.onclick = () => updateFamily(id)
-    saveBtn.disabled = false
-  }, 50)
+  // 9. فعّل الزر (البيانات محمّلة في renderMemberForms مباشرة)
+  editingFamilyId = id
+  document.getElementById('addFamilyTitle').textContent = '✏️ تعديل أسرة'
+  saveBtn.textContent = '💾 حفظ التعديلات'
+  saveBtn.onclick = () => updateFamily(id)
+  saveBtn.disabled = false
 }
 
 // ══ DUPLICATE DETECTION ══
@@ -4326,6 +4300,7 @@ async function doSaveFamily() {
     const headDob  = buildDob('headDobY','headDobM','headDobD')
     const familyData = {
       org_id:      ORG_ID, camp_id: campId,
+      status:      'ok',
       head_name:   headName,
       head_id:     document.getElementById('headId').value.trim()||null,
       head_dob:    headDob,
@@ -4787,18 +4762,34 @@ function renderMemberForms() {
         <button onclick="removeMember(${m.id})" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">حذف</button>
       </div>
       <div class="form-grid-2">
-        <div class="form-group" id="fg-mName_${m.id}"><label>الاسم *</label><input type="text" id="mName_${m.id}" placeholder="الاسم الرباعي" oninput="vMemberName('${m.id}')"><div class="v-msg" id="vm-mName_${m.id}"></div></div>
-        <div class="form-group"><label>الجنس</label><select id="mGender_${m.id}" onchange="updateMemberRelationOptions('${m.id}')"><option value="">اختر</option><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option></select></div>
+        <div class="form-group" id="fg-mName_${m.id}"><label>الاسم *</label><input type="text" id="mName_${m.id}" placeholder="الاسم الرباعي" value="${esc(m.name||'')}" oninput="vMemberName('${m.id}')"><div class="v-msg" id="vm-mName_${m.id}"></div></div>
+        <div class="form-group"><label>الجنس</label><select id="mGender_${m.id}" onchange="updateMemberRelationOptions('${m.id}')"><option value="">اختر</option><option value="ذكر" ${m.gender==='ذكر'?'selected':''}>ذكر</option><option value="أنثى" ${m.gender==='أنثى'?'selected':''}>أنثى</option></select></div>
         <div class="form-group"><label>صلة القرابة</label><select id="mRelation_${m.id}"><option value="">اختر الجنس أولاً</option></select></div>
-        <div class="form-group" id="fg-mId_${m.id}"><label>رقم الهوية</label><input type="text" id="mId_${m.id}" placeholder="9 أرقام" dir="ltr" maxlength="9" inputmode="numeric" oninput="vMemberId('${m.id}')"><div class="v-msg" id="vm-mId_${m.id}"></div></div>
+        <div class="form-group" id="fg-mId_${m.id}"><label>رقم الهوية</label><input type="text" id="mId_${m.id}" placeholder="9 أرقام" dir="ltr" maxlength="9" inputmode="numeric" value="${esc(m.national_id||'')}" oninput="vMemberId('${m.id}')"><div class="v-msg" id="vm-mId_${m.id}"></div></div>
       </div>
       <div class="form-group"><label>تاريخ الميلاد</label><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;" id="mDobContainer_${m.id}"></div></div>
-      <div class="form-group"><label>الحالة الصحية</label><select id="mHealth_${m.id}" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;width:100%;"><option value="سليم">✅ سليم</option><option value="مريض">🤒 مريض</option><option value="معاق">♿ معاق</option><option value="مزمن">💊 مرض مزمن</option></select></div>
+      <div class="form-group"><label>الحالة الصحية</label><select id="mHealth_${m.id}" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;width:100%;"><option value="سليم" ${(m.health||'سليم')==='سليم'?'selected':''}>✅ سليم</option><option value="مريض" ${m.health==='مريض'?'selected':''}>🤒 مريض</option><option value="معاق" ${m.health==='معاق'?'selected':''}>♿ معاق</option><option value="مزمن" ${m.health==='مزمن'?'selected':''}>💊 مرض مزمن</option></select></div>
     </div>`).join('')
   formMembers.forEach(m => {
     buildDateSelect(`mDobD_${m.id}`,`mDobM_${m.id}`,`mDobY_${m.id}`,`mDobContainer_${m.id}`,'var(--bg)')
-    // عبّئ قائمة القرابة حسب الجنس الحالي (إن وُجد)
+    // عبّئ تاريخ الميلاد إذا كان موجوداً
+    if (m.dob) {
+      const parts = m.dob.split('-')
+      if (parts.length === 3) {
+        const yEl = document.getElementById(`mDobY_${m.id}`)
+        const mEl = document.getElementById(`mDobM_${m.id}`)
+        const dEl = document.getElementById(`mDobD_${m.id}`)
+        if (yEl) yEl.value = parts[0]
+        if (mEl) mEl.value = parts[1]
+        if (dEl) dEl.value = parts[2]
+      }
+    }
+    // عبّئ قائمة القرابة حسب الجنس ثم اختر القيمة المحفوظة
     updateMemberRelationOptions(m.id)
+    if (m.relation) {
+      const rEl = document.getElementById(`mRelation_${m.id}`)
+      if (rEl) rEl.value = m.relation
+    }
   })
 }
 
@@ -6469,6 +6460,7 @@ async function doImportExcel() {
     const mRaw = maritalCol ? String(row[maritalCol]||'').trim() : ''
     const famData = {
       org_id: ORG_ID, camp_id: campId,
+      status: 'ok',
       head_name:    name,
       head_id:      nid||null,
       phone1:       validPhone,
@@ -6636,6 +6628,7 @@ async function doOldImport() {
       if (!campId) continue
       const { data: newF, error } = await db.from('families').insert({
         org_id: ORG_ID, camp_id: campId,
+        status: 'ok',
         head_name: f.headName, head_id: f.headId,
         head_dob: f.headDob||null, head_gender: f.headGender||null,
         head_marital: marital, phone1: f.phone1||null,
