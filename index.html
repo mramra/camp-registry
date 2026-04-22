@@ -4713,8 +4713,19 @@ function getTagsHtml(tags) {
 }
 
 // ══ MEMBERS FORM ══
-function addMemberRow() { formMembers.push({ id: Date.now() }); renderMemberForms() }
-function removeMember(id) { formMembers = formMembers.filter(m => m.id !== id); renderMemberForms() }
+function syncFormMembersFromDOM() {
+  formMembers = formMembers.map(m => ({
+    ...m,
+    name:        document.getElementById(`mName_${m.id}`)?.value.trim()      || m.name        || '',
+    national_id: document.getElementById(`mId_${m.id}`)?.value.trim()        || m.national_id  || null,
+    gender:      document.getElementById(`mGender_${m.id}`)?.value           || m.gender       || null,
+    relation:    document.getElementById(`mRelation_${m.id}`)?.value         || m.relation     || null,
+    health:      document.getElementById(`mHealth_${m.id}`)?.value           || m.health       || 'سليم',
+    dob:         buildDob(`mDobY_${m.id}`,`mDobM_${m.id}`,`mDobD_${m.id}`) || m.dob          || null,
+  }))
+}
+function addMemberRow() { syncFormMembersFromDOM(); formMembers.push({ id: Date.now() }); renderMemberForms() }
+function removeMember(id) { syncFormMembersFromDOM(); formMembers = formMembers.filter(m => m.id !== id); renderMemberForms() }
 
 // ══ قوائم ذكية حسب الجنس ══
 const MARITAL_BY_GENDER = {
