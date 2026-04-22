@@ -4631,14 +4631,25 @@ async function saveMembers(familyId) {
     if (headName && m.name.trim() === headName) return false
     return true
   })
+  if (!members.length) return
+
   // حفظ محلي دائماً
-  if (members.length) {
-    try { await localDB.family_members.bulkPut(members) } catch(e) {}
-  }
+  try { await localDB.family_members.bulkPut(members) } catch(e) {}
+
   // حفظ على السيرفر إذا متصل وID ليس مؤقتاً
   if (navigator.onLine && !familyId.toString().startsWith('local_')) {
     const serverMembers = members.map(({ id: _id, ...m }) => m)
-    if (serverMembers.length) await db.from('family_members').insert(serverMembers)
+    const { data: inserted, error: insErr } = await db.from('family_members').insert(serverMembers).select('id')
+    if (insErr) {
+      console.error('[saveMembers] server insert error:', insErr)
+      showToast('⚠️ حُفظ الفرد محلياً فقط — ' + (insErr.message||insErr.code), true)
+    } else if (inserted && inserted.length === members.length) {
+      // استبدل الـ local IDs بالـ IDs الحقيقية من السيرفر
+      for (let i = 0; i < members.length; i++) {
+        await localDB.family_members.delete(members[i].id)
+        await localDB.family_members.put({ ...members[i], id: inserted[i].id })
+      }
+    }
   }
 }
 
