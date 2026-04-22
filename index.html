@@ -4266,8 +4266,9 @@ function showDupModal(dups, onConfirm) {
 }
 
 function confirmDupSave() {
+  const cb = dupConfirmCallback
   closeDupModal()
-  if (dupConfirmCallback) { dupConfirmCallback(); dupConfirmCallback = null }
+  if (cb) cb()
 }
 
 function closeDupModal() {
