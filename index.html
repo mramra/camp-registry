@@ -1553,7 +1553,7 @@ async function init() {
         // لو timeout أو لا جلسة — شغّل من الكاش بدل إظهار شاشة الدخول
         const localCamps2 = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
         if (localCamps2.length) { allCamps = localCamps2; fillCampSelect('filterCamp', true); fillCampSelect('familyCamp'); fillCampSelect('uCamp') }
-        await loadDashboard(); return
+        showPage('page-dashboard'); await loadDashboard(); return
       }
       // تحقق من is_active من السيرفر مع timeout
       const memberResult = await withTimeout(
@@ -1565,7 +1565,7 @@ async function init() {
         // timeout أو غير نشط — استخدم الكاش
         const localCamps2 = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
         if (localCamps2.length) { allCamps = localCamps2; fillCampSelect('filterCamp', true); fillCampSelect('familyCamp'); fillCampSelect('uCamp') }
-        await loadDashboard(); return
+        showPage('page-dashboard'); await loadDashboard(); return
       }
       currentMember = freshMember
       localStorage.setItem('current_member', JSON.stringify(freshMember))
@@ -1608,17 +1608,20 @@ async function init() {
       }
     }
 
+    showPage('page-dashboard')
     await loadDashboard()
     return
   }
 
   if (navigator.onLine) {
-    const { data: { session } } = await db.auth.getSession()
+    const sessionResult = await withTimeout(db.auth.getSession(), 8000)
+    const session = sessionResult?.data?.session
     if (session) {
       currentUser = session.user
       await loadMember()
     }
   }
+  // offline بدون كاش — أظهر شاشة الدخول (لا يمكن تسجيل دخول بدون إنترنت)
 }
 
 async function loadMember() {
@@ -2149,14 +2152,16 @@ async function loadCampsFromServer(force = false) {
     } else if (currentMember?.role === 'camp_delegate' && currentMember.camp_id) {
       q = q.eq('id', currentMember.camp_id)
     }
-    const { data: camps, error: campsErr } = await q
+    const campsResult = await withTimeout(q, 10000)
+    const camps    = campsResult?.data
+    const campsErr = campsResult?.error
     if (camps?.length) {
       allCamps = camps
       _campsCache = { data: camps, time: now, role: currentMember?.role, campId: currentMember?.camp_id }
       await localDB.camps.clear()
       await localDB.camps.bulkPut(camps)
     } else {
-      // fallback من localDB إذا فشل السيرفر أو رجع فارغاً
+      // fallback من localDB إذا فشل السيرفر أو رجع فارغاً أو timeout
       const local = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
       if (local.length) allCamps = local
       if (campsErr) console.warn('camps error:', campsErr.message)
@@ -10053,12 +10058,12 @@ async function loadNeedsReport() {
       // أدخل رب الأسرة كفرد وهمي
       const allPeople = [{ dob: f.head_dob, gender: f.head_gender, _isHead: true }, ...fMems]
       return allPeople.some(p => {
-        if (memFilter === 'orphan') return p.orphan_status
-        if (memFilter === 'disabled') return Array.isArray(p.disabilities) && p.disabilities.length
-        if (memFilter === 'injured') return Array.isArray(p.injuries) && p.injuries.length
-        if (memFilter === 'chronic') return Array.isArray(p.chronic_diseases) && p.chronic_diseases.length
+        if (memFilter === 'orphan')   return p.orphan_status
+        if (memFilter === 'disabled') return (Array.isArray(p.disabilities) && p.disabilities.length) || p.health === 'معاق' || (p._isHead && (Array.isArray(f.head_disabilities) && f.head_disabilities.length))
+        if (memFilter === 'injured')  return Array.isArray(p.injuries) && p.injuries.length
+        if (memFilter === 'chronic')  return (Array.isArray(p.chronic_diseases) && p.chronic_diseases.length) || p.health === 'مزمن'
         if (memFilter === 'pregnant') return Array.isArray(p.female_status) && p.female_status.includes('حامل')
-        if (memFilter === 'nursing')  return Array.isArray(p.female_status) && p.female_status.includes('مرضع')
+        if (memFilter === 'nursing')  return (Array.isArray(p.female_status) && p.female_status.includes('مرضع')) || isNursingMother(p, fMems, f.head_dob)
         const age = calcAge(p.dob)
         if (memFilter === 'elderly') return age !== null && age >= 65
         if (memFilter === 'infant')  return age !== null && age < 2
@@ -10088,15 +10093,21 @@ async function loadNeedsReport() {
     stats.total_members += memCount
     if (isLargeFamily(memCount)) stats.large++
 
-    const allPeople = [{ dob: f.head_dob, gender: f.head_gender }, ...fMems]
+    const allPeople = [{ dob: f.head_dob, gender: f.head_gender, disabilities: f.head_disabilities, injuries: f.head_injuries, chronic_diseases: f.head_chronic_diseases, female_status: f.head_female_status, health: f.head_health }, ...fMems]
     allPeople.forEach(p => {
       if (p.orphan_status) stats.orphans++
-      if (Array.isArray(p.disabilities) && p.disabilities.length) stats.disabled++
+      const isDisabled = (Array.isArray(p.disabilities) && p.disabilities.length) || p.health === 'معاق'
+      const isChronic  = (Array.isArray(p.chronic_diseases) && p.chronic_diseases.length) || p.health === 'مزمن'
+      if (isDisabled) stats.disabled++
       if (Array.isArray(p.injuries) && p.injuries.length) stats.injured++
-      if (Array.isArray(p.chronic_diseases) && p.chronic_diseases.length) stats.chronic++
+      if (isChronic) stats.chronic++
       if (Array.isArray(p.female_status)) {
         if (p.female_status.includes('حامل')) stats.pregnant++
         if (p.female_status.includes('مرضع')) stats.nursing++
+      }
+      // مرضع تلقائياً
+      if (!Array.isArray(p.female_status) || !p.female_status.includes('مرضع')) {
+        if (isNursingMother(p, fMems, f.head_dob)) stats.nursing++
       }
       const age = calcAge(p.dob)
       if (age !== null) {
@@ -10149,6 +10160,50 @@ async function loadNeedsReport() {
     const econ = f.economic_level ? ECONOMIC_LEVELS.find(e=>e.key===f.economic_level) : null
     const largeTag = isLargeFamily(memCount) ? `<span style="background:rgba(245,158,11,.15);color:var(--accent);font-size:10px;padding:2px 6px;border-radius:6px;">👨‍👩‍👧‍👦 كبيرة</span>` : ''
 
+    // تفاصيل المرشّحين (معاق / مرضعة...) إذا كان هناك فلتر
+    let detailsHtml = ''
+    if (memFilter === 'disabled') {
+      const allP = [
+        { name: f.head_name, disabilities: f.head_disabilities, health: f.head_health, relation: 'رب الأسرة' },
+        ...fMems.map(m => ({ name: m.name, disabilities: m.disabilities, health: m.health, relation: m.relation }))
+      ]
+      const disabled = allP.filter(p => (Array.isArray(p.disabilities) && p.disabilities.length) || p.health === 'معاق')
+      if (disabled.length) detailsHtml = '<div style="margin-top:6px;border-top:1px dashed var(--border);padding-top:6px;">' +
+        disabled.map(p => {
+          const dis = Array.isArray(p.disabilities) && p.disabilities.length
+            ? p.disabilities.map(d => `<span style="background:rgba(59,130,246,.12);color:var(--blue);font-size:10px;padding:2px 6px;border-radius:6px;">${esc(d.type)}${d.detail?': '+esc(d.detail):''}</span>`).join(' ')
+            : `<span style="background:rgba(239,68,68,.12);color:var(--red);font-size:10px;padding:2px 6px;border-radius:6px;">♿ معاق</span>`
+          return `<div style="font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">${esc(p.name||'—')} (${esc(p.relation||'')}): </span>${dis}</div>`
+        }).join('') + '</div>'
+    } else if (memFilter === 'nursing') {
+      const allP = [
+        { name: f.head_name, gender: f.head_gender, dob: f.head_dob, female_status: f.head_female_status, relation: 'رب الأسرة' },
+        ...fMems.map(m => ({ name: m.name, gender: m.gender, dob: m.dob, female_status: m.female_status, relation: m.relation }))
+      ]
+      const nursing = allP.filter(p =>
+        (Array.isArray(p.female_status) && p.female_status.includes('مرضع')) ||
+        isNursingMother(p, fMems, f.head_dob)
+      )
+      if (nursing.length) detailsHtml = '<div style="margin-top:6px;border-top:1px dashed var(--border);padding-top:6px;">' +
+        nursing.map(p => {
+          const age = calcAge(p.dob)
+          return `<div style="font-size:11px;color:var(--muted);">🤱 ${esc(p.name||'—')} (${esc(p.relation||'')})${age!==null?' — عمرها '+age+' سنة':''}</div>`
+        }).join('') + '</div>'
+    } else if (memFilter === 'chronic') {
+      const allP = [
+        { name: f.head_name, chronic_diseases: f.head_chronic_diseases, health: f.head_health, relation: 'رب الأسرة' },
+        ...fMems.map(m => ({ name: m.name, chronic_diseases: m.chronic_diseases, health: m.health, relation: m.relation }))
+      ]
+      const chronic = allP.filter(p => (Array.isArray(p.chronic_diseases) && p.chronic_diseases.length) || p.health === 'مزمن')
+      if (chronic.length) detailsHtml = '<div style="margin-top:6px;border-top:1px dashed var(--border);padding-top:6px;">' +
+        chronic.map(p => {
+          const list = Array.isArray(p.chronic_diseases) && p.chronic_diseases.length
+            ? p.chronic_diseases.map(d => `<span style="background:rgba(249,115,22,.12);color:#f97316;font-size:10px;padding:2px 6px;border-radius:6px;">${esc(d.type)}${d.detail?': '+esc(d.detail):''}</span>`).join(' ')
+            : `<span style="background:rgba(249,115,22,.12);color:#f97316;font-size:10px;padding:2px 6px;border-radius:6px;">💊 مزمن</span>`
+          return `<div style="font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">${esc(p.name||'—')} (${esc(p.relation||'')}): </span>${list}</div>`
+        }).join('') + '</div>'
+    }
+
     return `<div onclick="openFamily('${f.id}')" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <div style="flex:1;">
@@ -10160,6 +10215,7 @@ async function loadNeedsReport() {
             ${tagsHtml}${largeTag}
             ${econ?`<span style="background:rgba(0,0,0,.2);color:${econ.color};font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;border:1px solid ${econ.color};">💰 ${econ.label}</span>`:''}
           </div>
+          ${detailsHtml}
         </div>
       </div>
     </div>`
@@ -10238,12 +10294,12 @@ async function exportNeedsReport(mode) {
         if (memFilter) {
           const age = calcAge(p.dob)
           let match = false
-          if (memFilter === 'orphan') match = !!p.orphan_status
-          else if (memFilter === 'disabled') match = Array.isArray(p.disabilities) && p.disabilities.length
+          if (memFilter === 'orphan')   match = !!p.orphan_status
+          else if (memFilter === 'disabled') match = (Array.isArray(p.disabilities) && p.disabilities.length) || p.health === 'معاق'
           else if (memFilter === 'injured')  match = Array.isArray(p.injuries) && p.injuries.length
-          else if (memFilter === 'chronic')  match = Array.isArray(p.chronic_diseases) && p.chronic_diseases.length
+          else if (memFilter === 'chronic')  match = (Array.isArray(p.chronic_diseases) && p.chronic_diseases.length) || p.health === 'مزمن'
           else if (memFilter === 'pregnant') match = Array.isArray(p.female_status) && p.female_status.includes('حامل')
-          else if (memFilter === 'nursing')  match = Array.isArray(p.female_status) && p.female_status.includes('مرضع')
+          else if (memFilter === 'nursing')  match = (Array.isArray(p.female_status) && p.female_status.includes('مرضع')) || isNursingMother(p, filterOutHead(f, fMems), f.head_dob)
           else if (memFilter === 'elderly')  match = age !== null && age >= 65
           else if (memFilter === 'infant')   match = age !== null && age < 2
           if (!match) return
