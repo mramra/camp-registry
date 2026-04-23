@@ -821,10 +821,21 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   <!-- Analysis -->
   <div class="page" id="page-analysis2">
     <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px;">📈 تحليل البيانات</div>
-    <!-- منتقي المخيم -->
-    <div style="margin-bottom:14px;">
+    <!-- فلاتر التحليل -->
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
       <select id="analysisCampFilter" onchange="loadAnalysisWithCharts()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;font-weight:700;outline:none;">
         <option value="">⛺ كل المخيمات</option>
+      </select>
+      <select id="analysisMaritalFilter" onchange="loadAnalysisWithCharts()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;font-weight:700;outline:none;">
+        <option value="">💍 كل الحالات الاجتماعية</option>
+        <option value="متزوج">💍 متزوج (ذكر)</option>
+        <option value="متزوجة">💍 متزوجة (أنثى)</option>
+        <option value="أرمل">🕊️ أرمل (ذكر)</option>
+        <option value="أرملة">🕊️ أرملة (أنثى)</option>
+        <option value="مطلق">💔 مطلق (ذكر)</option>
+        <option value="مطلقة">💔 مطلقة (أنثى)</option>
+        <option value="أعزب">🧑 أعزب (ذكر)</option>
+        <option value="عزباء">👩 عزباء (أنثى)</option>
       </select>
     </div>
     <div id="analysisContent">
@@ -2429,13 +2440,15 @@ async function doCustomExport() {
   if (mode === 'fam' && !selFam.length) { showToast('اختر عموداً واحداً على الأقل', true); return }
   if (mode === 'mem' && !selMem.length) { showToast('اختر عموداً واحداً على الأقل', true); return }
 
-  const exportCamp = document.getElementById('exportCampFilter')?.value || ''
+  const exportCamp    = document.getElementById('exportCampFilter')?.value    || ''
+  const exportMarital = document.getElementById('exportMaritalFilter')?.value  || ''
   showToast('⏳ جارٍ التصدير...')
   closeExportModal()
 
   let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
   if (currentMember.camp_id) families = families.filter(f => f.camp_id === currentMember.camp_id)
   else if (exportCamp) families = families.filter(f => f.camp_id === exportCamp)
+  if (exportMarital) families = families.filter(f => f.head_marital === exportMarital)
 
   const members   = await localDB.family_members.toArray()
   const campMap   = {}; allCamps.forEach(c => campMap[c.id] = c.name)
@@ -7686,7 +7699,8 @@ async function loadAnalysis2() {
   if (!out) return
   out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحليل...</div></div>'
 
-  const selectedCamp = document.getElementById('analysisCampFilter')?.value || ''
+  const selectedCamp    = document.getElementById('analysisCampFilter')?.value    || ''
+  const selectedMarital = document.getElementById('analysisMaritalFilter')?.value  || ''
 
   // جلب الأسر حسب الصلاحية والمخيم المختار
   let fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
@@ -7696,13 +7710,15 @@ async function loadAnalysis2() {
   } else if (currentMember.camp_id) {
     fams = fams.filter(f => f.camp_id === currentMember.camp_id)
   }
-  if (selectedCamp) fams = fams.filter(f => f.camp_id === selectedCamp)
+  if (selectedCamp)    fams = fams.filter(f => f.camp_id    === selectedCamp)
+  if (selectedMarital) fams = fams.filter(f => f.head_marital === selectedMarital)
 
   const famIds  = new Set(fams.map(f => f.id))
   const allMems = await localDB.family_members.toArray()
   const members = allMems.filter(m => famIds.has(m.family_id))
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
   const campName = selectedCamp ? (campMap[selectedCamp] || '') : 'كل المخيمات'
+  const maritalLabel = selectedMarital ? ` — ${selectedMarital}` : ''
 
   if (!fams.length) {
     out.innerHTML = '<div class="empty"><div class="empty-icon">📊</div>لا توجد بيانات</div>'
@@ -7759,7 +7775,7 @@ async function loadAnalysis2() {
   out.innerHTML = `
     <!-- العنوان -->
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:14px;text-align:center;">
-      <div style="font-size:14px;font-weight:900;color:var(--accent);">⛺ ${esc(campName)}</div>
+      <div style="font-size:14px;font-weight:900;color:var(--accent);">⛺ ${esc(campName)}${maritalLabel?` <span style="font-size:11px;color:var(--muted);">${esc(maritalLabel)}</span>`:''}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:3px;">${fams.length} أسرة • ${totalPersons} فرد إجمالاً</div>
     </div>
 
@@ -7847,6 +7863,17 @@ async function loadDataPage() {
         <div style="margin-bottom:10px;">
           <select id="exportCampFilter" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;margin-bottom:8px;">
             <option value="">كل المخيمات</option>${campOptsHtml}
+          </select>
+          <select id="exportMaritalFilter" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;">
+            <option value="">كل الحالات الاجتماعية</option>
+            <option value="متزوج">💍 متزوج (ذكر)</option>
+            <option value="متزوجة">💍 متزوجة (أنثى)</option>
+            <option value="أرمل">🕊️ أرمل (ذكر)</option>
+            <option value="أرملة">🕊️ أرملة (أنثى)</option>
+            <option value="مطلق">💔 مطلق (ذكر)</option>
+            <option value="مطلقة">💔 مطلقة (أنثى)</option>
+            <option value="أعزب">🧑 أعزب (ذكر)</option>
+            <option value="عزباء">👩 عزباء (أنثى)</option>
           </select>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -10257,7 +10284,8 @@ async function loadAnalysisWithCharts() {
   // شغّل التحليل النصي أولاً
   await loadAnalysis2()
 
-  const selectedCamp = document.getElementById('analysisCampFilter')?.value || ''
+  const selectedCamp    = document.getElementById('analysisCampFilter')?.value    || ''
+  const selectedMarital = document.getElementById('analysisMaritalFilter')?.value  || ''
 
   let fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
   if (currentMember.role === 'super_admin') {
@@ -10266,7 +10294,8 @@ async function loadAnalysisWithCharts() {
   } else if (currentMember.camp_id) {
     fams = fams.filter(f => f.camp_id === currentMember.camp_id)
   }
-  if (selectedCamp) fams = fams.filter(f => f.camp_id === selectedCamp)
+  if (selectedCamp)    fams = fams.filter(f => f.camp_id     === selectedCamp)
+  if (selectedMarital) fams = fams.filter(f => f.head_marital === selectedMarital)
 
   if (!fams.length || typeof Chart === 'undefined') return
 
