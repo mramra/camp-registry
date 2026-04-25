@@ -343,6 +343,8 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
         <option value="">كل الأسر</option>
         <option value="incomplete">⚠️ ناقص</option>
         <option value="complete">✅ مكتمل</option>
+        <option value="dup_id">🔁 هوية مكررة</option>
+        <option value="dup_phone">📞 جوال مكرر</option>
       </select>
       <select id="filterStatus" onchange="loadFamilies()" style="display:none;">
         <option value=""></option>
@@ -855,6 +857,30 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   </div>
 
   <!-- ═══ صفحة تقارير الاحتياجات ═══ -->
+  <!-- ══ صفحة إحصاءات النساء ══ -->
+  <div class="page" id="page-women">
+    <div class="card">
+      <div class="card-title">👩 إحصاءات النساء</div>
+      <!-- فلاتر -->
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+        <select id="womenCampFilter" onchange="loadWomenPage()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;">
+          <option value="">⛺ كل المخيمات</option>
+        </select>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <label style="font-size:12px;color:var(--muted);white-space:nowrap;">🎂 العمر من</label>
+          <input type="number" id="womenAgeFrom" min="0" max="120" placeholder="—" oninput="loadWomenPage()"
+            style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;text-align:center;">
+          <label style="font-size:12px;color:var(--muted);">إلى</label>
+          <input type="number" id="womenAgeTo" min="0" max="120" placeholder="—" oninput="loadWomenPage()"
+            style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;text-align:center;">
+        </div>
+      </div>
+      <div id="womenPageContent">
+        <div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>
+      </div>
+    </div>
+  </div>
+
   <div class="page" id="page-needs-report">
     <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px;">📋 تقارير الاحتياجات</div>
 
@@ -1836,6 +1862,7 @@ function buildSidebar() {
   if (canWrite()) html += navItem('📦', 'توزيع المساعدات', 'page-dist')
   if (canViewReports()) html += navItem('📊', 'التقارير', 'page-analysis')
   if (canViewReports()) html += navItem('📈', 'تحليل البيانات', 'page-analysis2')
+  if (canViewReports()) html += navItem('👩', 'إحصاءات النساء', 'page-women')
   if (canViewReports()) html += navItem('📋', 'تقارير الاحتياجات', 'page-needs-report')
   if (canViewReports()) html += navItem('🚶', 'حركات الأسر', 'page-movements')
   if (canViewReports()) html += navItem('📝', 'سجل تغييرات الأسر', 'page-history')
@@ -1981,6 +2008,13 @@ async function showPage(pageId) {
   if (pageId === 'page-dist')        loadDistPage().catch(e => console.warn('dist:', e.message))
   if (pageId === 'page-analysis')   safeLoad(initReportsPage, 'reportContent', '📴 التقارير تحتاج اتصالاً')
   if (pageId === 'page-analysis2')  loadAnalysisWithCharts().catch(e => console.warn('analysis2:', e.message))
+  if (pageId === 'page-women') {
+    const sel = document.getElementById('womenCampFilter')
+    if (sel && sel.options.length <= 1) {
+      allCamps.forEach(c => { const o=document.createElement('option'); o.value=c.id; o.textContent=c.name; sel.appendChild(o) })
+    }
+    loadWomenPage().catch(e => console.warn('women:', e.message))
+  }
   if (pageId === 'page-needs-report') loadNeedsReport().catch(e => console.warn('needs-report:', e.message))
   if (pageId === 'page-data')        loadDataPage().catch(e => console.warn('data:', e.message))
   if (pageId === 'page-audit')       safeLoad(loadAuditLog, 'auditContent', '📴 سجل النشاط يحتاج اتصالاً')
@@ -2840,6 +2874,29 @@ async function loadFamilies() {
 
     if (missing === 'incomplete') list = list.filter(f => checkFamilyIssues(f, mMap[f.id]).length > 0)
     if (missing === 'complete')   list = list.filter(f => checkFamilyIssues(f, mMap[f.id]).length === 0)
+
+    // ── فلتر التكرارات ──
+    if (missing === 'dup_id' || missing === 'dup_phone') {
+      const cleanPhone = p => (p||'').replace(/\s/g,'')
+      const idFamsF = {}
+      list.forEach(f => {
+        if (f.head_id) { if (!idFamsF[f.head_id]) idFamsF[f.head_id] = new Set(); idFamsF[f.head_id].add(f.id) }
+        ;(mMap[f.id]||[]).forEach(m => { if (m.national_id) { if (!idFamsF[m.national_id]) idFamsF[m.national_id] = new Set(); idFamsF[m.national_id].add(f.id) } })
+      })
+      const phoneCountF = {}
+      list.forEach(f => {
+        if (f.phone1) phoneCountF[cleanPhone(f.phone1)] = (phoneCountF[cleanPhone(f.phone1)]||0)+1
+      })
+      if (missing === 'dup_id') {
+        list = list.filter(f =>
+          (f.head_id && (idFamsF[f.head_id]?.size||0) > 1) ||
+          (mMap[f.id]||[]).some(m => m.national_id && (idFamsF[m.national_id]?.size||0) > 1)
+        )
+      }
+      if (missing === 'dup_phone') {
+        list = list.filter(f => f.phone1 && (phoneCountF[cleanPhone(f.phone1)]||0) > 1)
+      }
+    }
 
     // ترتيب: نواقص → حسب عدد النواقص، غير ذلك → حسب عدد الأفراد
     if (missing === 'incomplete') {
@@ -9991,6 +10048,220 @@ function makeChart(id, type, labels, data, colors, label) {
 }
 
 // ══ NEEDS REPORT — تقرير الاحتياجات ══
+// ══ صفحة إحصاءات النساء ══
+async function loadWomenPage() {
+  const out = document.getElementById('womenPageContent')
+  if (!out) return
+  out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
+
+  const campId  = document.getElementById('womenCampFilter')?.value || ''
+  const ageFrom = parseInt(document.getElementById('womenAgeFrom')?.value) || 0
+  const ageTo   = parseInt(document.getElementById('womenAgeTo')?.value)   || 120
+
+  let fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+  if (currentMember.camp_id) fams = fams.filter(f => f.camp_id === currentMember.camp_id)
+  else if (campId) fams = fams.filter(f => f.camp_id === campId)
+
+  const famIds = new Set(fams.map(f => f.id))
+  const allMems = await localDB.family_members.toArray()
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+
+  // ── جمع كل النساء (رب أسرة أنثى + أفراد إناث) ──
+  const allWomen = []
+
+  // ربات الأسر الإناث
+  fams.filter(f => f.head_gender === 'أنثى').forEach(f => {
+    const fMems = allMems.filter(m => m.family_id === f.id)
+    allWomen.push({
+      name:       f.head_name,
+      national_id:f.head_id,
+      dob:        f.head_dob,
+      age:        calcAge(f.head_dob),
+      marital:    f.head_marital,
+      phone:      f.phone1,
+      camp:       campMap[f.camp_id]||'—',
+      family_id:  f.id,
+      head_name:  f.head_name,
+      relation:   'رب الأسرة',
+      isHead:     true,
+      gender:     'أنثى',
+      disabilities: f.head_disabilities,
+      injuries:     f.head_injuries,
+      chronic_diseases: f.head_chronic_diseases,
+      female_status: f.head_female_status,
+      health:     null,
+      _fam: f,
+      _mems: fMems
+    })
+  })
+
+  // الأفراد الإناث
+  allMems.filter(m => famIds.has(m.family_id) && m.gender === 'أنثى').forEach(m => {
+    const f = fams.find(x => x.id === m.family_id)
+    if (!f) return
+    allWomen.push({
+      name:       m.name,
+      national_id:m.national_id,
+      dob:        m.dob,
+      age:        calcAge(m.dob),
+      marital:    null,
+      phone:      f.phone1,
+      camp:       campMap[f.camp_id]||'—',
+      family_id:  f.id,
+      head_name:  f.head_name,
+      relation:   m.relation,
+      isHead:     false,
+      disabilities: m.disabilities,
+      injuries:     m.injuries,
+      chronic_diseases: m.chronic_diseases,
+      female_status: m.female_status,
+      health:     m.health,
+      _fam: f,
+      _mems: allMems.filter(x => x.family_id === f.id)
+    })
+  })
+
+  // ── تطبيق فلتر العمر ──
+  const filtered = allWomen.filter(w => {
+    if (ageFrom > 0 || ageTo < 120) {
+      if (w.age === null) return false
+      if (w.age < ageFrom || w.age > ageTo) return false
+    }
+    return true
+  })
+
+  if (!filtered.length) {
+    out.innerHTML = '<div class="empty"><div class="empty-icon">👩</div>لا توجد نساء بهذه المعايير</div>'
+    return
+  }
+
+  // ── الإحصاءات ──
+  // ── الإحصاءات المُصحَّحة ──
+  const divorced = filtered.filter(w =>
+    ['مطلقة'].includes(w.marital) ||
+    ['مطلقة'].includes(w.relation)
+  )
+  const widows = filtered.filter(w =>
+    w.marital === 'أرملة' ||
+    w.relation === 'أرملة'
+  )
+  // متزوجة = رب أسرة حالتها متزوجة، أو فرد علاقتها زوجة
+  const married = filtered.filter(w =>
+    w.marital === 'متزوجة' ||
+    ['زوجة','wife'].includes((w.relation||'').trim())
+  )
+  // مرضعة = مسجّلة يدوياً أو تلقائياً (أنثى في سن الإنجاب + رضيع في الأسرة)
+  const nursing = filtered.filter(w => {
+    if (Array.isArray(w.female_status) && w.female_status.includes('مرضع')) return true
+    // للمرضعات التلقائيات: نُنشئ كائن member بالحقول الصحيحة
+    const memberObj = {
+      gender: w.isHead ? (w._fam?.head_gender || 'أنثى') : 'أنثى',
+      dob:    w.isHead ? w._fam?.head_dob : w.dob,
+    }
+    return isNursingMother(memberObj, w._mems, w._fam?.head_dob)
+  })
+  const pregnant = filtered.filter(w => Array.isArray(w.female_status) && w.female_status.includes('حامل'))
+  const injured  = filtered.filter(w => Array.isArray(w.injuries) && w.injuries.length)
+  const disabled = filtered.filter(w => (Array.isArray(w.disabilities) && w.disabilities.length) || w.health === 'معاق')
+  const chronic  = filtered.filter(w => (Array.isArray(w.chronic_diseases) && w.chronic_diseases.length) || w.health === 'مزمن')
+
+  const statCard = (n, label, color, icon) =>
+    `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
+      <div style="font-size:22px;font-weight:900;color:${color};">${n}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px;">${icon} ${label}</div>
+    </div>`
+
+  const renderTable = (women, title, color) => {
+    if (!women.length) return ''
+    return `<details style="margin-bottom:10px;">
+      <summary style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;font-weight:700;color:${color};">${title}</span>
+        <span style="background:${color};color:#000;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:900;">${women.length}</span>
+      </summary>
+      <div style="margin-top:6px;">
+        ${women.map(w => `
+          <div onclick="openFamily('${w.family_id}')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px;cursor:pointer;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+              <div>
+                <div style="font-size:13px;font-weight:700;">${esc(w.name||'—')}</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:3px;">
+                  ${w.national_id?`🪪 ${esc(w.national_id)} • `:''}
+                  ${w.age!==null?`🎂 ${w.age} سنة • `:''}
+                  ${esc(w.camp)}
+                </div>
+                <div style="font-size:10px;color:var(--muted);">👨‍👩‍👧 ${esc(w.head_name)} ${w.relation?`• ${esc(w.relation)}`:''}</div>
+              </div>
+              ${w.phone?`<span style="font-size:11px;color:var(--blue);" dir="ltr">${esc(w.phone)}</span>`:''}
+            </div>
+          </div>`).join('')}
+      </div>
+    </details>`
+  }
+
+  out.innerHTML = `
+    <!-- إجمالي -->
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="font-size:24px;font-weight:900;color:#ec4899;">${filtered.length}</div>
+      <div style="font-size:12px;color:var(--muted);">إجمالي النساء</div>
+    </div>
+
+    <!-- بطاقات الإحصاء -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">
+      ${statCard(married.length,   'متزوجات',   '#10b981', '💍')}
+      ${statCard(widows.length,    'أرامل',      '#8b5cf6', '🕊️')}
+      ${statCard(divorced.length,  'مطلقات',     '#f59e0b', '💔')}
+      ${statCard(nursing.length,   'مرضعات',     '#3b82f6', '🤱')}
+      ${statCard(pregnant.length,  'حوامل',      '#ec4899', '🤰')}
+      ${statCard(disabled.length,  'معاقات',     '#ef4444', '♿')}
+      ${statCard(chronic.length,   'أمراض مزمنة','#f97316', '💊')}
+      ${statCard(injured.length,   'مصابات',     '#ef4444', '🩹')}
+    </div>
+
+    <!-- كشوف قابلة للتوسيع -->
+    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;">📋 الكشوف التفصيلية</div>
+    ${renderTable(married,  '💍 المتزوجات',    '#10b981')}
+    ${renderTable(widows,   '🕊️ الأرامل',      '#8b5cf6')}
+    ${renderTable(divorced, '💔 المطلقات',     '#f59e0b')}
+    ${renderTable(nursing,  '🤱 المرضعات',     '#3b82f6')}
+    ${renderTable(pregnant, '🤰 الحوامل',      '#ec4899')}
+    ${renderTable(disabled, '♿ المعاقات',     '#ef4444')}
+    ${renderTable(chronic,  '💊 أمراض مزمنة', '#f97316')}
+    ${renderTable(injured,  '🩹 المصابات',     '#ef4444')}
+
+    <!-- زر تصدير -->
+    <button onclick="exportWomenExcel()" style="width:100%;margin-top:16px;padding:13px;background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">
+      📥 تصدير إلى Excel
+    </button>
+  `
+  // حفظ النتائج للتصدير
+  window._womenData = filtered
+}
+
+async function exportWomenExcel() {
+  const women = window._womenData
+  if (!women?.length) { showToast('لا توجد بيانات', true); return }
+  if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
+  const wb = XLSX.utils.book_new()
+  const wsData = [
+    ['الاسم','رقم الهوية','تاريخ الميلاد','العمر','الحالة الاجتماعية','المخيم','اسم رب الأسرة','الجوال','الصلة','حالة صحية خاصة'],
+    ...women.map(w => [
+      w.name||'', w.national_id||'', w.dob||'', w.age??'', w.marital||'',
+      w.camp||'', w.head_name||'', w.phone||'', w.relation||'رب أسرة',
+      [
+        ...(Array.isArray(w.disabilities)&&w.disabilities.length?['معاقة']:[]),
+        ...(w.health==='معاق'?['معاقة']:[]),
+        ...(Array.isArray(w.chronic_diseases)&&w.chronic_diseases.length?['مزمن']:[]),
+        ...(w.health==='مزمن'?['مزمن']:[]),
+        ...(Array.isArray(w.female_status)&&w.female_status.includes('حامل')?['حامل']:[]),
+        ...(Array.isArray(w.female_status)&&w.female_status.includes('مرضع')?['مرضع']:[]),
+      ].join('، ')||'—'
+    ])
+  ]
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), 'النساء')
+  XLSX.writeFile(wb, `كشف_النساء_${new Date().toLocaleDateString('ar')}.xlsx`)
+  logAction('تصدير كشف النساء', null, `${women.length} امرأة`)
+}
+
 async function loadNeedsReport() {
   const container = document.getElementById('nrResults')
   const statsEl   = document.getElementById('nrStatsGrid')
