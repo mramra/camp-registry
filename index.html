@@ -2350,24 +2350,21 @@ const FAM_COLS = [
 ]
 
 const MEM_COLS = [
-  { key:'fam_name',      label:'اسم رب الأسرة',       def:true  },
-  { key:'head_id',       label:'هوية رب الأسرة',      def:true  },
-  { key:'head_dob',      label:'تاريخ ميلاد رب الأسرة',def:false },
-  { key:'head_phone',    label:'رقم الجوال',           def:true  },
-  { key:'camp',          label:'المخيم',               def:true  },
-  { key:'mother_name',   label:'اسم الأم',             def:false },
-  { key:'mother_id',     label:'رقم هوية الأم',        def:false },
-  { key:'mother_dob',    label:'تاريخ ميلاد الأم',    def:false },
-  { key:'name',          label:'الاسم',                def:true  },
-  { key:'relation',      label:'العلاقة',              def:true  },
-  { key:'national_id',   label:'رقم الهوية',           def:true  },
-  { key:'dob',           label:'تاريخ الميلاد',        def:true  },
-  { key:'age',           label:'العمر',                def:true  },
-  { key:'gender',        label:'الجنس',                def:true  },
-  { key:'health',        label:'الحالة الصحية',        def:false },
-  { key:'son_name',      label:'اسم الابن',            def:false },
-  { key:'son_id',        label:'رقم هوية الابن',       def:false },
-  { key:'son_dob',       label:'تاريخ ميلاد الابن',   def:false },
+  { key:'fam_name',    label:'اسم رب الأسرة',          def:true  },
+  { key:'head_id',     label:'هوية رب الأسرة',         def:true  },
+  { key:'head_dob',    label:'تاريخ ميلاد رب الأسرة',  def:true  },
+  { key:'head_phone',  label:'رقم الجوال',              def:true  },
+  { key:'camp',        label:'المخيم',                  def:true  },
+  { key:'mother_name', label:'اسم الأم',                def:true  },
+  { key:'mother_id',   label:'رقم هوية الأم',           def:true  },
+  { key:'mother_dob',  label:'تاريخ ميلاد الأم',       def:true  },
+  { key:'son_name',    label:'اسم الابن/الابنة',        def:true  },
+  { key:'son_id',      label:'رقم هوية الابن/الابنة',  def:true  },
+  { key:'son_dob',     label:'تاريخ ميلاد الابن/الابنة',def:true },
+  { key:'relation',    label:'العلاقة',                 def:true  },
+  { key:'age',         label:'العمر',                   def:true  },
+  { key:'gender',      label:'الجنس',                   def:false },
+  { key:'health',      label:'الحالة الصحية',           def:false },
 ]
 
 
@@ -2512,49 +2509,51 @@ async function doCustomExport() {
     showToast(`✅ تم التصدير — ${families.length} أسرة`)
 
   } else {
+    // صف لكل ابن/ابنة — مع معلومات رب الأسرة والأم في كل صف
     const memRows = []
-    families.forEach(f => {
-      const allPersons = [
-        { ...f, _isHead: true },
-        ...filterOutHead(f, mByFamily[f.id]||[]).map(m => ({ ...m, _isHead: false }))
-      ]
-      // استخراج الأم (زوجة أو أرملة)
-      const mother = (mByFamily[f.id]||[]).find(m =>
-        ['زوجة','أم','wife'].includes((m.relation||'').trim())
-      )
-      // استخراج الأبناء الذكور القاصرين
-      const sons = (mByFamily[f.id]||[]).filter(m =>
-        ['ابن','son'].includes((m.relation||'').trim()) || (m.gender==='ذكر' && calcAge(m.dob) !== null && calcAge(m.dob) < 18)
-      )
+    const wantSons   = selMem.some(c => ['son_name','son_id','son_dob'].includes(c.key))
+    const wantMother = selMem.some(c => ['mother_name','mother_id','mother_dob'].includes(c.key))
 
-      allPersons.forEach(p => {
-        const age = p._isHead ? calcAge(f.head_dob) : calcAge(p.dob)
+    families.forEach(f => {
+      const fMems  = mByFamily[f.id] || []
+      const mother = fMems.find(m => ['زوجة','أم','wife'].includes((m.relation||'').trim()))
+
+      // كل الأبناء والبنات (استثناء رب الأسرة والأم)
+      const children = filterOutHead(f, fMems).filter(m => m !== mother)
+
+      if (!children.length) {
+        // أسرة بدون أبناء → صف واحد فارغ للأبناء
+        children.push(null)
+      }
+
+      children.forEach(child => {
+        const age = child ? (calcAge(child.dob)??'') : ''
         const filterActive = ageFrom > 0 || ageTo < 120
-        if (filterActive) {
-          if (age === null) return
-          if (age < ageFrom || age > ageTo) return
+        if (filterActive && child) {
+          const a = calcAge(child.dob)
+          if (a === null || a < ageFrom || a > ageTo) return
         }
         const row = {}
         selMem.forEach(col => {
           switch(col.key) {
-            case 'fam_name':     row[col.label] = f.head_name||''; break
-            case 'head_id':      row[col.label] = f.head_id||''; break
-            case 'head_dob':     row[col.label] = f.head_dob||''; break
-            case 'head_phone':   row[col.label] = f.phone1||''; break
-            case 'camp':         row[col.label] = campMap[f.camp_id]||''; break
-            case 'mother_name':  row[col.label] = mother?.name||''; break
-            case 'mother_id':    row[col.label] = mother?.national_id||''; break
-            case 'mother_dob':   row[col.label] = mother?.dob||''; break
-            case 'name':         row[col.label] = p._isHead ? f.head_name : (p.name||''); break
-            case 'relation':     row[col.label] = p._isHead ? 'رب الأسرة' : (p.relation||''); break
-            case 'national_id':  row[col.label] = p._isHead ? (f.head_id||'') : (p.national_id||''); break
-            case 'dob':          row[col.label] = p._isHead ? (f.head_dob||'') : (p.dob||''); break
-            case 'age':          row[col.label] = age??''; break
-            case 'gender':       row[col.label] = p._isHead ? (f.head_gender||'') : (p.gender||''); break
-            case 'health':       row[col.label] = p._isHead ? '' : (p.health||''); break
-            case 'son_name':     row[col.label] = sons[0]?.name||''; break
-            case 'son_id':       row[col.label] = sons[0]?.national_id||''; break
-            case 'son_dob':      row[col.label] = sons[0]?.dob||''; break
+            case 'fam_name':    row[col.label] = f.head_name||''; break
+            case 'head_id':     row[col.label] = f.head_id||''; break
+            case 'head_dob':    row[col.label] = f.head_dob||''; break
+            case 'head_phone':  row[col.label] = f.phone1||''; break
+            case 'camp':        row[col.label] = campMap[f.camp_id]||''; break
+            case 'mother_name': row[col.label] = mother?.name||''; break
+            case 'mother_id':   row[col.label] = mother?.national_id||''; break
+            case 'mother_dob':  row[col.label] = mother?.dob||''; break
+            case 'son_name':    row[col.label] = child?.name||''; break
+            case 'son_id':      row[col.label] = child?.national_id||''; break
+            case 'son_dob':     row[col.label] = child?.dob||''; break
+            case 'name':        row[col.label] = child?.name||''; break
+            case 'relation':    row[col.label] = child?.relation||''; break
+            case 'national_id': row[col.label] = child?.national_id||''; break
+            case 'dob':         row[col.label] = child?.dob||''; break
+            case 'age':         row[col.label] = age; break
+            case 'gender':      row[col.label] = child?.gender||''; break
+            case 'health':      row[col.label] = child?.health||''; break
           }
         })
         memRows.push(row)
