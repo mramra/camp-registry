@@ -4383,8 +4383,9 @@ function showDupModal(dups, onConfirm) {
 }
 
 function confirmDupSave() {
+  const cb = dupConfirmCallback
   closeDupModal()
-  if (dupConfirmCallback) { dupConfirmCallback(); dupConfirmCallback = null }
+  if (cb) cb()
 }
 
 function closeDupModal() {
@@ -4431,6 +4432,15 @@ async function doSaveFamily() {
   btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'
 
   try {
+    // تحقق من الجلسة الحية قبل الحفظ
+    const { data: { session: liveSession } } = await db.auth.getSession()
+    if (!liveSession) {
+      showToast('⚠️ انتهت الجلسة — أعد تسجيل الدخول', true)
+      btn.disabled = false; btn.textContent = '💾 حفظ الأسرة'
+      return
+    }
+    const authUserId = liveSession.user.id
+
     const headDob  = buildDob('headDobY','headDobM','headDobD')
     const familyData = {
       org_id:      ORG_ID, camp_id: campId,
@@ -4448,7 +4458,7 @@ async function doSaveFamily() {
       address_details:  document.getElementById('familyAddressDetails')?.value.trim()||null,
       tags:        getTagsFromForm(),
       status:      document.getElementById('familyStatus').value,
-      created_by:  currentUser.id,
+      created_by:  authUserId,
       updated_at:  new Date().toISOString(),
       version:     1,
     }
@@ -4525,6 +4535,15 @@ async function doUpdateFamily(id) {
   btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'
 
   try {
+    // تحقق من الجلسة الحية قبل التحديث
+    const { data: { session: liveSession } } = await db.auth.getSession()
+    if (!liveSession) {
+      showToast('⚠️ انتهت الجلسة — أعد تسجيل الدخول', true)
+      btn.disabled = false; btn.textContent = '💾 حفظ الأسرة'
+      return
+    }
+    const authUserId = liveSession.user.id
+
     const updateData = {
       camp_id:     document.getElementById('familyCamp').value||null,
       head_name:   headName,
@@ -4542,6 +4561,7 @@ async function doUpdateFamily(id) {
       tags:        getTagsFromForm(),
       status:      document.getElementById('familyStatus').value,
       updated_at:  new Date().toISOString(),
+      updated_by:  authUserId,
       org_id:      ORG_ID,
     }
 
@@ -4615,7 +4635,7 @@ async function doUpdateFamily(id) {
         newVersion = (cur?.version||1)+1
       } catch(e) { /* column version may not exist */ }
 
-      const serverUpdateData = { ...updateData, updated_by: currentUser.id }
+      const serverUpdateData = { ...updateData }
       if (newVersion !== null) serverUpdateData.version = newVersion
 
       // ═══ تتبّع الأخطاء لعرضها للمستخدم ═══
@@ -4819,8 +4839,29 @@ function getTagsHtml(tags) {
 }
 
 // ══ MEMBERS FORM ══
-function addMemberRow() { formMembers.push({ id: Date.now() }); renderMemberForms() }
-function removeMember(id) { formMembers = formMembers.filter(m => m.id !== id); renderMemberForms() }
+function syncMembersFromDOM() {
+  formMembers.forEach(m => {
+    const name     = document.getElementById(`mName_${m.id}`)
+    const gender   = document.getElementById(`mGender_${m.id}`)
+    const relation = document.getElementById(`mRelation_${m.id}`)
+    const natId    = document.getElementById(`mId_${m.id}`)
+    const health   = document.getElementById(`mHealth_${m.id}`)
+    const dobD     = document.getElementById(`mDobD_${m.id}`)
+    const dobM     = document.getElementById(`mDobM_${m.id}`)
+    const dobY     = document.getElementById(`mDobY_${m.id}`)
+    if (name)     m.name      = name.value
+    if (gender)   m.gender    = gender.value
+    if (relation) m.relation  = relation.value
+    if (natId)    m.national_id = natId.value
+    if (health)   m.health    = health.value
+    if (dobD && dobM && dobY && dobD.value && dobM.value && dobY.value)
+      m.dob = `${dobY.value}-${dobM.value}-${dobD.value}`
+    else if (dobY && !dobY.value) m.dob = ''
+  })
+}
+
+function addMemberRow() { syncMembersFromDOM(); formMembers.push({ id: Date.now() }); renderMemberForms() }
+function removeMember(id) { syncMembersFromDOM(); formMembers = formMembers.filter(m => m.id !== id); renderMemberForms() }
 
 // ══ قوائم ذكية حسب الجنس ══
 const MARITAL_BY_GENDER = {
@@ -4907,8 +4948,23 @@ function renderMemberForms() {
     </div>`).join('')
   formMembers.forEach(m => {
     buildDateSelect(`mDobD_${m.id}`,`mDobM_${m.id}`,`mDobY_${m.id}`,`mDobContainer_${m.id}`,'var(--bg)')
+    // استعادة القيم المحفوظة في formMembers
+    if (m.name)       { const el = document.getElementById(`mName_${m.id}`);     if(el) el.value = m.name }
+    if (m.gender)     { const el = document.getElementById(`mGender_${m.id}`);   if(el) el.value = m.gender }
+    if (m.national_id){ const el = document.getElementById(`mId_${m.id}`);       if(el) el.value = m.national_id }
+    if (m.health)     { const el = document.getElementById(`mHealth_${m.id}`);   if(el) el.value = m.health }
+    if (m.dob) {
+      const [y, mo, d] = m.dob.split('-')
+      const elD = document.getElementById(`mDobD_${m.id}`)
+      const elM = document.getElementById(`mDobM_${m.id}`)
+      const elY = document.getElementById(`mDobY_${m.id}`)
+      if(elD && d)  elD.value = d
+      if(elM && mo) elM.value = mo
+      if(elY && y)  elY.value = y
+    }
     // عبّئ قائمة القرابة حسب الجنس الحالي (إن وُجد)
     updateMemberRelationOptions(m.id)
+    if (m.relation) { const el = document.getElementById(`mRelation_${m.id}`); if(el) el.value = m.relation }
   })
 }
 
