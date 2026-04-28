@@ -2915,6 +2915,27 @@ async function loadFamilies() {
     allCamps.forEach(c => campMap[c.id] = c.name)
     allFamilies = list.map(f => ({ ...f, camp_name: campMap[f.camp_id]||'—', members_count: mCount[f.id]||0 }))
 
+    // ── بناء خريطة التكرارات للعرض في البطاقة ──
+    const cleanPh = p => (p||'').replace(/\s/g,'')
+    // هويات متكررة: رب الأسرة + أفراد
+    const _idToFams = {}
+    list.forEach(f => {
+      if (f.head_id) { if (!_idToFams[f.head_id]) _idToFams[f.head_id] = new Set(); _idToFams[f.head_id].add(f.id) }
+      ;(mMap[f.id]||[]).forEach(m => { if (m.national_id) { if (!_idToFams[m.national_id]) _idToFams[m.national_id] = new Set(); _idToFams[m.national_id].add(f.id) } })
+    })
+    const dupIdSet = new Set()
+    list.forEach(f => {
+      if (f.head_id && (_idToFams[f.head_id]?.size||0) > 1) dupIdSet.add(f.id)
+      if ((mMap[f.id]||[]).some(m => m.national_id && (_idToFams[m.national_id]?.size||0) > 1)) dupIdSet.add(f.id)
+    })
+    // جوالات متكررة
+    const _phToCount = {}
+    list.forEach(f => { if (f.phone1) { const p = cleanPh(f.phone1); _phToCount[p] = (_phToCount[p]||0)+1 } })
+    const dupPhoneSet = new Set(list.filter(f => f.phone1 && (_phToCount[cleanPh(f.phone1)]||0) > 1).map(f => f.id))
+    // تخزين عالمي للـ drawer
+    window._dupIdMap   = _idToFams
+    window._dupPhMap   = _phToCount
+
     // عداد النتائج
     const cntEl = document.getElementById('familiesCount')
     if (cntEl) cntEl.textContent = `${allFamilies.length} أسرة`
@@ -2924,12 +2945,23 @@ async function loadFamilies() {
       return
     }
     tbody.innerHTML = allFamilies.map((f, i) => {
-      const issues  = checkFamilyIssues(f, mMap[f.id])
-      const incCls  = issues.length ? 'row-incomplete' : ''
+      const issues    = checkFamilyIssues(f, mMap[f.id])
+      const hasDupId  = dupIdSet.has(f.id)
+      const hasDupPh  = dupPhoneSet.has(f.id)
+      const incCls    = (issues.length || hasDupId || hasDupPh) ? 'row-incomplete' : ''
       const statusDot = { ok:'🟢', need:'🟡', urgent:'🔴' }[f.status] || '⚪'
-      const missingBadge = issues.length
-        ? `<span class="missing-badge" style="font-size:10px;padding:2px 7px;">⚠️ ${issues.length} نقص</span>`
-        : `<span style="font-size:10px;color:var(--green);">✅</span>`
+      // حساب عدد التكرارات لهذه الأسرة
+      const _cleanPh3 = p => (p||'').replace(/\s/g,'')
+      let dupCount = 0
+      if (f.head_id && (_dupIdMap[f.head_id]?.size||0) > 1) dupCount++
+      ;(mMap[f.id]||[]).forEach(m => { if (m.national_id && (_dupIdMap[m.national_id]?.size||0) > 1) dupCount++ })
+      if (f.phone1 && (_dupPhMap[_cleanPh3(f.phone1)]||0) > 1) dupCount++
+
+      const missingBadge = [
+        issues.length ? `<span class="missing-badge" style="font-size:10px;padding:2px 7px;">⚠️ ${issues.length} نقص</span>` : '',
+        dupCount > 0  ? `<span class="missing-badge" style="font-size:10px;padding:2px 7px;background:rgba(168,85,247,0.15);color:#a855f7;">🔁 ${dupCount} تكرار</span>` : '',
+        (!issues.length && dupCount === 0) ? `<span style="font-size:10px;color:var(--green);">✅</span>` : '',
+      ].filter(Boolean).join('')
       return `<tr class="${incCls}">
         <td style="color:var(--muted);font-size:11px;width:28px;" onclick="openFamily('${f.id}')">${i+1}</td>
         <td onclick="openFamily('${f.id}')" style="max-width:160px;">
@@ -3573,6 +3605,63 @@ async function openFamily(id) {
   const sLabels = { ok:'✅ مستقر', need:'⚠️ يحتاج مساعدة', urgent:'🚨 عاجل' }
   const drawerIssues = checkFamilyIssues(f, members)
 
+  // ── التحقق من التكرار في جميع الأسر ──
+  const _allFams   = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+  const _allMems   = await localDB.family_members.toArray()
+  const cleanPh2   = p => (p||'').replace(/\s/g,'')
+
+  // هويات متكررة
+  const _idMap2 = {}
+  _allFams.forEach(fam => {
+    if (fam.head_id) { if (!_idMap2[fam.head_id]) _idMap2[fam.head_id] = []; _idMap2[fam.head_id].push({ famId: fam.id, name: fam.head_name, isHead: true }) }
+  })
+  _allMems.forEach(m => {
+    if (m.national_id) {
+      if (!_idMap2[m.national_id]) _idMap2[m.national_id] = []
+      const famName = _allFams.find(fam => fam.id === m.family_id)?.head_name || ''
+      _idMap2[m.national_id].push({ famId: m.family_id, name: m.name, memberName: m.name, famName, isHead: false })
+    }
+  })
+
+  // جوالات متكررة
+  const _phMap2 = {}
+  _allFams.forEach(fam => {
+    if (fam.phone1) { const p = cleanPh2(fam.phone1); if (!_phMap2[p]) _phMap2[p] = []; _phMap2[p].push({ famId: fam.id, name: fam.head_name }) }
+  })
+
+  // ابحث عن التكرارات لهذه الأسرة
+  const dupIdWarnings   = []
+  const dupPhoneWarnings = []
+
+  // دالة مساعدة: صف اسم الطرف الآخر بدقة
+  const _dupLabel = o => o.isHead
+    ? `رب الأسرة: <strong>${esc(o.name)}</strong>`
+    : `الفرد <strong>${esc(o.memberName||o.name)}</strong> من أسرة: <strong>${esc(o.famName||o.name)}</strong>`
+
+  // هوية رب الأسرة
+  if (f.head_id && (_idMap2[f.head_id]?.length||0) > 1) {
+    const others = _idMap2[f.head_id].filter(x => x.famId !== f.id)
+    others.forEach(o => {
+      dupIdWarnings.push(`🪪 هوية رب الأسرة <strong>${esc(f.head_name)}</strong> (${f.head_id}) مكررة مع ${_dupLabel(o)}`)
+    })
+  }
+  // هويات الأفراد
+  members.forEach(m => {
+    if (m.national_id && (_idMap2[m.national_id]?.length||0) > 1) {
+      const others = _idMap2[m.national_id].filter(x => x.famId !== f.id)
+      others.forEach(o => {
+        dupIdWarnings.push(`🪪 هوية الفرد <strong>${esc(m.name)}</strong> (${m.national_id}) مكررة مع ${_dupLabel(o)}`)
+      })
+    }
+  })
+  // جوال رب الأسرة
+  if (f.phone1 && (_phMap2[cleanPh2(f.phone1)]?.length||0) > 1) {
+    const others = _phMap2[cleanPh2(f.phone1)].filter(x => x.famId !== f.id)
+    others.forEach(o => {
+      dupPhoneWarnings.push(`📞 جوال رب الأسرة (${f.phone1}) مكرر مع رب الأسرة: <strong>${esc(o.name)}</strong>`)
+    })
+  }
+
   document.getElementById('drawerTitle').textContent = f.head_name
   document.getElementById('drawerBody').innerHTML = `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;">
@@ -3622,6 +3711,16 @@ async function openFamily(id) {
     <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--green);">
       ✅ البيانات مكتملة
     </div>`}
+
+    ${(dupIdWarnings.length || dupPhoneWarnings.length) ? `
+    <div style="background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.4);border-radius:12px;padding:14px;margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:700;color:#a855f7;margin-bottom:10px;">🔁 تكرارات مكتشفة (${dupIdWarnings.length + dupPhoneWarnings.length})</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${[...dupIdWarnings,...dupPhoneWarnings].map(w => `
+          <div style="background:rgba(168,85,247,0.08);border-radius:8px;padding:8px 10px;font-size:11px;line-height:1.6;color:var(--text);">${w}</div>
+        `).join('')}
+      </div>
+    </div>` : ''}
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;">
       <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:12px;">👨‍👩‍👧 الأفراد (${(members?.length||0)+1})</div>
