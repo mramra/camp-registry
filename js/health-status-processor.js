@@ -139,17 +139,21 @@ class HealthStatusProcessor {
      * @returns {Object} سجل الحالة الصحية
      */
     processRow(row, headers) {
+        const familyHeadNameValue = headers.familyHeadName !== undefined ? row[headers.familyHeadName] : null;
+        const familyHeadIdValue = headers.familyHeadId !== undefined ? row[headers.familyHeadId] : null;
+
         const record = {
             familyId: row[headers.familyId] || null,
-            familyHeadName: row[headers.familyHeadName] || null,
-            familyHeadId: row[headers.familyHeadId] || null,
+            familyHeadName: familyHeadNameValue || null,
+            familyHeadId: familyHeadIdValue || null,
             memberName: row[headers.memberName] || null,
             memberId: row[headers.memberId] || null,
             age: this.parseAge(row[headers.age]),
             dateOfBirth: row[headers.dateOfBirth] || null,
             gender: row[headers.gender] || null,
-            disabilities: this.parseDisabilities(row[headers.disability], headers.familyHeadName, row),
-            injuries: this.parseInjuries(row[headers.injury], headers.familyHeadName, row),
+            // مرّر اسم رب الأسرة الفعلي (وليس فهرس العمود)
+            disabilities: this.parseDisabilities(row[headers.disability], familyHeadNameValue, row),
+            injuries: this.parseInjuries(row[headers.injury], familyHeadNameValue, row),
             isNursing: this.determineNursingStatus(row, headers),
             isPregnant: this.determinePregnancyStatus(row, headers),
             medicalNotes: row[headers.medicalNotes] || null,
