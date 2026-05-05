@@ -947,6 +947,7 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
           <option value="no_provider">💔 فاقد معيل</option>
           <option value="destroyed">🏗️ بيت مهدم</option>
           <option value="large">👨‍👩‍👧‍👦 أسرة كبيرة</option>
+          <option value="orphan_fam">🕊️ أسر يتامى (لها أيتام)</option>
         </select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
@@ -960,7 +961,7 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
         </select>
         <select id="nrFilterMember" onchange="loadNeedsReport()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
           <option value="">حالة فرد (كل)</option>
-          <option value="orphan">👶 يتيم</option>
+          <option value="orphan">🕊️ يتيم (فرد)</option>
           <option value="disabled">🦽 معاق</option>
           <option value="injured">🩹 مصاب</option>
           <option value="chronic">💊 مرض مزمن</option>
@@ -977,8 +978,10 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
 
     <!-- أزرار التصدير -->
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-      <button onclick="exportNeedsReport('family')" class="btn btn-primary" style="flex:1;">📥 تصدير الأسر</button>
-      <button onclick="exportNeedsReport('member')" style="flex:1;background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">📥 تصدير الأفراد</button>
+      <button onclick="exportNeedsReport('family')" class="btn btn-primary" style="flex:1;" id="btnNrExportFam">📥 تصدير الأسر</button>
+      <button onclick="exportNeedsReport('member')" style="flex:1;background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;" id="btnNrExportMem">📥 تصدير الأفراد</button>
+      <button onclick="exportNeedsReport('orphans')" style="flex:1;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">🕊️ كشف الأيتام</button>
+      <button onclick="exportNeedsReport('martyrs')" style="flex:1;background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:8px;padding:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">🕊️ كشف الشهداء</button>
     </div>
 
     <!-- قائمة النتائج -->
@@ -1272,6 +1275,40 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
     </div>
   </div>
   <!-- ════════ نهاية صفحة سجل الأطفال ════════ -->
+
+
+  <!-- ════════════════ صفحة الحالات الصحية ════════════════ -->
+  <div class="page" id="page-health-report">
+    <div class="card">
+      <div class="card-title" style="color:var(--red);">⚕️ كشف الحالات الصحية</div>
+
+      <!-- فلاتر -->
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+        <select id="hrCampFilter" onchange="loadHealthReport()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;">
+          <option value="">⛺ كل المخيمات</option>
+        </select>
+        <select id="hrCatFilter" onchange="loadHealthReport()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;">
+          <option value="">كل الحالات الصحية</option>
+          <option value="معاق">🦽 إعاقة</option>
+          <option value="مصاب">🩹 إصابة</option>
+          <option value="مزمن">💊 مرض مزمن</option>
+          <option value="حامل">🤰 حمل</option>
+          <option value="مرضع">🤱 رضاعة</option>
+        </select>
+        <div style="display:flex;gap:8px;">
+          <button onclick="exportHealthReport('all')"    class="btn btn-primary"  style="flex:1;font-size:12px;">📤 كشف شامل</button>
+          <button onclick="exportHealthReport('disabled')" style="flex:1;background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:8px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">🦽 إعاقات</button>
+          <button onclick="exportHealthReport('injured')"  style="flex:1;background:rgba(245,158,11,0.1);border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">🩹 إصابات</button>
+          <button onclick="exportHealthReport('chronic')"  style="flex:1;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">💊 مزمن</button>
+        </div>
+      </div>
+
+      <div id="healthReportContent">
+        <div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>
+      </div>
+    </div>
+  </div>
+  <!-- ════════════════ نهاية صفحة الحالات الصحية ════════════════ -->
 
   <div class="page" id="page-sms">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
@@ -2097,6 +2134,7 @@ function buildSidebar() {
   if (canViewReports()) html += navItem('📈', 'تحليل البيانات', 'page-analysis2')
   if (canViewReports()) html += navItem('👩', 'إحصاءات النساء', 'page-women')
   if (canViewReports()) html += navItem('📋', 'تقارير الاحتياجات', 'page-needs-report')
+  if (canViewReports()) html += navItem('⚕️', 'الحالات الصحية', 'page-health-report')
   if (canViewReports()) html += navItem('🚶', 'حركات الأسر', 'page-movements')
   if (canViewReports()) html += navItem('📝', 'سجل تغييرات الأسر', 'page-history')
   if (['platform_owner','super_admin','camp_delegate'].includes(role)) html += `
@@ -2227,7 +2265,8 @@ async function showPage(pageId) {
     'page-alerts':     ['🔔 التنبيهات الذكية', 'تنبيهات تحتاج انتباهك'],
     'page-family-needs': ['📋 احتياجات الأسرة', 'الفئات الاجتماعية والاقتصادية'],
     'page-member-needs': ['🩺 الحالات الصحية', 'الإعاقات والإصابات والأمراض'],
-    'page-needs-report': ['📋 تقارير الاحتياجات', 'فلترة وتصدير حسب الفئة'],
+    'page-needs-report':  ['📋 تقارير الاحتياجات', 'فلترة وتصدير حسب الفئة'],
+    'page-health-report': ['⚕️ الحالات الصحية', 'إعاقات وإصابات وأمراض مزمنة'],
   }
 
   const [title, sub] = titles[pageId] || ['سجل أسر المخيم', '']
@@ -2251,6 +2290,7 @@ async function showPage(pageId) {
     loadWomenPage().catch(e => console.warn('women:', e.message))
   }
   if (pageId === 'page-needs-report') loadNeedsReport().catch(e => console.warn('needs-report:', e.message))
+  if (pageId === 'page-health-report') initHealthReport()
   if (pageId === 'page-data')        loadDataPage().catch(e => console.warn('data:', e.message))
   if (pageId === 'page-audit')       safeLoad(loadAuditLog, 'auditContent', '📴 سجل النشاط يحتاج اتصالاً')
   if (pageId === 'page-settings') {
@@ -7241,6 +7281,279 @@ async function importChildrenExcel(event) {
 
 
 
+// ════════════════════════════════════════════════════════
+// ║           كشف الحالات الصحية — Health Report        ║
+// ════════════════════════════════════════════════════════
+
+// تحويل مصفوفة {type, detail} إلى نص مقروء
+function decodeHealthArr(arr, typesList) {
+  if (!Array.isArray(arr) || !arr.length) return ''
+  return arr.map(item => {
+    const key = typeof item === 'string' ? item : item.type
+    const det = (item && item.detail) ? ` (${item.detail})` : ''
+    const found = typesList.find(t => t.key === key)
+    return (found ? found.label : key) + det
+  }).join('، ')
+}
+
+function decodeDisabilities(arr)  { return decodeHealthArr(arr, DISABILITY_TYPES) }
+function decodeInjuries(arr)      { return decodeHealthArr(arr, INJURY_TYPES) }
+function decodeChronics(arr)      { return decodeHealthArr(arr, CHRONIC_DISEASES) }
+
+function initHealthReport() {
+  fillCampSelect('hrCampFilter', true)
+  if (currentMember?.camp_id) {
+    const el = document.getElementById('hrCampFilter')
+    if (el && !el.value) el.value = currentMember.camp_id
+  }
+  loadHealthReport()
+}
+
+async function loadHealthReport() {
+  const out = document.getElementById('healthReportContent')
+  if (!out) return
+  out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
+
+  const campId  = document.getElementById('hrCampFilter')?.value || ''
+  const catFilter = document.getElementById('hrCatFilter')?.value || ''
+  const activeCamp = currentMember?.camp_id || campId
+
+  // جلب الأسر
+  let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+  if (activeCamp) families = families.filter(f => f.camp_id === activeCamp)
+  const famMap = {}; families.forEach(f => famMap[f.id] = f)
+  const famIds = new Set(Object.keys(famMap))
+
+  // جلب الأفراد
+  const allMems = await localDB.family_members.toArray()
+  const members = allMems.filter(m => famIds.has(m.family_id))
+
+  // إضافة رب الأسرة كفرد
+  const headPersons = families.map(f => ({
+    _isHead: true, family_id: f.id,
+    name: f.head_name, national_id: f.head_id, dob: f.head_dob,
+    gender: f.head_gender, relation: 'رب الأسرة',
+    health: f.head_health || '',
+    chronic_diseases: f.head_chronic_diseases || [],
+  }))
+  const allPersons = [...headPersons, ...members]
+
+  // تصنيف الحالات — يفحص حقل health النصي + المصفوفات (كلا النموذجين)
+  const isDisabled = m => m.health==='معاق' || (Array.isArray(m.disabilities) && m.disabilities.length)
+  const isInjured  = m => m.health==='مصاب' || (Array.isArray(m.injuries) && m.injuries.length)
+  const isChronic  = m => m.health==='مزمن' || (Array.isArray(m.chronic_diseases) && m.chronic_diseases.length)
+  const isPregnant = m => m.health==='حامل' || (Array.isArray(m.female_status) && m.female_status.includes('حامل'))
+  const isNursing  = m => m.health==='مرضع' || (Array.isArray(m.female_status) && m.female_status.includes('مرضع'))
+
+  const disabled  = allPersons.filter(isDisabled)
+  const injured   = allPersons.filter(isInjured)
+  const chronic   = allPersons.filter(isChronic)
+  const pregnant  = allPersons.filter(isPregnant)
+  const nursing   = allPersons.filter(isNursing)
+
+  // الحالة المختارة للفلتر
+  let filtered = []
+  if      (catFilter === 'معاق')  filtered = disabled
+  else if (catFilter === 'مصاب')  filtered = injured
+  else if (catFilter === 'مزمن')  filtered = chronic
+  else if (catFilter === 'حامل')  filtered = pregnant
+  else if (catFilter === 'مرضع')  filtered = nursing
+  else {
+    // دمج الكل بدون تكرار
+    const seen = new Set()
+    ;[...disabled, ...injured, ...chronic, ...pregnant, ...nursing].forEach(m => {
+      const key = m.family_id + '_' + (m.id||m.name)
+      if (!seen.has(key)) { seen.add(key); filtered.push(m) }
+    })
+  }
+
+  // تفصيل الأمراض المزمنة
+  const chronicDetail = {}
+  CHRONIC_DISEASES.forEach(d => chronicDetail[d.key] = { label: d.label, persons: [] })
+  chronic.forEach(m => {
+    const dz = Array.isArray(m.chronic_diseases) ? m.chronic_diseases : []
+    dz.forEach(dKey => { if (chronicDetail[dKey]) chronicDetail[dKey].persons.push(m) })
+  })
+
+  if (!filtered.length && !catFilter) {
+    out.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><div style="font-size:13px;color:var(--muted);">لا توجد حالات صحية مسجّلة</div></div>'
+    return
+  }
+
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+
+  const statCard = (n, label, color, icon, filter) =>
+    `<div onclick="document.getElementById('hrCatFilter').value='${filter}';loadHealthReport()"
+         style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:border-color .2s;"
+         onmouseover="this.style.borderColor='${color}'" onmouseout="this.style.borderColor=''">
+      <div style="font-size:22px;font-weight:900;color:${color};">${n}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px;">${icon} ${label}</div>
+    </div>`
+
+  const renderTable = (list, title, color) => {
+    if (!list.length) return ''
+    return `<details style="margin-bottom:10px;" ${catFilter ? 'open' : ''}>
+      <summary style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;font-weight:700;color:${color};">${title}</span>
+        <span style="background:${color};color:#fff;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:900;">${list.length}</span>
+      </summary>
+      <div style="margin-top:6px;">
+        ${list.map(m => {
+          const fam  = famMap[m.family_id] || {}
+          const age  = calcAge(m.dob)
+          const camp = campMap[fam.camp_id] || '—'
+          const disStr = decodeDisabilities(m.disabilities)
+          const injStr = decodeInjuries(m.injuries)
+          const chrStr = decodeChronics(m.chronic_diseases)
+          const healthTxt = (m.health && m.health !== 'سليم') ? m.health : ''
+          return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px;">
+            <div style="font-size:13px;font-weight:700;">${esc(m.name||'—')}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:3px;">
+              ${m.national_id ? `🪪 ${esc(m.national_id)} • ` : ''}
+              🎂 ${age !== null ? age+' سنة' : '—'} •
+              ${esc(m.gender||'—')} •
+              صلة: ${esc(m.relation||'—')}
+            </div>
+            <div style="font-size:10px;color:var(--muted);">
+              👨‍👩‍👧 ${esc(fam.head_name||'—')} • ⛺ ${esc(camp)} • 📞 ${esc(fam.phone1||'—')}
+            </div>
+            ${healthTxt ? `<div style="font-size:10px;background:rgba(239,68,68,.1);color:var(--red);padding:3px 7px;border-radius:6px;margin-top:4px;display:inline-block;">⚕️ ${esc(healthTxt)}</div>` : ''}
+            ${disStr ? `<div style="font-size:10px;color:#8b5cf6;margin-top:3px;">🦽 الإعاقة: <strong>${esc(disStr)}</strong></div>` : ''}
+            ${injStr ? `<div style="font-size:10px;color:var(--accent);margin-top:3px;">🩹 الإصابة: <strong>${esc(injStr)}</strong></div>` : ''}
+            ${chrStr ? `<div style="font-size:10px;color:#f97316;margin-top:3px;">💊 الأمراض: <strong>${esc(chrStr)}</strong></div>` : ''}
+          </div>`
+        }).join('')}
+      </div>
+    </details>`
+  }
+
+  // قسم الأمراض المزمنة التفصيلي
+  const chronicSections = Object.values(chronicDetail)
+    .filter(d => d.persons.length)
+    .map(d => renderTable(d.persons, `💊 ${d.label}`, '#f97316'))
+    .join('')
+
+  out.innerHTML = `
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="font-size:28px;font-weight:900;color:var(--red);">${filtered.length}</div>
+      <div style="font-size:12px;color:var(--muted);">إجمالي الحالات${catFilter ? ' — ' + catFilter : ''}</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">
+      ${statCard(disabled.length,  'إعاقة',     '#8b5cf6', '🦽', 'معاق')}
+      ${statCard(injured.length,   'إصابة',     'var(--accent)', '🩹', 'مصاب')}
+      ${statCard(chronic.length,   'أمراض مزمنة', '#f97316', '💊', 'مزمن')}
+      ${statCard(pregnant.length,  'حوامل',     '#ec4899', '🤰', 'حامل')}
+      ${statCard(nursing.length,   'مرضعات',    '#10b981', '🤱', 'مرضع')}
+      ${statCard(filtered.length,  'الكل',      'var(--blue)', '👥', '')}
+    </div>
+
+    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;">📋 الكشوف التفصيلية</div>
+    ${catFilter
+      ? renderTable(filtered, {'معاق':'🦽 ذوو الإعاقة','مصاب':'🩹 المصابون','مزمن':'💊 الأمراض المزمنة','حامل':'🤰 الحوامل','مرضع':'🤱 المرضعات'}[catFilter]||'الحالات المختارة', 'var(--red)')
+      : `${renderTable(disabled,  '🦽 ذوو الإعاقة ('+disabled.length+')',     '#8b5cf6')}
+         ${renderTable(injured,   '🩹 المصابون ('+injured.length+')',          'var(--accent)')}
+         ${chronicSections || renderTable(chronic, '💊 الأمراض المزمنة ('+chronic.length+')', '#f97316')}
+         ${renderTable(pregnant,  '🤰 الحوامل ('+pregnant.length+')',          '#ec4899')}
+         ${renderTable(nursing,   '🤱 المرضعات ('+nursing.length+')',          '#10b981')}`
+    }
+  `
+}
+
+async function exportHealthReport(type) {
+  if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
+  const campId    = document.getElementById('hrCampFilter')?.value || ''
+  const activeCamp = currentMember?.camp_id || campId
+
+  let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+  if (activeCamp) families = families.filter(f => f.camp_id === activeCamp)
+  const famMap = {}; families.forEach(f => famMap[f.id] = f)
+  const famIds = new Set(Object.keys(famMap))
+
+  const allMems = await localDB.family_members.toArray()
+  const members = allMems.filter(m => famIds.has(m.family_id))
+
+  const headPersons = families.map(f => ({
+    _isHead: true, family_id: f.id,
+    name: f.head_name, national_id: f.head_id, dob: f.head_dob,
+    gender: f.head_gender, relation: 'رب الأسرة',
+    health: f.head_health || '',
+    chronic_diseases: f.head_chronic_diseases || [],
+  }))
+  const allPersons = [...headPersons, ...members]
+
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+
+  const toRow = m => {
+    const fam   = famMap[m.family_id] || {}
+    const disStr = decodeDisabilities(m.disabilities)
+    const injStr = decodeInjuries(m.injuries)
+    const chrStr = decodeChronics(m.chronic_diseases)
+    // إذا health نصي بسيط، أدرجه أيضاً
+    const healthTxt = (m.health && m.health !== 'سليم') ? m.health : ''
+    return {
+      'الاسم':                 m.name || '',
+      'رقم الهوية':            m.national_id || '',
+      'الجنس':                 m.gender || '',
+      'تاريخ الميلاد':        m.dob || '',
+      'العمر':                 calcAge(m.dob) ?? '',
+      'صلة القرابة':          m.relation || '',
+      'الحالة الصحية (عام)': healthTxt,
+      'نوع الإعاقة':          disStr,
+      'نوع الإصابة':          injStr,
+      'الأمراض المزمنة':      chrStr,
+      'اسم رب الأسرة':        fam.head_name || '',
+      'هوية رب الأسرة':       fam.head_id || '',
+      'الجوال':                fam.phone1 || '',
+      'المخيم':                campMap[fam.camp_id] || '',
+      'رقم الخيمة':           fam.tent || '',
+      'العنوان الأصلي':       fam.original_address || '',
+    }
+  }
+
+  const wb  = XLSX.utils.book_new()
+  const date = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
+
+  // دوال الفلترة مشتركة بين all والمنفرد
+  const _isD = m => m.health==='معاق' || (Array.isArray(m.disabilities) && m.disabilities.length)
+  const _isI = m => m.health==='مصاب' || (Array.isArray(m.injuries)     && m.injuries.length)
+  const _isC = m => m.health==='مزمن' || (Array.isArray(m.chronic_diseases) && m.chronic_diseases.length)
+  const _isP = m => m.health==='حامل' || (Array.isArray(m.female_status) && m.female_status.includes('حامل'))
+  const _isN = m => m.health==='مرضع' || (Array.isArray(m.female_status) && m.female_status.includes('مرضع'))
+
+  const disabled = allPersons.filter(_isD)
+  const injured  = allPersons.filter(_isI)
+  const chronic  = allPersons.filter(_isC)
+  const pregnant = allPersons.filter(_isP)
+  const nursing  = allPersons.filter(_isN)
+
+  if (type === 'all') {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(disabled.length ? disabled.map(toRow) : [{ملاحظة:'لا توجد'}]), '🦽 إعاقة')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(injured.length  ? injured.map(toRow)  : [{ملاحظة:'لا توجد'}]), '🩹 إصابة')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(chronic.length  ? chronic.map(toRow)  : [{ملاحظة:'لا توجد'}]), '💊 مزمن')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pregnant.length ? pregnant.map(toRow) : [{ملاحظة:'لا توجد'}]), '🤰 حامل')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(nursing.length  ? nursing.map(toRow)  : [{ملاحظة:'لا توجد'}]), '🤱 مرضع')
+    const total = disabled.length + injured.length + chronic.length + pregnant.length + nursing.length
+    XLSX.writeFile(wb, `كشف_الحالات_الصحية_${date}.xlsx`)
+    showToast(`✅ تم تصدير ${total} حالة في 5 شيتات`)
+
+  } else {
+    const sheetName = {disabled:'🦽 إعاقة', injured:'🩹 إصابة', chronic:'💊 مزمن'}[type] || type
+    const fileName  = {disabled:'الإعاقات', injured:'الإصابات', chronic:'الأمراض_المزمنة'}[type] || type
+    let list = []
+    if      (type === 'disabled') list = disabled
+    else if (type === 'injured')  list = injured
+    else if (type === 'chronic')  list = chronic
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(list.length ? list.map(toRow) : [{ملاحظة:'لا توجد'}]), sheetName)
+    XLSX.writeFile(wb, `كشف_${fileName}_${date}.xlsx`)
+    showToast(`✅ تم تصدير ${list.length} حالة`)
+  }
+  logAction('تصدير حالات صحية', null, type)
+}
+
+// ════════════════ نهاية الحالات الصحية ════════════════
+
+
 // ── قالب GCDG (مجموعة غزة للثقافة والتنمية) ──
 function downloadGCDGTemplate() {
   try {
@@ -11400,6 +11713,12 @@ async function loadNeedsReport() {
   let filteredFams = families
   if (catFilter === 'large') {
     filteredFams = families.filter(f => isLargeFamily(filterOutHead(f, mByFam[f.id]||[]).length + 1))
+  } else if (catFilter === 'orphan_fam') {
+    // أسر تحتوي على أيتام من أفرادها
+    filteredFams = families.filter(f => {
+      const fMems = mByFam[f.id] || []
+      return fMems.some(m => m.orphan_status)
+    })
   } else if (catFilter) {
     filteredFams = families.filter(f => Array.isArray(f.category_tags) && f.category_tags.includes(catFilter))
   }
@@ -11413,11 +11732,11 @@ async function loadNeedsReport() {
       const allPeople = [{ dob: f.head_dob, gender: f.head_gender, _isHead: true }, ...fMems]
       return allPeople.some(p => {
         if (memFilter === 'orphan') return p.orphan_status
-        if (memFilter === 'disabled') return Array.isArray(p.disabilities) && p.disabilities.length
-        if (memFilter === 'injured') return Array.isArray(p.injuries) && p.injuries.length
-        if (memFilter === 'chronic') return Array.isArray(p.chronic_diseases) && p.chronic_diseases.length
-        if (memFilter === 'pregnant') return Array.isArray(p.female_status) && p.female_status.includes('حامل')
-        if (memFilter === 'nursing')  return Array.isArray(p.female_status) && p.female_status.includes('مرضع')
+        if (memFilter === 'disabled') return p.health==='معاق' || (Array.isArray(p.disabilities) && p.disabilities.length)
+        if (memFilter === 'injured')  return p.health==='مصاب' || (Array.isArray(p.injuries) && p.injuries.length)
+        if (memFilter === 'chronic')  return p.health==='مزمن' || (Array.isArray(p.chronic_diseases) && p.chronic_diseases.length)
+        if (memFilter === 'pregnant') return p.health==='حامل' || (Array.isArray(p.female_status) && p.female_status.includes('حامل'))
+        if (memFilter === 'nursing')  return p.health==='مرضع' || (Array.isArray(p.female_status) && p.female_status.includes('مرضع'))
         const age = calcAge(p.dob)
         if (memFilter === 'elderly') return age !== null && age >= 60
         if (memFilter === 'infant')  return age !== null && age < 2
@@ -11430,7 +11749,7 @@ async function loadNeedsReport() {
   const stats = {
     total: filteredFams.length,
     martyr: 0, captive: 0, no_provider: 0, destroyed: 0, large: 0,
-    orphans: 0, disabled: 0, injured: 0, chronic: 0, elderly: 0, infants: 0,
+    orphans: 0, orphan_fams: 0, disabled: 0, injured: 0, chronic: 0, elderly: 0, infants: 0,
     pregnant: 0, nursing: 0,
     total_members: 0,
   }
@@ -11465,11 +11784,19 @@ async function loadNeedsReport() {
     })
   })
 
+  // حساب أسر الأيتام (أسر تحتوي على يتيم واحد على الأقل)
+  filteredFams.forEach(f => {
+    const fMems = mByFam[f.id] || []
+    if (fMems.some(m => m.orphan_status)) stats.orphan_fams++
+  })
+
   // عرض الإحصائيات
   const statCards = [
     ['👨‍👩‍👧', 'الأسر', stats.total, 'var(--accent)'],
     ['👥', 'الأفراد', stats.total_members, 'var(--blue)'],
     ['🕊️', 'أسر شهداء', stats.martyr, '#8b5cf6'],
+    ['🕊️', 'أسر يتامى', stats.orphan_fams, '#ef4444'],
+    ['🧒', 'أيتام (أفراد)', stats.orphans, '#ef4444'],
     ['⛓️', 'أسر أسرى', stats.captive, '#f97316'],
     ['💔', 'فاقد معيل', stats.no_provider, 'var(--red)'],
     ['🏗️', 'بيوت مهدمة', stats.destroyed, '#eab308'],
@@ -11546,6 +11873,8 @@ async function exportNeedsReport(mode) {
 
   if (catFilter === 'large') {
     families = families.filter(f => isLargeFamily(filterOutHead(f, mByFam[f.id]||[]).length + 1))
+  } else if (catFilter === 'orphan_fam') {
+    families = families.filter(f => { const fMems = mByFam[f.id] || []; return fMems.some(m => m.orphan_status) })
   } else if (catFilter) {
     families = families.filter(f => Array.isArray(f.category_tags) && f.category_tags.includes(catFilter))
   }
@@ -11554,7 +11883,25 @@ async function exportNeedsReport(mode) {
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
   const wb = XLSX.utils.book_new()
 
-  if (mode === 'family') {
+  if (mode === 'orphans') {
+    const wb2 = XLSX.utils.book_new()
+    const n = await _exportOrphansSheet(wb2, families, mByFam, campMap)
+    const date2 = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
+    XLSX.writeFile(wb2, `كشف_الأيتام_${date2}.xlsx`)
+    showToast(`✅ تم تصدير ${n} يتيم`)
+    logAction('تصدير كشف الأيتام', null, `${n} يتيم`)
+    return
+
+  } else if (mode === 'martyrs') {
+    const wb3 = XLSX.utils.book_new()
+    const n = await _exportMartyrsSheet(wb3, families, mByFam, campMap)
+    const date3 = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
+    XLSX.writeFile(wb3, `كشف_أسر_الشهداء_${date3}.xlsx`)
+    showToast(`✅ تم تصدير ${n} أسرة`)
+    logAction('تصدير أسر الشهداء', null, `${n} أسرة`)
+    return
+
+  } else if (mode === 'family') {
     const rows = families.map(f => {
       const tags = Array.isArray(f.category_tags) ? f.category_tags : []
       const details = (f.category_details && typeof f.category_details === 'object') ? f.category_details : {}
@@ -11598,11 +11945,11 @@ async function exportNeedsReport(mode) {
           const age = calcAge(p.dob)
           let match = false
           if (memFilter === 'orphan') match = !!p.orphan_status
-          else if (memFilter === 'disabled') match = Array.isArray(p.disabilities) && p.disabilities.length
-          else if (memFilter === 'injured')  match = Array.isArray(p.injuries) && p.injuries.length
-          else if (memFilter === 'chronic')  match = Array.isArray(p.chronic_diseases) && p.chronic_diseases.length
-          else if (memFilter === 'pregnant') match = Array.isArray(p.female_status) && p.female_status.includes('حامل')
-          else if (memFilter === 'nursing')  match = Array.isArray(p.female_status) && p.female_status.includes('مرضع')
+          else if (memFilter === 'disabled') match = p.health==='معاق' || (Array.isArray(p.disabilities) && p.disabilities.length)
+          else if (memFilter === 'injured')  match = p.health==='مصاب' || (Array.isArray(p.injuries) && p.injuries.length)
+          else if (memFilter === 'chronic')  match = p.health==='مزمن' || (Array.isArray(p.chronic_diseases) && p.chronic_diseases.length)
+          else if (memFilter === 'pregnant') match = p.health==='حامل' || (Array.isArray(p.female_status) && p.female_status.includes('حامل'))
+          else if (memFilter === 'nursing')  match = p.health==='مرضع' || (Array.isArray(p.female_status) && p.female_status.includes('مرضع'))
           else if (memFilter === 'elderly')  match = age !== null && age >= 60
           else if (memFilter === 'infant')   match = age !== null && age < 2
           if (!match) return
@@ -11636,7 +11983,59 @@ async function exportNeedsReport(mode) {
     XLSX.writeFile(wb, `تقرير_احتياجات_الأفراد_${date}.xlsx`)
     showToast(`✅ تم تصدير ${rows.length} فرد`)
   }
-  logAction('تصدير تقرير احتياجات', null, mode==='family'?'أسر':'أفراد')
+  logAction('تصدير تقرير احتياجات', null, mode)
+}
+
+// ── كشف الأيتام ──
+async function _exportOrphansSheet(wb, families, mByFam, campMap) {
+  const rows = []
+  families.forEach(f => {
+    const fMems = mByFam[f.id] || []
+    const orphans = fMems.filter(m => m.orphan_status)
+    orphans.forEach(o => {
+      rows.push({
+        'اسم الأسرة':     f.head_name || '',
+        'المخيم':         campMap[f.camp_id] || '',
+        'الجوال':         f.phone1 || '',
+        'اسم اليتيم':     o.name || '',
+        'الهوية':         o.national_id || '',
+        'الجنس':          o.gender || '',
+        'تاريخ الميلاد':  o.dob || '',
+        'العمر':          calcAge(o.dob) ?? '',
+        'صلة القرابة':    o.relation || '',
+        'سبب اليتم':      getOrphanLabel(o.orphan_status) || o.orphan_status || '',
+        'سبب الوفاة':     o.orphan_cause || '',
+        'ملاحظات صحية':  o.health || '',
+      })
+    })
+  })
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{'ملاحظة':'لا توجد بيانات'}]), 'الأيتام')
+  return rows.length
+}
+
+// ── كشف أسر الشهداء ──
+async function _exportMartyrsSheet(wb, families, mByFam, campMap) {
+  const rows = []
+  families.filter(f => Array.isArray(f.category_tags) && f.category_tags.includes('martyr')).forEach(f => {
+    const details = (f.category_details && typeof f.category_details==='object') ? f.category_details : {}
+    const fMems = mByFam[f.id] || []
+    const memCount = filterOutHead(f, fMems).length + 1
+    rows.push({
+      'اسم رب الأسرة':     f.head_name || '',
+      'الهوية':             f.head_id || '',
+      'الجوال':             f.phone1 || '',
+      'المخيم':             campMap[f.camp_id] || '',
+      'عدد الأفراد':        memCount,
+      'اسم الشهيد':         details.martyr_name || '',
+      'تاريخ الاستشهاد':    details.martyr_date || '',
+      'مكان الاستشهاد':     details.martyr_location || '',
+      'علاقة الشهيد برب الأسرة': details.martyr_relation || '',
+      'المستوى الاقتصادي':  getEconomicLabel(f.economic_level),
+      'ملاحظات':            f.notes || '',
+    })
+  })
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{'ملاحظة':'لا توجد بيانات'}]), 'أسر الشهداء')
+  return rows.length
 }
 
 async function loadAnalysisWithCharts() {
