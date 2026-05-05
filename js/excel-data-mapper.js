@@ -190,8 +190,8 @@ class ExcelDataMapper {
                 dateOfBirth: row[headers.dateOfBirth] || (memberInfo ? memberInfo.dateOfBirth : null),
                 
                 // معلومات رب الأسرة - من خريطة أرباب الأسر
-                familyHeadName: familyHeadInfo ? familyHeadInfo.name : row[headers.familyHeadName],
-                familyHeadId: familyHeadInfo ? familyHeadInfo.id : row[headers.familyHeadId],
+                familyHeadName: familyHeadInfo ? familyHeadInfo.name : row[headers.familyHeadName] || null,
+                familyHeadId: familyHeadInfo ? familyHeadInfo.id : row[headers.familyHeadId] || null,
                 
                 // البيانات الصحية
                 disability: row[headers.disability],
@@ -206,7 +206,11 @@ class ExcelDataMapper {
                 familyHeadSource: familyHeadInfo ? 'from_family_map' : 'from_health_sheet'
             };
 
-            if (memberId && familyId) {
+            // Push health record if it contains health info or family head info
+            const hasHealthInfo = (healthRecord.disability && String(healthRecord.disability).trim()) ||
+                                  (healthRecord.injury && String(healthRecord.injury).trim());
+
+            if (hasHealthInfo || healthRecord.familyHeadName || healthRecord.familyHeadId) {
                 result.healthStatus.push(healthRecord);
             }
         }
