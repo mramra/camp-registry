@@ -2784,26 +2784,33 @@ async function doCustomExport() {
       const fMems  = mByFamily[f.id] || []
       const mother = fMems.find(m => ['زوجة','أم','wife'].includes((m.relation||'').trim()))
 
-      // كل الأبناء والبنات (استثناء رب الأسرة والأم)
-      const children = filterOutHead(f, fMems).filter(m => m !== mother)
+      // جميع أفراد الأسرة شاملاً رب الأسرة والزوجة وكل الأبناء
+      const headPerson = {
+        _isHead: true,
+        name: f.head_name, national_id: f.head_id, dob: f.head_dob,
+        gender: f.head_gender, relation: 'رب الأسرة', health: f.head_health||''
+      }
+      const allMembers = [headPerson, ...filterOutHead(f, fMems)]
 
       const filterActive = ageFrom > 0 || ageTo < 120
 
-      // فلترة الأبناء حسب العمر إذا كان الفلتر مفعّلاً
-      const filteredChildren = filterActive
-        ? children.filter(child => {
-            const a = calcAge(child.dob)
+      // فلترة الأفراد حسب العمر إذا كان الفلتر مفعّلاً — يشمل رب الأسرة والزوجة وكل الأبناء
+      const filteredMembers = filterActive
+        ? allMembers.filter(m => {
+            const a = calcAge(m.dob)
             return a !== null && a >= ageFrom && a <= ageTo
           })
-        : children
+        : allMembers
 
-      if (!filteredChildren.length && !filterActive) {
-        // أسرة بدون أبناء وبدون فلتر → صف واحد فارغ فقط
-        filteredChildren.push(null)
+      if (!filteredMembers.length && !filterActive) {
+        // أسرة بدون أفراد وبدون فلتر → صف واحد فارغ
+        filteredMembers.push(null)
       }
 
-      filteredChildren.forEach(child => {
+      filteredMembers.forEach(child => {
+        // child هنا يمثل أي فرد (رب أسرة، زوجة، ابن...)
         const age = child ? (calcAge(child.dob)??'') : ''
+        const isHead = child?._isHead
         const row = {}
         selMem.forEach(col => {
           switch(col.key) {
@@ -2815,9 +2822,9 @@ async function doCustomExport() {
             case 'mother_name': row[col.label] = mother?.name||''; break
             case 'mother_id':   row[col.label] = mother?.national_id||''; break
             case 'mother_dob':  row[col.label] = mother?.dob||''; break
-            case 'son_name':    row[col.label] = child?.name||''; break
-            case 'son_id':      row[col.label] = child?.national_id||''; break
-            case 'son_dob':     row[col.label] = child?.dob||''; break
+            case 'son_name':    row[col.label] = (!isHead && child?.name)||''; break
+            case 'son_id':      row[col.label] = (!isHead && child?.national_id)||''; break
+            case 'son_dob':     row[col.label] = (!isHead && child?.dob)||''; break
             case 'name':        row[col.label] = child?.name||''; break
             case 'relation':    row[col.label] = child?.relation||''; break
             case 'national_id': row[col.label] = child?.national_id||''; break
@@ -11412,7 +11419,7 @@ async function loadNeedsReport() {
         if (memFilter === 'pregnant') return Array.isArray(p.female_status) && p.female_status.includes('حامل')
         if (memFilter === 'nursing')  return Array.isArray(p.female_status) && p.female_status.includes('مرضع')
         const age = calcAge(p.dob)
-        if (memFilter === 'elderly') return age !== null && age >= 65
+        if (memFilter === 'elderly') return age !== null && age >= 60
         if (memFilter === 'infant')  return age !== null && age < 2
         return false
       })
@@ -11596,7 +11603,7 @@ async function exportNeedsReport(mode) {
           else if (memFilter === 'chronic')  match = Array.isArray(p.chronic_diseases) && p.chronic_diseases.length
           else if (memFilter === 'pregnant') match = Array.isArray(p.female_status) && p.female_status.includes('حامل')
           else if (memFilter === 'nursing')  match = Array.isArray(p.female_status) && p.female_status.includes('مرضع')
-          else if (memFilter === 'elderly')  match = age !== null && age >= 65
+          else if (memFilter === 'elderly')  match = age !== null && age >= 60
           else if (memFilter === 'infant')   match = age !== null && age < 2
           if (!match) return
         }
