@@ -7324,26 +7324,56 @@ async function loadHealthReport() {
   const famMap = {}; families.forEach(f => famMap[f.id] = f)
   const famIds = new Set(Object.keys(famMap))
 
-  // جلب الأفراد
+  // جلب الأفراد (كل أفراد الأسرة بما فيهم رب الأسرة إن وُجد في family_members)
   const allMems = await localDB.family_members.toArray()
   const members = allMems.filter(m => famIds.has(m.family_id))
 
-  // إضافة رب الأسرة كفرد
-  const headPersons = families.map(f => ({
-    _isHead: true, family_id: f.id,
-    name: f.head_name, national_id: f.head_id, dob: f.head_dob,
-    gender: f.head_gender, relation: 'رب الأسرة',
-    health: f.head_health || '',
-    chronic_diseases: f.head_chronic_diseases || [],
-  }))
-  const allPersons = [...headPersons, ...members]
+  // رب الأسرة من جدول families (بيانات الصحة من head_disabilities/injuries)
+  // نضيفه فقط إذا لم يكن موجوداً في family_members بنفس الهوية أو الاسم
+  const headPersons = families.map(f => {
+    const alreadyInMems = members.some(m =>
+      m.family_id === f.id && (
+        (f.head_id && m.national_id && m.national_id.trim() === f.head_id.trim()) ||
+        ['رب الأسرة','رب أسرة','head'].includes((m.relation||'').trim())
+      )
+    )
+    if (alreadyInMems) return null  // بياناته موجودة في members
+    return {
+      _isHead: true, family_id: f.id,
+      name: f.head_name, national_id: f.head_id, dob: f.head_dob,
+      gender: f.head_gender, relation: 'رب الأسرة',
+      health:           f.head_health        || '',
+      disabilities:     f.head_disabilities  || [],
+      injuries:         f.head_injuries      || [],
+      chronic_diseases: f.head_chronic_diseases || [],
+      female_status:    f.head_female_status || [],
+    }
+  }).filter(Boolean)
 
-  // تصنيف الحالات — يفحص حقل health النصي + المصفوفات (كلا النموذجين)
+  // allPersons = كل الأفراد + أرباب الأسر الغائبين عن family_members
+  const allPersons = [...members, ...headPersons]
+
+  // دوال الفلترة — يفحص كلا نموذجي البيانات
   const isDisabled = m => m.health==='معاق' || (Array.isArray(m.disabilities) && m.disabilities.length)
   const isInjured  = m => m.health==='مصاب' || (Array.isArray(m.injuries) && m.injuries.length)
   const isChronic  = m => m.health==='مزمن' || (Array.isArray(m.chronic_diseases) && m.chronic_diseases.length)
   const isPregnant = m => m.health==='حامل' || (Array.isArray(m.female_status) && m.female_status.includes('حامل'))
-  const isNursing  = m => m.health==='مرضع' || (Array.isArray(m.female_status) && m.female_status.includes('مرضع'))
+  // المرضعات: الأمهات اللواتي لديهن طفل أقل من سنتين في نفس الأسرة
+  // أو المسجّلات صريحاً كمرضعات (health=مرضع أو female_status يشمل مرضع) وعمرهن 13+
+  const famInfants = new Set()  // family_id التي فيها رضيع
+  allPersons.forEach(m => { const a = calcAge(m.dob); if (a !== null && a < 2) famInfants.add(m.family_id) })
+
+  const isNursing = m => {
+    // حالة 1: مسجّلة صريحاً كمرضعة وعمرها 13+
+    const explicitNursing = (m.health === 'مرضع' || (Array.isArray(m.female_status) && m.female_status.includes('مرضع')))
+    const age = calcAge(m.dob)
+    if (explicitNursing && (age === null || age >= 13)) return true
+    // حالة 2: زوجة أو أم في أسرة فيها رضيع (أقل من سنتين)
+    if (!famInfants.has(m.family_id)) return false
+    const relation = (m.relation || '').trim()
+    const isMother = ['زوجة','أم','زوجه','wife','mother'].includes(relation) || m.gender === 'أنثى'
+    return isMother && (age === null || age >= 13)
+  }
 
   const disabled  = allPersons.filter(isDisabled)
   const injured   = allPersons.filter(isInjured)
@@ -7473,14 +7503,26 @@ async function exportHealthReport(type) {
   const allMems = await localDB.family_members.toArray()
   const members = allMems.filter(m => famIds.has(m.family_id))
 
-  const headPersons = families.map(f => ({
-    _isHead: true, family_id: f.id,
-    name: f.head_name, national_id: f.head_id, dob: f.head_dob,
-    gender: f.head_gender, relation: 'رب الأسرة',
-    health: f.head_health || '',
-    chronic_diseases: f.head_chronic_diseases || [],
-  }))
-  const allPersons = [...headPersons, ...members]
+  const headPersons = families.map(f => {
+    const alreadyInMems = members.some(m =>
+      m.family_id === f.id && (
+        (f.head_id && m.national_id && m.national_id.trim() === f.head_id.trim()) ||
+        ['رب الأسرة','رب أسرة','head'].includes((m.relation||'').trim())
+      )
+    )
+    if (alreadyInMems) return null
+    return {
+      _isHead: true, family_id: f.id,
+      name: f.head_name, national_id: f.head_id, dob: f.head_dob,
+      gender: f.head_gender, relation: 'رب الأسرة',
+      health:           f.head_health        || '',
+      disabilities:     f.head_disabilities  || [],
+      injuries:         f.head_injuries      || [],
+      chronic_diseases: f.head_chronic_diseases || [],
+      female_status:    f.head_female_status || [],
+    }
+  }).filter(Boolean)
+  const allPersons = [...members, ...headPersons]
 
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
 
@@ -7519,7 +7561,18 @@ async function exportHealthReport(type) {
   const _isI = m => m.health==='مصاب' || (Array.isArray(m.injuries)     && m.injuries.length)
   const _isC = m => m.health==='مزمن' || (Array.isArray(m.chronic_diseases) && m.chronic_diseases.length)
   const _isP = m => m.health==='حامل' || (Array.isArray(m.female_status) && m.female_status.includes('حامل'))
-  const _isN = m => m.health==='مرضع' || (Array.isArray(m.female_status) && m.female_status.includes('مرضع'))
+  // أسر فيها رضيع أقل من سنتين
+  const _famInf = new Set()
+  allPersons.forEach(m => { const a = calcAge(m.dob); if (a !== null && a < 2) _famInf.add(m.family_id) })
+  const _isN = m => {
+    const explicitN = m.health === 'مرضع' || (Array.isArray(m.female_status) && m.female_status.includes('مرضع'))
+    const age = calcAge(m.dob)
+    if (explicitN && (age === null || age >= 13)) return true
+    if (!_famInf.has(m.family_id)) return false
+    const rel = (m.relation || '').trim()
+    const isMother = ['زوجة','أم','زوجه','wife','mother'].includes(rel) || m.gender === 'أنثى'
+    return isMother && (age === null || age >= 13)
+  }
 
   const disabled = allPersons.filter(_isD)
   const injured  = allPersons.filter(_isI)
