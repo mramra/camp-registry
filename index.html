@@ -5707,19 +5707,34 @@ async function saveEditUser(id) {
 }
 
 async function deleteUser(id, name) {
-  if (!navigator.onLine) { showToast('📴 حذف المستخدم يحتاج اتصالاً', true); return }
+  if (!_netOk) { showToast('📴 حذف المستخدم يحتاج اتصالاً', true); return }
   if (!confirm(`حذف المستخدم "${name}"؟ لا يمكن التراجع`)) return
   try {
+    // 1. جلب user_id قبل الحذف
     const { data: member } = await db.from('org_members').select('user_id').eq('id', id).single()
-    await db.from('org_members').delete().eq('id', id)
+
+    // 2. إلغاء الإشارة في created_by لتجنب foreign key violation
+    //    (org_members_created_by_fkey → users)
+    await db.from('org_members')
+      .update({ created_by: null })
+      .eq('created_by', member?.user_id || '')
+
+    // 3. حذف سجل org_members
+    const { error: delMemErr } = await db.from('org_members').delete().eq('id', id)
+    if (delMemErr) throw delMemErr
+
     await localDB.org_members.delete(id)
+
+    // 4. حذف المستخدم من auth.users عبر Admin Function
     if (member?.user_id) {
-      await callAdminFn('delete', { userId: member.user_id })
+      const { error: delAuthErr } = await callAdminFn('delete', { userId: member.user_id })
+      if (delAuthErr) console.warn('auth delete warn:', delAuthErr)
     }
+
     logAction('حذف مستخدم', id, name)
     showToast('✅ تم حذف المستخدم')
     loadUsers()
-  } catch(e) { showToast('خطأ: ' + e.message, true) }
+  } catch(e) { showToast('❌ خطأ: ' + e.message, true) }
 }
 
 async function toggleUserStatus(id, isActive) {
