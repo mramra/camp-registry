@@ -2607,11 +2607,29 @@ function familyHasInfant(familyMembers, headDob) {
 
 // هل هذه الأم مرضعة تلقائياً؟ (أنثى + يوجد رضيع في الأسرة + عمرها إنجابي)
 function isNursingMother(member, familyMembers, headDob) {
-  const gender = (member.gender||'').toLowerCase()
+  const gender   = (member.gender||'').toLowerCase()
+  const relation = (member.relation||'').trim()
+
+  // يجب أن تكون أنثى
   if (!gender.includes('أنثى') && !gender.includes('female') && gender !== 'f') return false
+
+  // سن الإنجاب 15-50
   const age = calcAge(member.dob)
-  // سن الإنجاب عادة 15-50
   if (age !== null && (age < 15 || age > 50)) return false
+
+  // إذا صلة القرابة محددة، يجب أن تكون زوجة أو أم فقط — لا البنات أو الأخوات
+  const MOTHER_RELATIONS = ['زوجة','زوجه','أم','wife','mother','زوجة ثانية','زوجة ثالثة','زوجة رابعة']
+  const NON_MOTHER_RELATIONS = ['ابنة','بنت','أخت','خالة','عمة','ابنة أخ','ابنة أخت','حفيدة','daughter','sister']
+
+  if (NON_MOTHER_RELATIONS.some(r => relation.includes(r))) return false
+  if (relation && !MOTHER_RELATIONS.includes(relation)) {
+    // صلة غير معروفة — نشترط وجود رضيع والأسرة فيها أم واحدة فقط
+    const hasExplicitMother = familyMembers.some(m =>
+      MOTHER_RELATIONS.includes((m.relation||'').trim()) && m.id !== member.id
+    )
+    if (hasExplicitMother) return false  // موجودة أم صريحة → هذه ليست هي
+  }
+
   return familyHasInfant(familyMembers, headDob)
 }
 
@@ -7372,7 +7390,10 @@ async function loadHealthReport() {
   const isDisabled = m => m.health==='معاق' || (Array.isArray(m.disabilities) && m.disabilities.length)
   const isInjured  = m => m.health==='مصاب' || (Array.isArray(m.injuries) && m.injuries.length)
   const isChronic  = m => m.health==='مزمن' || (Array.isArray(m.chronic_diseases) && m.chronic_diseases.length)
-  const isPregnant = m => m.health==='حامل' || (Array.isArray(m.female_status) && m.female_status.includes('حامل'))
+  const isPregnant = m => {
+    if (m.gender === 'ذكر' || m.gender === 'male') return false  // لا يمكن أن يكون ذكر حاملاً
+    return m.health==='حامل' || (Array.isArray(m.female_status) && m.female_status.includes('حامل'))
+  }
   // المرضعات: الأمهات اللواتي لديهن طفل أقل من سنتين في نفس الأسرة
   // أو المسجّلات صريحاً كمرضعات (health=مرضع أو female_status يشمل مرضع) وعمرهن 13+
   const famInfants = new Set()  // family_id التي فيها رضيع
@@ -7383,11 +7404,11 @@ async function loadHealthReport() {
     const explicitNursing = (m.health === 'مرضع' || (Array.isArray(m.female_status) && m.female_status.includes('مرضع')))
     const age = calcAge(m.dob)
     if (explicitNursing && (age === null || age >= 13)) return true
-    // حالة 2: زوجة أو أم في أسرة فيها رضيع (أقل من سنتين)
+    // حالة 2: زوجة أو أم فقط في أسرة فيها رضيع (لا تشمل البنات أو الأخوات)
     if (!famInfants.has(m.family_id)) return false
     const relation = (m.relation || '').trim()
-    const isMother = ['زوجة','أم','زوجه','wife','mother'].includes(relation) || m.gender === 'أنثى'
-    return isMother && (age === null || age >= 13)
+    const isWifeOrMother = ['زوجة','أم','زوجه','wife','mother','زوجة ثانية','زوجة ثالثة'].includes(relation)
+    return isWifeOrMother && (age === null || age >= 13)
   }
 
   const disabled  = allPersons.filter(isDisabled)
@@ -7541,32 +7562,46 @@ async function exportHealthReport(type) {
 
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
 
-  const toRow = m => {
-    const fam   = famMap[m.family_id] || {}
-    const disStr = decodeDisabilities(m.disabilities)
-    const injStr = decodeInjuries(m.injuries)
-    const chrStr = decodeChronics(m.chronic_diseases)
-    // إذا health نصي بسيط، أدرجه أيضاً
-    const healthTxt = (m.health && m.health !== 'سليم') ? m.health : ''
+  // أعمدة مشتركة
+  const baseRow = m => {
+    const fam = famMap[m.family_id] || {}
     return {
-      'الاسم':                 m.name || '',
-      'رقم الهوية':            m.national_id || '',
-      'الجنس':                 m.gender || '',
-      'تاريخ الميلاد':        m.dob || '',
-      'العمر':                 calcAge(m.dob) ?? '',
-      'صلة القرابة':          m.relation || '',
-      'الحالة الصحية (عام)': healthTxt,
-      'نوع الإعاقة':          disStr,
-      'نوع الإصابة':          injStr,
-      'الأمراض المزمنة':      chrStr,
-      'اسم رب الأسرة':        fam.head_name || '',
-      'هوية رب الأسرة':       fam.head_id || '',
-      'الجوال':                fam.phone1 || '',
-      'المخيم':                campMap[fam.camp_id] || '',
-      'رقم الخيمة':           fam.tent || '',
-      'العنوان الأصلي':       fam.original_address || '',
+      fam, m,
+      'الاسم':          m.name || '',
+      'رقم الهوية':     m.national_id || '',
+      'الجنس':          m.gender || '',
+      'تاريخ الميلاد': m.dob || '',
+      'العمر':          calcAge(m.dob) ?? '',
+      'صلة القرابة':   m.relation || '',
+      'اسم رب الأسرة': fam.head_name || '',
+      'هوية رب الأسرة':fam.head_id || '',
+      'الجوال':         fam.phone1 || '',
+      'المخيم':         campMap[fam.camp_id] || '',
+      'رقم الخيمة':    fam.tent || '',
+      'العنوان الأصلي':fam.original_address || '',
     }
   }
+  // دالة تصدير مخصصة لكل فئة
+  const toRowDisabled = m => {
+    const r = baseRow(m); delete r.fam; delete r.m
+    r['نوع الإعاقة'] = decodeDisabilities(m.disabilities) || (m.health==='معاق'?'معاق':'')
+    return r
+  }
+  const toRowInjured = m => {
+    const r = baseRow(m); delete r.fam; delete r.m
+    r['نوع الإصابة'] = decodeInjuries(m.injuries) || (m.health==='مصاب'?'مصاب':'')
+    return r
+  }
+  const toRowChronic = m => {
+    const r = baseRow(m); delete r.fam; delete r.m
+    r['الأمراض المزمنة'] = decodeChronics(m.chronic_diseases) || (m.health==='مزمن'?'مزمن':'')
+    return r
+  }
+  const toRowSimple = m => {
+    const r = baseRow(m); delete r.fam; delete r.m
+    return r
+  }
+  const toRow = toRowSimple  // fallback
 
   const wb  = XLSX.utils.book_new()
   const date = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
@@ -7575,7 +7610,10 @@ async function exportHealthReport(type) {
   const _isD = m => m.health==='معاق' || (Array.isArray(m.disabilities) && m.disabilities.length)
   const _isI = m => m.health==='مصاب' || (Array.isArray(m.injuries)     && m.injuries.length)
   const _isC = m => m.health==='مزمن' || (Array.isArray(m.chronic_diseases) && m.chronic_diseases.length)
-  const _isP = m => m.health==='حامل' || (Array.isArray(m.female_status) && m.female_status.includes('حامل'))
+  const _isP = m => {
+    if (m.gender === 'ذكر' || m.gender === 'male') return false
+    return m.health==='حامل' || (Array.isArray(m.female_status) && m.female_status.includes('حامل'))
+  }
   // أسر فيها رضيع أقل من سنتين
   const _famInf = new Set()
   allPersons.forEach(m => { const a = calcAge(m.dob); if (a !== null && a < 2) _famInf.add(m.family_id) })
@@ -7585,8 +7623,8 @@ async function exportHealthReport(type) {
     if (explicitN && (age === null || age >= 13)) return true
     if (!_famInf.has(m.family_id)) return false
     const rel = (m.relation || '').trim()
-    const isMother = ['زوجة','أم','زوجه','wife','mother'].includes(rel) || m.gender === 'أنثى'
-    return isMother && (age === null || age >= 13)
+    const isWifeOrMother = ['زوجة','أم','زوجه','wife','mother','زوجة ثانية','زوجة ثالثة'].includes(rel)
+    return isWifeOrMother && (age === null || age >= 13)
   }
 
   const disabled = allPersons.filter(_isD)
@@ -7596,12 +7634,32 @@ async function exportHealthReport(type) {
   const nursing  = allPersons.filter(_isN)
 
   if (type === 'all') {
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(disabled.length ? disabled.map(toRow) : [{ملاحظة:'لا توجد'}]), '🦽 إعاقة')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(injured.length  ? injured.map(toRow)  : [{ملاحظة:'لا توجد'}]), '🩹 إصابة')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(chronic.length  ? chronic.map(toRow)  : [{ملاحظة:'لا توجد'}]), '💊 مزمن')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pregnant.length ? pregnant.map(toRow) : [{ملاحظة:'لا توجد'}]), '🤰 حامل')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(nursing.length  ? nursing.map(toRow)  : [{ملاحظة:'لا توجد'}]), '🤱 مرضع')
-    const total = disabled.length + injured.length + chronic.length + pregnant.length + nursing.length
+    // نظام أولوية: كل شخص يُدرج في شيت واحد فقط حسب حالته الأهم
+    // إعاقة > إصابة > مزمن > حامل > مرضع
+    const _used = new Set()
+    const once = (list, fn) => list.filter(m => {
+      const k = (m.family_id||'') + '_' + (m.national_id||m.name||'')
+      if (_used.has(k)) return false
+      _used.add(k); return true
+    }).map(fn)
+
+    // الحامل والمرضع: الإناث فقط
+    const femOnly = m => m.gender !== 'ذكر' && m.gender !== 'male'
+    const pregnantF = pregnant.filter(femOnly)
+    const nursingF  = nursing.filter(femOnly)
+
+    const s_dis = once(disabled, toRowDisabled)
+    const s_inj = once(injured,  toRowInjured)
+    const s_chr = once(chronic,  toRowChronic)
+    const s_prg = once(pregnantF, toRowSimple)
+    const s_nur = once(nursingF,  toRowSimple)
+
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_dis.length ? s_dis : [{ملاحظة:'لا توجد'}]), '🦽 إعاقة')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_inj.length ? s_inj : [{ملاحظة:'لا توجد'}]), '🩹 إصابة')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_chr.length ? s_chr : [{ملاحظة:'لا توجد'}]), '💊 مزمن')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_prg.length ? s_prg : [{ملاحظة:'لا توجد'}]), '🤰 حامل')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_nur.length ? s_nur : [{ملاحظة:'لا توجد'}]), '🤱 مرضع')
+    const total = s_dis.length + s_inj.length + s_chr.length + s_prg.length + s_nur.length
     XLSX.writeFile(wb, `كشف_الحالات_الصحية_${date}.xlsx`)
     showToast(`✅ تم تصدير ${total} حالة في 5 شيتات`)
 
@@ -7612,7 +7670,8 @@ async function exportHealthReport(type) {
     if      (type === 'disabled') list = disabled
     else if (type === 'injured')  list = injured
     else if (type === 'chronic')  list = chronic
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(list.length ? list.map(toRow) : [{ملاحظة:'لا توجد'}]), sheetName)
+    const singleToRow = type==='disabled' ? toRowDisabled : type==='injured' ? toRowInjured : type==='chronic' ? toRowChronic : toRowSimple
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(list.length ? list.map(singleToRow) : [{ملاحظة:'لا توجد'}]), sheetName)
     XLSX.writeFile(wb, `كشف_${fileName}_${date}.xlsx`)
     showToast(`✅ تم تصدير ${list.length} حالة`)
   }
