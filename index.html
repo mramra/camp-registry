@@ -5926,24 +5926,38 @@ async function deleteCamp(id, name) {
   if (count > 0) { showToast(`لا يمكن حذف المخيم — يحتوي ${count} أسرة`, true); return }
   if (!confirm(`حذف مخيم "${name}"؟`)) return
 
+  if (_netOk) {
+    // 1. إزالة المستخدمين المرتبطين بهذا المخيم (FK: org_members.camp_id)
+    await db.from('org_members').update({ camp_id: null }).eq('camp_id', id)
+    await localDB.org_members.where('camp_id').equals(id).modify({ camp_id: null })
+
+    // 2. حذف المخيم من Supabase مع التحقق من نجاح العملية
+    const { error: delErr } = await db.from('camps').delete().eq('id', id)
+    if (delErr) {
+      showToast(`❌ فشل الحذف من الخادم: ${delErr.message}`, true)
+      return  // لا نحذف محلياً إذا فشل الخادم
+    }
+    logAction('حذف مخيم', id, name)
+  } else {
+    await localDB.sync_queue.add({
+      action: 'delete_camp', record_id: id,
+      data: JSON.stringify({id}), status: 'pending',
+      created_at: new Date().toISOString()
+    })
+  }
+
+  // 3. الحذف المحلي — فقط بعد نجاح الخادم (أو أوف لاين)
   allCamps = allCamps.filter(c => c.id !== id)
   await localDB.camps.delete(id)
   invalidateCampsCache()
 
-  if (navigator.onLine) {
-    await db.from('camps').delete().eq('id', id)
-    logAction('حذف مخيم', id, name)
-  } else {
-    await localDB.sync_queue.add({ action:'delete_camp', record_id:id, data: JSON.stringify({id}), status:'pending', created_at: new Date().toISOString() })
-    showToast('✅ تم حذف المخيم محلياً — سيُزامن عند الاتصال')
-  }
-  // تحديث كل الـ selects
   fillCampSelect('filterCamp', true)
   fillCampSelect('familyCamp')
   fillCampSelect('smsFilterCamp', false)
   fillCampSelect('uCamp')
   await fillFilterCampWithCount()
-  showToast('✅ تم حذف المخيم'); loadCampsList()
+  showToast(_netOk ? '✅ تم حذف المخيم نهائياً' : '✅ تم الحذف محلياً — سيُزامن عند الاتصال')
+  loadCampsList()
 }
 
 async function loadCampsList() {
