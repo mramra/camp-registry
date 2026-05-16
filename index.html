@@ -326,9 +326,10 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   </div>
   <div style="display:flex;align-items:center;gap:8px;">
     <button onclick="openGlobalSearch()" style="width:34px;height:34px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;color:var(--text);" title="بحث عالمي">🔍</button>
-    <div class="online-badge">
+    <div class="online-badge" onclick="showSyncPanel()" style="cursor:pointer;" title="جلب / تزامن">
       <div class="online-dot" id="onlineDot"></div>
       <span id="onlineText" style="color:var(--muted);font-size:10px;"></span>
+      <span id="syncPendingBadge" style="display:none;background:var(--red);color:#fff;border-radius:50%;width:14px;height:14px;font-size:9px;display:none;align-items:center;justify-content:center;font-weight:900;margin-right:2px;"></span>
     </div>
   </div>
 </div>
@@ -381,6 +382,53 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   </div>
 
   <!-- Families List -->
+
+<!-- ════ لوحة الجلب والتزامن ════ -->
+<div id="syncPanelOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:600;padding:16px;align-items:flex-end;justify-content:center;" onclick="if(event.target===this)closeSyncPanel()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-top:2px solid var(--accent);border-radius:20px 20px 0 0;width:100%;max-width:500px;padding:20px;padding-bottom:32px;">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="font-size:15px;font-weight:700;color:var(--accent);">🔄 الجلب والتزامن</div>
+      <button onclick="closeSyncPanel()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:4px 12px;cursor:pointer;font-family:Cairo,sans-serif;">✕</button>
+    </div>
+
+    <!-- حالة الاتصال -->
+    <div id="syncStatusBar" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px;">
+      <div id="syncStatusDot" style="width:10px;height:10px;border-radius:50%;background:var(--muted);flex-shrink:0;"></div>
+      <div>
+        <div id="syncStatusText" style="font-size:12px;font-weight:700;color:var(--text);">جارٍ الفحص...</div>
+        <div id="syncStatusSub"  style="font-size:10px;color:var(--muted);margin-top:2px;"></div>
+      </div>
+    </div>
+
+    <!-- زر الجلب -->
+    <button id="btnPullData" onclick="pullAllData()" style="width:100%;background:rgba(59,130,246,0.12);border:1px solid var(--blue);color:var(--blue);border-radius:12px;padding:14px;font-family:Cairo,sans-serif;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px;">
+      <span style="font-size:18px;">⬇️</span>
+      <div>
+        <div>جلب البيانات من الخادم</div>
+        <div style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;">تحميل كل الأسر والمخيمات إلى الجهاز للعمل أوف لاين</div>
+      </div>
+    </button>
+
+    <!-- زر التزامن -->
+    <button id="btnPushData" onclick="pushPendingChanges()" style="width:100%;background:rgba(16,185,129,0.12);border:1px solid var(--green);color:var(--green);border-radius:12px;padding:14px;font-family:Cairo,sans-serif;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px;">
+      <span style="font-size:18px;">⬆️</span>
+      <div>
+        <div>رفع التغييرات للخادم</div>
+        <div id="pendingCountText" style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;">لا توجد تغييرات معلّقة</div>
+      </div>
+    </button>
+
+    <!-- آخر مزامنة -->
+    <div id="lastSyncInfo" style="text-align:center;font-size:11px;color:var(--muted);margin-top:8px;"></div>
+
+    <!-- سجل العمليات -->
+    <div id="syncLog" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:12px;max-height:140px;overflow-y:auto;font-size:11px;font-family:monospace;color:var(--muted);display:none;"></div>
+
+  </div>
+</div>
+<!-- ════ نهاية لوحة الجلب والتزامن ════ -->
+
   <div class="page" id="page-families">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--accent);">👨‍👩‍👧 قائمة الأسر</div>
@@ -1623,18 +1671,20 @@ let formMembers   = []
 let editingCampId = null
 
 // ── الاتصال الفعلي (لا تعتمد على navigator.onLine وحده) ──
-let _netOk = navigator.onLine
+let _netOk      = false           // دائماً false حتى يُفعِّله المستخدم صراحةً
 let _lastPingAt = 0
+let _alwaysLocal = true           // ← المفتاح الرئيسي: كل العمليات محلية افتراضياً
+                                  //   يُفعَّل فقط أثناء الجلب/التزامن اليدوي
 
 async function pingServer(timeoutMs = 3000) {
-  // إذا فُحص منذ أقل من 5 ثوانٍ استخدم النتيجة المخزنة
+  // إذا كان وضع المحلي مفعّلاً، أرجع false مباشرة
+  if (_alwaysLocal) { _netOk = false; return false }
   if (Date.now() - _lastPingAt < 5000) return _netOk
   _lastPingAt = Date.now()
   if (!navigator.onLine) { _netOk = false; updateNetDot(); return false }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), timeoutMs)
-    // ping خفيف: جلب سجل واحد من Supabase
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/camps?select=id&limit=1`,
       { signal: ctrl.signal, headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' } }
@@ -1646,13 +1696,34 @@ async function pingServer(timeoutMs = 3000) {
   return _netOk
 }
 
+// تحقق حقيقي للاتصال بدون تأثير _alwaysLocal (للعرض فقط)
+async function checkRealConnection() {
+  if (!navigator.onLine) return false
+  try {
+    const ctrl = new AbortController()
+    setTimeout(() => ctrl.abort(), 3000)
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/camps?select=id&limit=1`,
+      { signal: ctrl.signal, headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' } }
+    )
+    return res.ok
+  } catch { return false }
+}
+
 function updateNetDot() {
   const dot = document.getElementById('onlineDot')
   const txt = document.getElementById('onlineText')
   if (!dot || !txt) return
-  dot.style.background = _netOk ? 'var(--green)' : 'var(--red)'
-  txt.textContent      = _netOk ? 'متصل'         : 'غير متصل'
-  txt.style.color      = _netOk ? 'var(--green)' : 'var(--red)'
+  if (_alwaysLocal) {
+    // وضع محلي — الدوت رمادي للإشارة
+    dot.style.background = navigator.onLine ? 'var(--accent)' : 'var(--red)'
+    txt.textContent      = navigator.onLine ? 'وضع محلي' : 'غير متصل'
+    txt.style.color      = navigator.onLine ? 'var(--accent)' : 'var(--red)'
+  } else {
+    dot.style.background = _netOk ? 'var(--green)' : 'var(--red)'
+    txt.textContent      = _netOk ? 'متصل'         : 'غير متصل'
+    txt.style.color      = _netOk ? 'var(--green)' : 'var(--red)'
+  }
 }
 
 // مساعد: إرجاع local أو server حسب الاتصال الحقيقي (مع timeout)
@@ -1718,7 +1789,7 @@ async function checkCampCapacity(campId, excludeFamilyId = null) {
   const camp = allCamps.find(c => c.id === campId)
   if (!camp?.capacity) return true  // لا حد مقرر
   let count = 0
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     let q = db.from('families').select('*', { count:'exact', head:true })
       .eq('camp_id', campId).eq('org_id', ORG_ID)
     if (excludeFamilyId) q = q.neq('id', excludeFamilyId)
@@ -1849,7 +1920,7 @@ async function init() {
     buildSidebar()
     checkOnlineStatus()
 
-    if (navigator.onLine) {
+    if (navigator.onLine && !_alwaysLocal) {
       // withTimeout: إذا تأخرت الشبكة أكثر من 8 ثوانٍ نتجاوز التحقق ونشغّل الأوفلاين
       const sessionResult = await withTimeout(db.auth.getSession(), 8000)
       const session = sessionResult?.data?.session
@@ -1903,6 +1974,7 @@ async function init() {
         }
       } catch(e) {}
     } else {
+      // أوف لاين أو وضع محلي — اشتغل من الكاش فوراً
       const localCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
       if (localCamps.length) {
         allCamps = localCamps
@@ -1916,9 +1988,9 @@ async function init() {
     return
   }
 
-  // لا كاش — فحص حقيقي قبل محاولة تسجيل الدخول
-  const _initOnline = await pingServer(4000)
-  if (_initOnline) {
+  // لا كاش — لا نستطيع العمل بدون تسجيل دخول
+  if (!_alwaysLocal) {
+    const _initOnline = await pingServer(4000)
     const { data: { session } } = await db.auth.getSession()
     if (session) {
       currentUser = session.user
@@ -1948,7 +2020,7 @@ async function loadMember() {
   await loadCampsFromServer()
 
   // مزامنة فورية بعد الدخول
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     setSyncing()
     try {
       let q = db.from('families')
@@ -2376,9 +2448,16 @@ async function safeLoad(fn, containerId, offlineMsg = '📴 هذه الصفحة 
 
 // ══ ONLINE STATUS ══
 function checkOnlineStatus() {
-  // فحص حقيقي للاتصال فور بدء التشغيل
-  pingServer().then(updateNetDot)
-  function update() { pingServer().then(updateNetDot) }
+  // عرض الاتصال الفعلي (بدون تأثير _alwaysLocal)
+  checkRealConnection().then(online => {
+    const dot = document.getElementById('onlineDot')
+    const txt = document.getElementById('onlineText')
+    if (!dot || !txt) return
+    dot.style.background = online ? 'var(--green)' : 'var(--red)'
+    txt.textContent      = online ? 'متصل' : 'غير متصل'
+    txt.style.color      = online ? 'var(--green)' : 'var(--red)'
+  })
+  function update() { checkOnlineStatus() }
   window.addEventListener('online', async () => {
     setSyncing()
     showToast('🔄 جارٍ المزامنة...')
@@ -2437,7 +2516,7 @@ async function loadCampsFromServer(force = false) {
     && (now - _campsCache.time < CAMPS_CACHE_TTL)
     && _campsCache.role === currentMember?.role
     && _campsCache.campId === currentMember?.camp_id
-  if (cacheValid && navigator.onLine) {
+  if (cacheValid && !_alwaysLocal && navigator.onLine) {
     allCamps = _campsCache.data
     fillCampSelect('filterCamp', true)
     fillCampSelect('familyCamp')
@@ -2446,7 +2525,7 @@ async function loadCampsFromServer(force = false) {
     return
   }
 
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     // جلب المخيمات حسب الدور من البداية
     let q = db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
     if (currentMember?.role === 'super_admin') {
@@ -2921,10 +3000,15 @@ function calcAge(dob) {
 // └──────────────────────────────────────────────────┘
 async function loadDashboard() {
   try {
-    if (!currentMember) return
-    
+    if (!currentMember) {
+      // لا مستخدم → أظهر رسالة واضحة بدل spinner إلى الأبد
+      const dc = document.getElementById('dashboardContent')
+      if (dc) dc.innerHTML = '<div class="empty"><div class="empty-icon">🔑</div><div style="font-size:13px;color:var(--muted);">يرجى تسجيل الدخول أولاً</div></div>'
+      return
+    }
+
     // ═══ تحقق احتياطي: إذا كان هناك عمليات معلقة و نحن متصلون، زامنها ═══
-    if (navigator.onLine && !_syncInProgress) {
+    if (!_alwaysLocal && navigator.onLine && !_syncInProgress) {
       const pending = await localDB.sync_queue.where('status').anyOf(['pending','error']).toArray()
       if (pending.length) {
         console.log(`⚠️ وجدت ${pending.length} عملية معلقة — جارٍ المزامنة...`)
@@ -2952,8 +3036,8 @@ async function loadDashboard() {
     document.getElementById('statFamilies').textContent   = fams.length || '0'
     document.getElementById('statMembers').textContent    = fams.length + members.length || '0'
 
-    // ثم جلب من السيرفر — بعد فحص الاتصال الحقيقي
-    const _dashOnline = await pingServer()
+    // جلب من السيرفر فقط في وضع التزامن اليدوي
+    const _dashOnline = !_alwaysLocal && await pingServer()
     if (_dashOnline) {
       try {
         let q = db.from('families')
@@ -2993,11 +3077,24 @@ async function loadDashboard() {
     members.forEach(m => { if (!mByFam[m.family_id]) mByFam[m.family_id]=[]; mByFam[m.family_id].push(m) })
     const incompleteCount = fams.filter(f => checkFamilyIssues(f, mByFam[f.id]||[]).length > 0).length
 
-    document.getElementById('statFamilies').textContent   = fams.length || '—'
+    document.getElementById('statFamilies').textContent   = fams.length >= 0 ? fams.length : '—'
     document.getElementById('statUrgent').textContent     = urgent || 0
     document.getElementById('statIncomplete').textContent = incompleteCount || 0
     document.getElementById('statCamps').textContent      = allCamps.length
-    document.getElementById('statMembers').textContent    = fams.length + members.length || '—'
+    document.getElementById('statMembers').textContent    = (fams.length + members.length) || 0
+
+    // إذا لا توجد بيانات محلية → اعرض دعوة للجلب
+    if (!fams.length && !allCamps.length) {
+      const dc = document.getElementById('dashboardContent')
+      if (dc) dc.innerHTML = `
+        <div style="text-align:center;padding:30px 10px;">
+          <div style="font-size:40px;margin-bottom:12px;">📥</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px;">لا توجد بيانات محلية</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">اضغط على دوت الاتصال لجلب البيانات من الخادم</div>
+          <button onclick="showSyncPanel()" style="background:var(--accent);color:#000;border:none;border-radius:10px;padding:10px 20px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">⬇️ جلب البيانات الآن</button>
+        </div>`
+      return
+    }
 
     // ── إحصائيات الأعمار ──
     const allPersons = [
@@ -3304,15 +3401,6 @@ async function loadFamilies() {
     } catch(e) {}
     return
   }
-  // مهلة 8 ثوانٍ للسيرفر — بعدها نعود للمحلي تلقائياً
-  const _famTimer = setTimeout(async () => {
-    _netOk = false; _lastPingAt = 0; updateNetDot()
-    try {
-      const local = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-      if (local.length) await render(local)
-      else tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📴</div>انتهت مهلة الاتصال — لا توجد بيانات محلية</div></td></tr>'
-    } catch(e) {}
-  }, 8000)
   try {
     // إذا تم حذف للتو — اعرض من المحلي بدل السيرفر
     if (skipFamiliesServerFetch) {
@@ -3380,7 +3468,6 @@ async function loadFamilies() {
     }
 
     // أعد العرض من بيانات السيرفر مباشرة (لا من localDB لتجنب خلط البيانات)
-    clearTimeout(_famTimer)  // ألغِ مؤقت الـ fallback
     await render(srv)
     // حدّث الإحصائيات بعد المزامنة
     loadDashboard()
@@ -3583,7 +3670,7 @@ async function saveFamilyNeeds() {
   }
 
   try {
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const { error } = await db.from('families').update(update).eq('id', _editingNeedsFamilyId)
       if (error) {
         // إذا الحقول غير موجودة في DB
@@ -3794,7 +3881,7 @@ async function saveMemberNeeds() {
         head_female_status: femaleStatus,
         updated_at: new Date().toISOString(),
       }
-      if (navigator.onLine) {
+      if (!_alwaysLocal && navigator.onLine) {
         const { error } = await db.from('families').update(update).eq('id', familyId)
         if (error) {
           if (error.message.includes('column') || error.code === '42703' || error.code === 'PGRST204') {
@@ -3823,7 +3910,7 @@ async function saveMemberNeeds() {
         chronic_diseases: chronicDiseases,
         female_status: femaleStatus,
       }
-      if (navigator.onLine) {
+      if (!_alwaysLocal && navigator.onLine) {
         const { error } = await db.from('family_members').update(update).eq('id', _editingNeedsMemberId)
         if (error) {
           if (error.message.includes('column') || error.code === '42703' || error.code === 'PGRST204') {
@@ -3885,11 +3972,15 @@ async function openFamily(id) {
   document.getElementById('drawerOverlay').style.display = 'block'
   document.getElementById('drawerBody').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
 
+  // دائماً من المحلي في وضع _alwaysLocal، من الخادم فقط عند الطلب الصريح
   let f, members
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const r1 = await db.from('families').select('*').eq('id', id).single()
     const r2 = await db.from('family_members').select('*').eq('family_id', id)
-    f = r1.data; members = r2.data
+    f = r1.data; members = r2.data || []
+    // حدّث الكاش المحلي بآخر البيانات
+    if (f) await localDB.families.put(f)
+    if (members.length) await localDB.family_members.bulkPut(members)
   } else {
     f = await localDB.families.get(id)
     members = await localDB.family_members.where('family_id').equals(id).toArray()
@@ -4163,7 +4254,7 @@ async function loadFamilyMovements(familyId) {
 
   let movements = []
   try {
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const { data } = await db.from('family_movements')
         .select('*').eq('family_id', familyId)
         .order('date', { ascending: false }).limit(10)
@@ -4307,7 +4398,7 @@ async function deleteFamily(id) {
   recordFamilyHistory('delete', id, fam, null)
 
   // ③ احذف من السيرفر في الخلفية
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     try {
       await db.from('family_members').delete().eq('family_id', id)
       await db.from('families').delete().eq('id', id).eq('org_id', ORG_ID)
@@ -4350,7 +4441,7 @@ async function startEditFamily(id) {
   // 6. جلب بيانات الأسرة
   let f, members
   try {
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const r1 = await db.from('families').select('*').eq('id', id).single()
       const r2 = await db.from('family_members').select('*').eq('family_id', id)
       f = r1.data; members = r2.data||[]
@@ -4462,7 +4553,7 @@ function getCampName(id) {
 
 async function runDuplicateChecks(headId, phone, headName, headDob, excludeId) {
   const results = []
-  const isOnline = navigator.onLine
+  const isOnline = !_alwaysLocal && navigator.onLine
 
   try {
     if (isOnline) {
@@ -4883,7 +4974,7 @@ async function doSaveFamily() {
 
     let savedFamilyId = null
 
-    if (_netOk) {
+    if (_netOk && !_alwaysLocal) {
       const { data: family, error } = await db.from('families').insert(familyData).select('id,org_id,camp_id,head_name,head_id,head_dob,head_gender,head_marital,phone1,phone2,notes,status,updated_at').single()
       if (error) throw error
       await localDB.families.put(family)
@@ -5049,7 +5140,7 @@ async function doUpdateFamily(id) {
       await localDB.family_members.bulkPut(newInserts)
     }
 
-    if (_netOk) {
+    if (_netOk && !_alwaysLocal) {
       setSyncing()
       // محاولة قراءة version — إذا العمود غير موجود، تجاهل
       let newVersion = null
@@ -5214,7 +5305,7 @@ async function saveMembers(familyId) {
     try { await localDB.family_members.bulkPut(members) } catch(e) {}
   }
   // حفظ على السيرفر إذا متصل وID ليس مؤقتاً
-  if (navigator.onLine && !familyId.toString().startsWith('local_')) {
+  if (!_alwaysLocal && navigator.onLine && !familyId.toString().startsWith('local_')) {
     const serverMembers = members.map(({ id: _id, ...m }) => m)
     if (serverMembers.length) await db.from('family_members').insert(serverMembers)
   }
@@ -5916,7 +6007,7 @@ async function saveCamp() {
 async function deleteCamp(id, name) {
   // تحقق من عدد الأسر محلياً أولاً
   let count = 0
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const res = await db.from('families').select('*',{count:'exact',head:true}).eq('camp_id',id)
     count = res.count || 0
   } else {
@@ -5927,15 +6018,31 @@ async function deleteCamp(id, name) {
   if (!confirm(`حذف مخيم "${name}"؟`)) return
 
   if (_netOk) {
-    // 1. إزالة المستخدمين المرتبطين بهذا المخيم (FK: org_members.camp_id)
+    // 1. تنظيف كل الجداول المرتبطة بالمخيم (FK constraints)
+    // org_members.camp_id
     await db.from('org_members').update({ camp_id: null }).eq('camp_id', id)
     await localDB.org_members.where('camp_id').equals(id).modify({ camp_id: null })
+
+    // camp_distributions.camp_id
+    await db.from('camp_distributions').delete().eq('camp_id', id)
+    try { await localDB.camp_distributions.where('camp_id').equals(id).delete() } catch(e) {}
+
+    // dist_rounds.camp_id
+    await db.from('dist_rounds').delete().eq('camp_id', id)
+    try { await localDB.dist_rounds.where('camp_id').equals(id).delete() } catch(e) {}
+
+    // families.camp_id — تحويلها لـ null إذا كانت موجودة
+    const { count: famCount } = await db.from('families').select('id', { count:'exact', head:true }).eq('camp_id', id)
+    if (famCount > 0) {
+      showToast(`⚠️ المخيم يحتوي على ${famCount} أسرة — أزلها أولاً`, true)
+      return
+    }
 
     // 2. حذف المخيم من Supabase مع التحقق من نجاح العملية
     const { error: delErr } = await db.from('camps').delete().eq('id', id)
     if (delErr) {
-      showToast(`❌ فشل الحذف من الخادم: ${delErr.message}`, true)
-      return  // لا نحذف محلياً إذا فشل الخادم
+      showToast(`❌ فشل الحذف: ${delErr.message}`, true)
+      return
     }
     logAction('حذف مخيم', id, name)
   } else {
@@ -5995,7 +6102,7 @@ async function loadCampsList() {
 
   // خريطة مديري الإيواء
   const managerMap = {}
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data: admins } = await db.from('org_members').select('id,full_name').eq('org_id', ORG_ID).eq('role','super_admin')
     admins?.forEach(a => managerMap[a.id] = a.full_name)
     // لا نجلب كل المخيمات هنا — allCamps مفلتر مسبقاً
@@ -7648,34 +7755,22 @@ async function exportHealthReport(type) {
   const nursing  = allPersons.filter(_isN)
 
   if (type === 'all') {
-    // نظام أولوية: كل شخص يُدرج في شيت واحد فقط حسب حالته الأهم
-    // إعاقة > إصابة > مزمن > حامل > مرضع
-    const _used = new Set()
-    const once = (list, fn) => list.filter(m => {
-      const k = (m.family_id||'') + '_' + (m.national_id||m.name||'')
-      if (_used.has(k)) return false
-      _used.add(k); return true
-    }).map(fn)
-
-    // الحامل والمرضع: الإناث فقط
+    // كل شيت يعرض جميع منتسبيه — الشخص الذي عنده إعاقة وإصابة يظهر في الشيتين
     const femOnly = m => m.gender !== 'ذكر' && m.gender !== 'male'
-    const pregnantF = pregnant.filter(femOnly)
-    const nursingF  = nursing.filter(femOnly)
 
-    const s_dis = once(disabled, toRowDisabled)
-    const s_inj = once(injured,  toRowInjured)
-    const s_chr = once(chronic,  toRowChronic)
-    const s_prg = once(pregnantF, toRowSimple)
-    const s_nur = once(nursingF,  toRowSimple)
+    const s_dis = disabled.map(toRowDisabled)
+    const s_inj = injured.map(toRowInjured)
+    const s_chr = chronic.map(toRowChronic)
+    const s_prg = pregnant.filter(femOnly).map(toRowSimple)
+    const s_nur = nursing.filter(femOnly).map(toRowSimple)
 
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_dis.length ? s_dis : [{ملاحظة:'لا توجد'}]), '🦽 إعاقة')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_inj.length ? s_inj : [{ملاحظة:'لا توجد'}]), '🩹 إصابة')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_chr.length ? s_chr : [{ملاحظة:'لا توجد'}]), '💊 مزمن')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_prg.length ? s_prg : [{ملاحظة:'لا توجد'}]), '🤰 حامل')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_nur.length ? s_nur : [{ملاحظة:'لا توجد'}]), '🤱 مرضع')
-    const total = s_dis.length + s_inj.length + s_chr.length + s_prg.length + s_nur.length
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_dis.length ? s_dis : [{ملاحظة:'لا توجد'}]), 'إعاقة')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_inj.length ? s_inj : [{ملاحظة:'لا توجد'}]), 'إصابة')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_chr.length ? s_chr : [{ملاحظة:'لا توجد'}]), 'مزمن')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_prg.length ? s_prg : [{ملاحظة:'لا توجد'}]), 'حامل')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_nur.length ? s_nur : [{ملاحظة:'لا توجد'}]), 'مرضع')
     XLSX.writeFile(wb, `كشف_الحالات_الصحية_${date}.xlsx`)
-    showToast(`✅ تم تصدير ${total} حالة في 5 شيتات`)
+    showToast(`تم التصدير: ${s_dis.length} اعاقة / ${s_inj.length} اصابة / ${s_chr.length} مزمن / ${s_prg.length} حامل / ${s_nur.length} مرضع`)
 
   } else {
     const sheetName = {disabled:'🦽 إعاقة', injured:'🩹 إصابة', chronic:'💊 مزمن'}[type] || type
@@ -7694,6 +7789,249 @@ async function exportHealthReport(type) {
 
 // ════════════════ نهاية الحالات الصحية ════════════════
 
+
+// ════════════════════════════════════════════════════
+// ║          لوحة الجلب والتزامن                    ║
+// ════════════════════════════════════════════════════
+
+const LAST_PULL_KEY = 'last_pull_at'
+
+function showSyncPanel() {
+  document.getElementById('syncPanelOverlay').style.display = 'flex'
+  _refreshSyncPanel()
+}
+
+function closeSyncPanel() {
+  document.getElementById('syncPanelOverlay').style.display = 'none'
+}
+
+async function _refreshSyncPanel() {
+  // حالة الاتصال الفعلي (بدون تأثير _alwaysLocal)
+  const online = await checkRealConnection()
+  const dot    = document.getElementById('syncStatusDot')
+  const txt    = document.getElementById('syncStatusText')
+  const sub    = document.getElementById('syncStatusSub')
+  dot.style.background = online ? 'var(--green)' : 'var(--red)'
+  txt.textContent      = online ? 'متصل بالخادم' : 'غير متصل — وضع أوف لاين'
+  sub.textContent      = online ? 'يمكنك الجلب والتزامن الآن' : 'يمكنك العمل على البيانات المحلية'
+
+  // التغييرات المعلّقة
+  const pending = await localDB.sync_queue.where('status').equals('pending').count()
+  const pTxt = document.getElementById('pendingCountText')
+  const pushBtn = document.getElementById('btnPushData')
+  if (pending > 0) {
+    pTxt.textContent = `${pending} تغيير معلّق — بانتظار الرفع`
+    pTxt.style.color = 'var(--accent)'
+    pushBtn.style.borderColor = 'var(--accent)'
+    pushBtn.style.color = 'var(--accent)'
+    // إظهار badge
+    const badge = document.getElementById('syncPendingBadge')
+    if (badge) { badge.textContent = pending > 9 ? '9+' : pending; badge.style.display = 'flex' }
+  } else {
+    pTxt.textContent = 'لا توجد تغييرات معلّقة'
+    pTxt.style.color = ''
+    const badge = document.getElementById('syncPendingBadge')
+    if (badge) badge.style.display = 'none'
+  }
+
+  // آخر مزامنة
+  const lastPull = localStorage.getItem(LAST_PULL_KEY)
+  const infoEl   = document.getElementById('lastSyncInfo')
+  if (lastPull) {
+    const d = new Date(lastPull)
+    infoEl.textContent = `آخر جلب: ${d.toLocaleDateString('ar-EG')} — ${d.toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'})}`
+  } else {
+    infoEl.textContent = 'لم يتم الجلب بعد'
+  }
+
+  // تعطيل الأزرار إذا أوف لاين
+  document.getElementById('btnPullData').disabled  = !online
+  document.getElementById('btnPushData').disabled  = !online || pending === 0
+  document.getElementById('btnPullData').style.opacity  = online ? '1' : '0.5'
+  document.getElementById('btnPushData').style.opacity  = (online && pending > 0) ? '1' : '0.5'
+}
+
+function _syncLog(msg, color='var(--muted)') {
+  const log = document.getElementById('syncLog')
+  if (!log) return
+  log.style.display = 'block'
+  const line = document.createElement('div')
+  line.style.color = color
+  line.style.marginBottom = '3px'
+  line.textContent = `[${new Date().toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit',second:'2-digit'})}] ${msg}`
+  log.appendChild(line)
+  log.scrollTop = log.scrollHeight
+}
+
+async function pullAllData() {
+  const btn = document.getElementById('btnPullData')
+  btn.disabled = true
+  btn.innerHTML = '<span style="font-size:18px;">⏳</span><div>جارٍ الجلب...</div>'
+  document.getElementById('syncLog').innerHTML = ''
+  document.getElementById('syncLog').style.display = 'block'
+
+  try {
+    // تفعيل الاتصال مؤقتاً للجلب
+    _alwaysLocal = false
+    _lastPingAt  = 0
+    _netOk       = true
+    _syncLog('بدء جلب البيانات من الخادم...')
+
+    // جلب المخيمات
+    const { data: camps, error: ce } = await db.from('camps').select('*').eq('org_id', ORG_ID)
+    if (ce) throw ce
+    await localDB.camps.clear()
+    if (camps?.length) await localDB.camps.bulkPut(camps)
+    allCamps = camps || []
+    fillCampSelect('filterCamp', true)
+    fillCampSelect('familyCamp')
+    fillCampSelect('cCamp', false)
+    fillCampSelect('uCamp')
+    _syncLog(`✅ المخيمات: ${camps?.length || 0}`, 'var(--green)')
+
+    // جلب الأسر (دفعات)
+    _syncLog('جلب الأسر...')
+    let famPage = 0, famTotal = 0, allFams = []
+    while (true) {
+      const { data: batch, error: fe } = await db.from('families')
+        .select('*').eq('org_id', ORG_ID)
+        .range(famPage * 1000, famPage * 1000 + 999)
+      if (fe) throw fe
+      if (!batch?.length) break
+      allFams = allFams.concat(batch)
+      famTotal += batch.length
+      famPage++
+      _syncLog(`  جلب ${famTotal} أسرة...`)
+      if (batch.length < 1000) break
+    }
+    await localDB.families.clear()
+    if (allFams.length) await localDB.families.bulkPut(allFams)
+    _syncLog(`✅ الأسر: ${famTotal}`, 'var(--green)')
+
+    // جلب أفراد الأسر (دفعات)
+    _syncLog('جلب أفراد الأسر...')
+    const famIds = allFams.map(f => f.id)
+    let memTotal = 0, allMemsBatch = []
+    // نجلب على دفعات من 500 family_id
+    for (let i = 0; i < famIds.length; i += 500) {
+      const batch_ids = famIds.slice(i, i + 500)
+      const { data: mems, error: me } = await db.from('family_members')
+        .select('*').in('family_id', batch_ids)
+      if (me) throw me
+      if (mems?.length) { allMemsBatch = allMemsBatch.concat(mems); memTotal += mems.length }
+      _syncLog(`  جلب ${memTotal} فرد...`)
+    }
+    await localDB.family_members.clear()
+    if (allMemsBatch.length) await localDB.family_members.bulkPut(allMemsBatch)
+    _syncLog(`✅ الأفراد: ${memTotal}`, 'var(--green)')
+
+    // جلب المستخدمين
+    const { data: members } = await db.from('org_members').select('*').eq('org_id', ORG_ID)
+    if (members?.length) await localDB.org_members.bulkPut(members)
+    _syncLog(`✅ المستخدمون: ${members?.length || 0}`, 'var(--green)')
+
+    // حفظ وقت الجلب
+    localStorage.setItem(LAST_PULL_KEY, new Date().toISOString())
+    allFamilies = allFams
+    loadDashboard()
+
+    _syncLog('─────────────────────────────')
+    _syncLog(`✅ اكتمل الجلب — ${famTotal} أسرة • ${memTotal} فرد`, 'var(--green)')
+    showToast(`✅ تم الجلب: ${famTotal} أسرة و${memTotal} فرد`)
+
+  } catch(e) {
+    _syncLog(`❌ خطأ: ${e.message}`, 'var(--red)')
+    showToast('❌ فشل الجلب: ' + e.message, true)
+  } finally {
+    // إعادة الوضع المحلي دائماً بعد الجلب
+    _alwaysLocal = true
+    _netOk       = false
+    _lastPingAt  = 0
+    updateNetDot()
+  }
+
+  btn.disabled = false
+  btn.innerHTML = '<span style="font-size:18px;">⬇️</span><div><div>جلب البيانات من الخادم</div><div style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;">تحميل كل الأسر والمخيمات إلى الجهاز للعمل أوف لاين</div></div>'
+  _refreshSyncPanel()
+}
+
+async function pushPendingChanges() {
+  const btn = document.getElementById('btnPushData')
+  btn.disabled = true
+  btn.innerHTML = '<span style="font-size:18px;">⏳</span><div>جارٍ الرفع...</div>'
+
+  const pending = await localDB.sync_queue.where('status').equals('pending').toArray()
+  if (!pending.length) {
+    showToast('لا توجد تغييرات معلّقة')
+    btn.disabled = false
+    btn.innerHTML = '<span style="font-size:18px;">⬆️</span><div><div>رفع التغييرات للخادم</div><div id="pendingCountText" style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;"></div></div>'
+    return
+  }
+
+  // تفعيل الاتصال مؤقتاً للرفع
+  _alwaysLocal = false
+  _lastPingAt  = 0
+  _netOk       = true
+  _syncLog(`بدء رفع ${pending.length} تغيير...`)
+  let success = 0, failed = 0
+
+  for (const item of pending) {
+    try {
+      const data = JSON.parse(item.data || '{}')
+      if (item.action === 'insert_family') {
+        const { error } = await db.from('families').upsert(data)
+        if (error) throw error
+      } else if (item.action === 'update_family') {
+        const { error } = await db.from('families').update(data).eq('id', data.id)
+        if (error) throw error
+      } else if (item.action === 'delete_camp') {
+        // تنظيف الجداول المرتبطة قبل الحذف
+        await db.from('org_members').update({ camp_id: null }).eq('camp_id', data.id)
+        await db.from('camp_distributions').delete().eq('camp_id', data.id)
+        await db.from('dist_rounds').delete().eq('camp_id', data.id)
+        const { error } = await db.from('camps').delete().eq('id', data.id)
+        if (error) throw error
+      }
+      await localDB.sync_queue.update(item.id, { status: 'done' })
+      success++
+      _syncLog(`✅ ${item.action} — ${data.id?.slice(0,8)}...`, 'var(--green)')
+    } catch(e) {
+      await localDB.sync_queue.update(item.id, { status: 'error', error: e.message })
+      failed++
+      _syncLog(`❌ ${item.action}: ${e.message}`, 'var(--red)')
+    }
+  }
+
+  _syncLog(`─────────────────────────────`)
+  _syncLog(`✅ تم: ${success} • ❌ فشل: ${failed}`, success > 0 ? 'var(--green)' : 'var(--red)')
+  showToast(failed ? `⚠️ تم ${success} وفشل ${failed}` : `✅ تم رفع ${success} تغيير`)
+
+  // إعادة الوضع المحلي دائماً بعد الرفع
+  _alwaysLocal = true
+  _netOk       = false
+  _lastPingAt  = 0
+  updateNetDot()
+
+  btn.disabled = false
+  btn.innerHTML = '<span style="font-size:18px;">⬆️</span><div><div>رفع التغييرات للخادم</div><div id="pendingCountText" style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;"></div></div>'
+  _refreshSyncPanel()
+  loadDashboard()
+}
+
+// تحديث badge التزامن تلقائياً عند تغيير sync_queue
+async function updateSyncBadge() {
+  const pending = await localDB.sync_queue.where('status').equals('pending').count()
+  const badge = document.getElementById('syncPendingBadge')
+  if (!badge) return
+  if (pending > 0) {
+    badge.textContent = pending > 9 ? '9+' : pending
+    badge.style.display = 'flex'
+  } else {
+    badge.style.display = 'none'
+  }
+}
+
+// ════════════════ نهاية الجلب والتزامن ════════════════
 
 // ── قالب GCDG (مجموعة غزة للثقافة والتنمية) ──
 function downloadGCDGTemplate() {
@@ -8093,7 +8431,7 @@ async function doImportExcel() {
   preview.innerHTML = '<div style="color:var(--accent);font-size:12px;padding:8px;">⏳ جارٍ الاستيراد...</div>'
 
   let existIds = new Set()
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data: ef } = await db.from('families').select('head_id').eq('org_id', ORG_ID)
     existIds = new Set((ef||[]).map(f=>f.head_id).filter(Boolean))
   } else {
@@ -8146,7 +8484,7 @@ async function doImportExcel() {
       updated_at: new Date().toISOString(),
     }
 
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const { data: nf, error } = await db.from('families').insert(famData).select('id').single()
       if (!error && nf) {
         await localDB.families.put({ ...famData, id: nf.id })
@@ -8176,7 +8514,7 @@ async function doImportExcel() {
     const mHealth = mCols.find(c => c.includes('صح')) || ''
 
     // دمج مع الأسر الموجودة
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const { data: allF } = await db.from('families').select('id,head_id').eq('org_id', ORG_ID)
       allF?.forEach(f => { if(f.head_id) addedIds[f.head_id] = f.id })
     } else {
@@ -8207,7 +8545,7 @@ async function doImportExcel() {
       })
     }
     if (batch.length) {
-      if (navigator.onLine) {
+      if (!_alwaysLocal && navigator.onLine) {
         for (let i=0; i<batch.length; i+=50) {
           const { error } = await db.from('family_members').insert(batch.slice(i,i+50))
           if (!error) memAdded += Math.min(50, batch.length-i)
@@ -8274,7 +8612,7 @@ async function doOldImport() {
   preview.innerHTML = '<div style="color:var(--accent);font-size:12px;padding:8px;">⏳ جارٍ الاستيراد...</div>'
 
   let existFams = []
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data } = await db.from('families').select('id,head_id,head_dob,head_marital,head_gender').eq('org_id', ORG_ID)
     existFams = data || []
   } else {
@@ -8363,7 +8701,7 @@ async function loadDistPage() {
 
   // جلب الجولات
   let rounds = []
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data, error } = await db.from('dist_rounds')
       .select('*').eq('org_id', ORG_ID)
       .order('created_at', { ascending: false })
@@ -8413,7 +8751,7 @@ async function loadDistPage() {
   rounds.forEach(async r => {
     const el = document.getElementById(`rc_${r.id}`)
     if (!el) return
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const { data: dists } = await db.from('camp_distributions').select('id').eq('round_id', r.id)
       if (!dists?.length) { el.textContent='0'; return }
       const distIds = [...new Set(dists.map(d=>d.id))]
@@ -8497,7 +8835,7 @@ async function saveNewRound() {
   }
 
   let roundId
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data, error } = await db.from('dist_rounds').insert(roundData).select('id').single()
     if (error) { errEl.textContent='خطأ: '+error.message; errEl.style.display='block'; return }
     roundId = data.id
@@ -8510,9 +8848,9 @@ async function saveNewRound() {
     showToast('✅ تم إنشاء الجولة محلياً — سيُزامن عند الاتصال')
   }
 
-  if (navigator.onLine) document.getElementById('newDistModal').remove()
+  if (!_alwaysLocal && navigator.onLine) document.getElementById('newDistModal').remove()
   else { try { document.getElementById('newDistModal').remove() } catch(e) {} }
-  if (navigator.onLine) { logAction('إنشاء جولة', roundId, roundData.name); showToast('✅ تم إنشاء الجولة') }
+  if (!_alwaysLocal && navigator.onLine) { logAction('إنشاء جولة', roundId, roundData.name); showToast('✅ تم إنشاء الجولة') }
   await openRound(roundId)
 }
 
@@ -8523,7 +8861,7 @@ async function openRound(roundId) {
 
   // جلب الجولة
   let round = null
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data } = await db.from('dist_rounds').select('*').eq('id', roundId).single()
     round = data
   }
@@ -8532,7 +8870,7 @@ async function openRound(roundId) {
 
   // جلب دفعات هذه الجولة
   let batches = []
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data } = await db.from('camp_distributions')
       .select('*').eq('round_id', roundId)
       .order('distributed_at', { ascending: false })
@@ -8545,7 +8883,7 @@ async function openRound(roundId) {
   // جلب كل مستلمي هذه الجولة
   let allReceivedIds = new Set()
   if (batches.length) {
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const { data: rec } = await db.from('camp_dist_families')
         .select('family_id').in('distribution_id', batches.map(b=>b.id))
       allReceivedIds = new Set((rec||[]).map(r=>r.family_id))
@@ -8702,7 +9040,7 @@ async function saveNewBatch(roundId) {
   }
 
   let batchId
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data, error } = await db.from('camp_distributions').insert(batchData).select('id').single()
     if (error) { errEl.textContent='خطأ: '+error.message; errEl.style.display='block'; return }
     batchId = data.id
@@ -8769,7 +9107,7 @@ async function saveEditRound(roundId) {
   const type = document.getElementById('eRoundType').value
   if (!name) { showToast('يرجى إدخال الاسم', true); return }
   const upd = { name, camp_id: camp, type }
-  if (navigator.onLine) await db.from('dist_rounds').update(upd).eq('id', roundId)
+  if (!_alwaysLocal && navigator.onLine) await db.from('dist_rounds').update(upd).eq('id', roundId)
   await localDB.dist_rounds.update(roundId, upd)
   document.getElementById('editRoundModal').remove()
   showToast('✅ تم التعديل')
@@ -8778,7 +9116,7 @@ async function saveEditRound(roundId) {
 
 async function deleteRound(roundId, name) {
   if (!confirm(`حذف جولة "${name}"؟ سيُحذف كل سجل الاستلام.`)) return
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data: dists } = await db.from('camp_distributions').select('id').eq('round_id', roundId)
     if (dists?.length) {
       await db.from('camp_dist_families').delete().in('distribution_id', dists.map(d=>d.id))
@@ -8793,7 +9131,7 @@ async function deleteRound(roundId, name) {
 
 async function closeRound(roundId) {
   if (!confirm('إغلاق هذه الجولة؟')) return
-  if (navigator.onLine) await db.from('dist_rounds').update({ status: 'completed' }).eq('id', roundId)
+  if (!_alwaysLocal && navigator.onLine) await db.from('dist_rounds').update({ status: 'completed' }).eq('id', roundId)
   await localDB.dist_rounds.update(roundId, { status: 'completed' })
   showToast('✅ الجولة مكتملة')
   loadDistPage()
@@ -8815,7 +9153,7 @@ async function printRoundReport(roundId) {
   let allRec = []
   for (const b of batches) {
     let rec
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const { data } = await db.from('camp_dist_families').select('family_id,received_at,notes').eq('distribution_id', b.id)
       rec = data || []
     } else {
@@ -8873,7 +9211,7 @@ async function exportRoundExcel(roundId) {
   let allRec = []
   for (const b of batches||[]) {
     let rec
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const { data } = await db.from('camp_dist_families').select('family_id,received_at,notes').eq('distribution_id', b.id)
       rec = data || []
     } else {
@@ -8911,7 +9249,7 @@ async function openDist(distId) {
   out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
 
   let dist = null
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data } = await db.from('camp_distributions').select('*').eq('id', distId).single()
     dist = data
   }
@@ -8922,7 +9260,7 @@ async function openDist(distId) {
 
   // من استلم هذه الدفعة
   let receivedIds = new Set()
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data } = await db.from('camp_dist_families').select('family_id').eq('distribution_id', distId)
     receivedIds = new Set((data||[]).map(r => r.family_id))
   } else {
@@ -8997,7 +9335,7 @@ async function applyDistFilter(distId) {
 
   // جلب التوزيع الحالي (الدفعة)
   let dist = null
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data } = await db.from('camp_distributions').select('*').eq('id', distId).single()
     dist = data
     if (dist) await localDB.camp_distributions.put(dist)
@@ -9007,7 +9345,7 @@ async function applyDistFilter(distId) {
 
   // من استلم هذه الدفعة
   let receivedIds = new Set()
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { data } = await db.from('camp_dist_families').select('family_id').eq('distribution_id', distId)
     receivedIds = new Set((data||[]).map(r => r.family_id))
   } else {
@@ -9018,7 +9356,7 @@ async function applyDistFilter(distId) {
   // من استلم في نفس الجولة (كل الدفعات)
   let roundReceivedIds = new Set(receivedIds)
   if (dist.round_id) {
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const { data: bd } = await db.from('camp_distributions').select('id').eq('round_id', dist.round_id)
       if (bd?.length) {
         const { data: br } = await db.from('camp_dist_families')
@@ -9146,7 +9484,7 @@ async function confirmDistribution(distId) {
     notes: note,
   }))
 
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { error } = await db.from('camp_dist_families').insert(records)
     if (error) { showToast('خطأ: ' + error.message, true); return }
     for (const r of records) {
@@ -9171,7 +9509,7 @@ async function confirmDistribution(distId) {
 
 async function deleteDist(distId, name) {
   if (!confirm(`حذف توزيع "${name}"؟ سيُحذف سجل الاستلام أيضاً.`)) return
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     await db.from('camp_dist_families').delete().eq('distribution_id', distId)
     await db.from('camp_distributions').delete().eq('id', distId)
   }
@@ -9250,7 +9588,7 @@ async function saveEditDist(distId) {
   if (!name || qty < 1) { showToast('يرجى إكمال الحقول', true); return }
 
   const upd = { description: name, quantity: qty, camp_id: camp, type }
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     await db.from('camp_distributions').update(upd).eq('id', distId)
   }
   await localDB.camp_distributions.update(distId, upd)
@@ -10117,7 +10455,7 @@ async function loadAlertsPage() {
     })
 
     // ④ سعة المخيمات
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       const campCount = {}
       fams.forEach(f => { campCount[f.camp_id] = (campCount[f.camp_id]||0)+1 })
       allCamps.forEach(c => {
@@ -10141,7 +10479,7 @@ async function loadAlertsPage() {
     }
 
     // ⑤ آخر توزيع — هل مضى أكثر من 30 يوم؟
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       try {
         const { data: lastDist } = await db.from('camp_dist_families')
           .select('received_at').eq('org_id', ORG_ID)
@@ -10394,7 +10732,7 @@ async function saveMovement(familyId, currentCampId) {
     // تحديث allFamilies في الذاكرة فوراً
     const idx = allFamilies.findIndex(f => f.id === familyId)
     if (idx !== -1) allFamilies[idx] = { ...allFamilies[idx], camp_id: toCamp }
-    if (navigator.onLine) {
+    if (!_alwaysLocal && navigator.onLine) {
       await db.from('families').update({ camp_id: toCamp, updated_at: new Date().toISOString() }).eq('id', familyId)
     } else {
       await localDB.sync_queue.add({ action:'update_family', record_id:familyId, data: JSON.stringify({camp_id:toCamp,updated_at:new Date().toISOString(),org_id:ORG_ID}), status:'pending', created_at:new Date().toISOString() })
@@ -10402,7 +10740,7 @@ async function saveMovement(familyId, currentCampId) {
   }
 
   // رفع للسيرفر
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     const { id: _id, ...mvData } = movement
     const { error } = await db.from('family_movements').insert(mvData)
     if (error) showToast('⚠️ حُفظ محلياً — سيُزامن لاحقاً')
@@ -11171,7 +11509,7 @@ async function loadMovementsPage() {
   const tLabel  = { entry:'🟢 دخول', exit:'🔴 خروج', transfer:'🔵 نقل' }
 
   let movements = []
-  if (navigator.onLine) {
+  if (!_alwaysLocal && navigator.onLine) {
     let q = db.from('family_movements')
       .select('*, families(head_name,head_id)')
       .eq('org_id', ORG_ID)
