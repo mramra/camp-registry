@@ -1789,7 +1789,7 @@ async function checkCampCapacity(campId, excludeFamilyId = null) {
   const camp = allCamps.find(c => c.id === campId)
   if (!camp?.capacity) return true  // لا حد مقرر
   let count = 0
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     let q = db.from('families').select('*', { count:'exact', head:true })
       .eq('camp_id', campId).eq('org_id', ORG_ID)
     if (excludeFamilyId) q = q.neq('id', excludeFamilyId)
@@ -2020,7 +2020,7 @@ async function loadMember() {
   await loadCampsFromServer()
 
   // مزامنة فورية بعد الدخول
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     setSyncing()
     try {
       let q = db.from('families')
@@ -2516,7 +2516,7 @@ async function loadCampsFromServer(force = false) {
     && (now - _campsCache.time < CAMPS_CACHE_TTL)
     && _campsCache.role === currentMember?.role
     && _campsCache.campId === currentMember?.camp_id
-  if (cacheValid && !_alwaysLocal && navigator.onLine) {
+  if (cacheValid && navigator.onLine) {
     allCamps = _campsCache.data
     fillCampSelect('filterCamp', true)
     fillCampSelect('familyCamp')
@@ -2525,7 +2525,7 @@ async function loadCampsFromServer(force = false) {
     return
   }
 
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     // جلب المخيمات حسب الدور من البداية
     let q = db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
     if (currentMember?.role === 'super_admin') {
@@ -3670,7 +3670,7 @@ async function saveFamilyNeeds() {
   }
 
   try {
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const { error } = await db.from('families').update(update).eq('id', _editingNeedsFamilyId)
       if (error) {
         // إذا الحقول غير موجودة في DB
@@ -3881,7 +3881,7 @@ async function saveMemberNeeds() {
         head_female_status: femaleStatus,
         updated_at: new Date().toISOString(),
       }
-      if (!_alwaysLocal && navigator.onLine) {
+      if (navigator.onLine) {
         const { error } = await db.from('families').update(update).eq('id', familyId)
         if (error) {
           if (error.message.includes('column') || error.code === '42703' || error.code === 'PGRST204') {
@@ -3910,7 +3910,7 @@ async function saveMemberNeeds() {
         chronic_diseases: chronicDiseases,
         female_status: femaleStatus,
       }
-      if (!_alwaysLocal && navigator.onLine) {
+      if (navigator.onLine) {
         const { error } = await db.from('family_members').update(update).eq('id', _editingNeedsMemberId)
         if (error) {
           if (error.message.includes('column') || error.code === '42703' || error.code === 'PGRST204') {
@@ -3972,13 +3972,12 @@ async function openFamily(id) {
   document.getElementById('drawerOverlay').style.display = 'block'
   document.getElementById('drawerBody').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
 
-  // دائماً من المحلي في وضع _alwaysLocal، من الخادم فقط عند الطلب الصريح
   let f, members
+  // في الوضع المحلي: اقرأ من IndexedDB فقط
   if (!_alwaysLocal && navigator.onLine) {
     const r1 = await db.from('families').select('*').eq('id', id).single()
     const r2 = await db.from('family_members').select('*').eq('family_id', id)
     f = r1.data; members = r2.data || []
-    // حدّث الكاش المحلي بآخر البيانات
     if (f) await localDB.families.put(f)
     if (members.length) await localDB.family_members.bulkPut(members)
   } else {
@@ -4254,7 +4253,7 @@ async function loadFamilyMovements(familyId) {
 
   let movements = []
   try {
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const { data } = await db.from('family_movements')
         .select('*').eq('family_id', familyId)
         .order('date', { ascending: false }).limit(10)
@@ -4398,7 +4397,7 @@ async function deleteFamily(id) {
   recordFamilyHistory('delete', id, fam, null)
 
   // ③ احذف من السيرفر في الخلفية
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     try {
       await db.from('family_members').delete().eq('family_id', id)
       await db.from('families').delete().eq('id', id).eq('org_id', ORG_ID)
@@ -4441,7 +4440,7 @@ async function startEditFamily(id) {
   // 6. جلب بيانات الأسرة
   let f, members
   try {
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const r1 = await db.from('families').select('*').eq('id', id).single()
       const r2 = await db.from('family_members').select('*').eq('family_id', id)
       f = r1.data; members = r2.data||[]
@@ -4553,7 +4552,7 @@ function getCampName(id) {
 
 async function runDuplicateChecks(headId, phone, headName, headDob, excludeId) {
   const results = []
-  const isOnline = !_alwaysLocal && navigator.onLine
+  const isOnline = navigator.onLine
 
   try {
     if (isOnline) {
@@ -5305,7 +5304,7 @@ async function saveMembers(familyId) {
     try { await localDB.family_members.bulkPut(members) } catch(e) {}
   }
   // حفظ على السيرفر إذا متصل وID ليس مؤقتاً
-  if (!_alwaysLocal && navigator.onLine && !familyId.toString().startsWith('local_')) {
+  if (navigator.onLine && !familyId.toString().startsWith('local_')) {
     const serverMembers = members.map(({ id: _id, ...m }) => m)
     if (serverMembers.length) await db.from('family_members').insert(serverMembers)
   }
@@ -6007,7 +6006,7 @@ async function saveCamp() {
 async function deleteCamp(id, name) {
   // تحقق من عدد الأسر محلياً أولاً
   let count = 0
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const res = await db.from('families').select('*',{count:'exact',head:true}).eq('camp_id',id)
     count = res.count || 0
   } else {
@@ -6102,7 +6101,7 @@ async function loadCampsList() {
 
   // خريطة مديري الإيواء
   const managerMap = {}
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data: admins } = await db.from('org_members').select('id,full_name').eq('org_id', ORG_ID).eq('role','super_admin')
     admins?.forEach(a => managerMap[a.id] = a.full_name)
     // لا نجلب كل المخيمات هنا — allCamps مفلتر مسبقاً
@@ -6624,17 +6623,8 @@ async function processSyncQueue() {
             await localDB.sync_queue.delete(item.id)
             continue
           }
+          // تحديث بيانات الأسرة فقط — الأفراد تُعالَج في actions منفردة
           await db.from('families').update(data).eq('id', item.record_id)
-          // زامن الأفراد مع التعديل
-          try {
-            const localMems = await localDB.family_members
-              .where('family_id').equals(item.record_id).toArray()
-            await db.from('family_members').delete().eq('family_id', item.record_id)
-            if (localMems.length) {
-              const toInsert = localMems.map(({ id: _id, ...m }) => m)
-              if (toInsert.length) await db.from('family_members').insert(toInsert)
-            }
-          } catch(me) { console.warn('update members sync:', me.message) }
         } else if (item.action === 'delete_family') {
           await db.from('family_members').delete().eq('family_id', item.record_id)
           await db.from('families').delete().eq('id', item.record_id)
@@ -7968,14 +7958,31 @@ async function pushPendingChanges() {
     return
   }
 
+  // ── دمج التعديلات المتكررة على نفس السجل (آخر تعديل يطغى على السابق) ──
+  const seenKey = {}
+  const noMerge = new Set(['delete_family','delete_member','insert_family','insert_member','delete_camp','insert_camp'])
+  const deduped = []
+  for (const item of pending) {
+    if (noMerge.has(item.action)) { deduped.push(item); continue }
+    seenKey[item.action + ':' + (item.record_id || '')] = item
+  }
+  Object.values(seenKey).forEach(i => deduped.push(i))
+  deduped.sort((a,b) => {
+    const o = {insert_family:0,insert_member:1,update_family:2,update_member:3,delete_member:4,delete_family:5}
+    return (o[a.action]??9) - (o[b.action]??9)
+  })
+  const pendingFinal = deduped
+  if (pendingFinal.length < pending.length)
+    _syncLog(`🗜️ دُمجت ${pending.length} → ${pendingFinal.length} عملية`, 'var(--accent)')
+
   // تفعيل الاتصال مؤقتاً للرفع
   _alwaysLocal = false
   _lastPingAt  = 0
   _netOk       = true
-  _syncLog(`بدء رفع ${pending.length} تغيير...`)
+  _syncLog(`بدء رفع ${pendingFinal.length} تغيير...`)
   let success = 0, failed = 0
 
-  for (const item of pending) {
+  for (const item of pendingFinal) {
     try {
       const data = JSON.parse(item.data || '{}')
       if (item.action === 'insert_family') {
@@ -8431,7 +8438,7 @@ async function doImportExcel() {
   preview.innerHTML = '<div style="color:var(--accent);font-size:12px;padding:8px;">⏳ جارٍ الاستيراد...</div>'
 
   let existIds = new Set()
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data: ef } = await db.from('families').select('head_id').eq('org_id', ORG_ID)
     existIds = new Set((ef||[]).map(f=>f.head_id).filter(Boolean))
   } else {
@@ -8484,7 +8491,7 @@ async function doImportExcel() {
       updated_at: new Date().toISOString(),
     }
 
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const { data: nf, error } = await db.from('families').insert(famData).select('id').single()
       if (!error && nf) {
         await localDB.families.put({ ...famData, id: nf.id })
@@ -8514,7 +8521,7 @@ async function doImportExcel() {
     const mHealth = mCols.find(c => c.includes('صح')) || ''
 
     // دمج مع الأسر الموجودة
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const { data: allF } = await db.from('families').select('id,head_id').eq('org_id', ORG_ID)
       allF?.forEach(f => { if(f.head_id) addedIds[f.head_id] = f.id })
     } else {
@@ -8545,7 +8552,7 @@ async function doImportExcel() {
       })
     }
     if (batch.length) {
-      if (!_alwaysLocal && navigator.onLine) {
+      if (navigator.onLine) {
         for (let i=0; i<batch.length; i+=50) {
           const { error } = await db.from('family_members').insert(batch.slice(i,i+50))
           if (!error) memAdded += Math.min(50, batch.length-i)
@@ -8612,7 +8619,7 @@ async function doOldImport() {
   preview.innerHTML = '<div style="color:var(--accent);font-size:12px;padding:8px;">⏳ جارٍ الاستيراد...</div>'
 
   let existFams = []
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data } = await db.from('families').select('id,head_id,head_dob,head_marital,head_gender').eq('org_id', ORG_ID)
     existFams = data || []
   } else {
@@ -8701,7 +8708,7 @@ async function loadDistPage() {
 
   // جلب الجولات
   let rounds = []
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data, error } = await db.from('dist_rounds')
       .select('*').eq('org_id', ORG_ID)
       .order('created_at', { ascending: false })
@@ -8751,7 +8758,7 @@ async function loadDistPage() {
   rounds.forEach(async r => {
     const el = document.getElementById(`rc_${r.id}`)
     if (!el) return
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const { data: dists } = await db.from('camp_distributions').select('id').eq('round_id', r.id)
       if (!dists?.length) { el.textContent='0'; return }
       const distIds = [...new Set(dists.map(d=>d.id))]
@@ -8835,7 +8842,7 @@ async function saveNewRound() {
   }
 
   let roundId
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data, error } = await db.from('dist_rounds').insert(roundData).select('id').single()
     if (error) { errEl.textContent='خطأ: '+error.message; errEl.style.display='block'; return }
     roundId = data.id
@@ -8848,9 +8855,9 @@ async function saveNewRound() {
     showToast('✅ تم إنشاء الجولة محلياً — سيُزامن عند الاتصال')
   }
 
-  if (!_alwaysLocal && navigator.onLine) document.getElementById('newDistModal').remove()
+  if (navigator.onLine) document.getElementById('newDistModal').remove()
   else { try { document.getElementById('newDistModal').remove() } catch(e) {} }
-  if (!_alwaysLocal && navigator.onLine) { logAction('إنشاء جولة', roundId, roundData.name); showToast('✅ تم إنشاء الجولة') }
+  if (navigator.onLine) { logAction('إنشاء جولة', roundId, roundData.name); showToast('✅ تم إنشاء الجولة') }
   await openRound(roundId)
 }
 
@@ -8861,7 +8868,7 @@ async function openRound(roundId) {
 
   // جلب الجولة
   let round = null
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data } = await db.from('dist_rounds').select('*').eq('id', roundId).single()
     round = data
   }
@@ -8870,7 +8877,7 @@ async function openRound(roundId) {
 
   // جلب دفعات هذه الجولة
   let batches = []
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data } = await db.from('camp_distributions')
       .select('*').eq('round_id', roundId)
       .order('distributed_at', { ascending: false })
@@ -8883,7 +8890,7 @@ async function openRound(roundId) {
   // جلب كل مستلمي هذه الجولة
   let allReceivedIds = new Set()
   if (batches.length) {
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const { data: rec } = await db.from('camp_dist_families')
         .select('family_id').in('distribution_id', batches.map(b=>b.id))
       allReceivedIds = new Set((rec||[]).map(r=>r.family_id))
@@ -9040,7 +9047,7 @@ async function saveNewBatch(roundId) {
   }
 
   let batchId
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data, error } = await db.from('camp_distributions').insert(batchData).select('id').single()
     if (error) { errEl.textContent='خطأ: '+error.message; errEl.style.display='block'; return }
     batchId = data.id
@@ -9107,7 +9114,7 @@ async function saveEditRound(roundId) {
   const type = document.getElementById('eRoundType').value
   if (!name) { showToast('يرجى إدخال الاسم', true); return }
   const upd = { name, camp_id: camp, type }
-  if (!_alwaysLocal && navigator.onLine) await db.from('dist_rounds').update(upd).eq('id', roundId)
+  if (navigator.onLine) await db.from('dist_rounds').update(upd).eq('id', roundId)
   await localDB.dist_rounds.update(roundId, upd)
   document.getElementById('editRoundModal').remove()
   showToast('✅ تم التعديل')
@@ -9116,7 +9123,7 @@ async function saveEditRound(roundId) {
 
 async function deleteRound(roundId, name) {
   if (!confirm(`حذف جولة "${name}"؟ سيُحذف كل سجل الاستلام.`)) return
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data: dists } = await db.from('camp_distributions').select('id').eq('round_id', roundId)
     if (dists?.length) {
       await db.from('camp_dist_families').delete().in('distribution_id', dists.map(d=>d.id))
@@ -9131,7 +9138,7 @@ async function deleteRound(roundId, name) {
 
 async function closeRound(roundId) {
   if (!confirm('إغلاق هذه الجولة؟')) return
-  if (!_alwaysLocal && navigator.onLine) await db.from('dist_rounds').update({ status: 'completed' }).eq('id', roundId)
+  if (navigator.onLine) await db.from('dist_rounds').update({ status: 'completed' }).eq('id', roundId)
   await localDB.dist_rounds.update(roundId, { status: 'completed' })
   showToast('✅ الجولة مكتملة')
   loadDistPage()
@@ -9153,7 +9160,7 @@ async function printRoundReport(roundId) {
   let allRec = []
   for (const b of batches) {
     let rec
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const { data } = await db.from('camp_dist_families').select('family_id,received_at,notes').eq('distribution_id', b.id)
       rec = data || []
     } else {
@@ -9211,7 +9218,7 @@ async function exportRoundExcel(roundId) {
   let allRec = []
   for (const b of batches||[]) {
     let rec
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const { data } = await db.from('camp_dist_families').select('family_id,received_at,notes').eq('distribution_id', b.id)
       rec = data || []
     } else {
@@ -9249,7 +9256,7 @@ async function openDist(distId) {
   out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
 
   let dist = null
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data } = await db.from('camp_distributions').select('*').eq('id', distId).single()
     dist = data
   }
@@ -9260,7 +9267,7 @@ async function openDist(distId) {
 
   // من استلم هذه الدفعة
   let receivedIds = new Set()
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data } = await db.from('camp_dist_families').select('family_id').eq('distribution_id', distId)
     receivedIds = new Set((data||[]).map(r => r.family_id))
   } else {
@@ -9335,7 +9342,7 @@ async function applyDistFilter(distId) {
 
   // جلب التوزيع الحالي (الدفعة)
   let dist = null
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data } = await db.from('camp_distributions').select('*').eq('id', distId).single()
     dist = data
     if (dist) await localDB.camp_distributions.put(dist)
@@ -9345,7 +9352,7 @@ async function applyDistFilter(distId) {
 
   // من استلم هذه الدفعة
   let receivedIds = new Set()
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { data } = await db.from('camp_dist_families').select('family_id').eq('distribution_id', distId)
     receivedIds = new Set((data||[]).map(r => r.family_id))
   } else {
@@ -9356,7 +9363,7 @@ async function applyDistFilter(distId) {
   // من استلم في نفس الجولة (كل الدفعات)
   let roundReceivedIds = new Set(receivedIds)
   if (dist.round_id) {
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const { data: bd } = await db.from('camp_distributions').select('id').eq('round_id', dist.round_id)
       if (bd?.length) {
         const { data: br } = await db.from('camp_dist_families')
@@ -9484,7 +9491,7 @@ async function confirmDistribution(distId) {
     notes: note,
   }))
 
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { error } = await db.from('camp_dist_families').insert(records)
     if (error) { showToast('خطأ: ' + error.message, true); return }
     for (const r of records) {
@@ -9509,7 +9516,7 @@ async function confirmDistribution(distId) {
 
 async function deleteDist(distId, name) {
   if (!confirm(`حذف توزيع "${name}"؟ سيُحذف سجل الاستلام أيضاً.`)) return
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     await db.from('camp_dist_families').delete().eq('distribution_id', distId)
     await db.from('camp_distributions').delete().eq('id', distId)
   }
@@ -9588,7 +9595,7 @@ async function saveEditDist(distId) {
   if (!name || qty < 1) { showToast('يرجى إكمال الحقول', true); return }
 
   const upd = { description: name, quantity: qty, camp_id: camp, type }
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     await db.from('camp_distributions').update(upd).eq('id', distId)
   }
   await localDB.camp_distributions.update(distId, upd)
@@ -10455,7 +10462,7 @@ async function loadAlertsPage() {
     })
 
     // ④ سعة المخيمات
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       const campCount = {}
       fams.forEach(f => { campCount[f.camp_id] = (campCount[f.camp_id]||0)+1 })
       allCamps.forEach(c => {
@@ -10479,7 +10486,7 @@ async function loadAlertsPage() {
     }
 
     // ⑤ آخر توزيع — هل مضى أكثر من 30 يوم؟
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       try {
         const { data: lastDist } = await db.from('camp_dist_families')
           .select('received_at').eq('org_id', ORG_ID)
@@ -10732,7 +10739,7 @@ async function saveMovement(familyId, currentCampId) {
     // تحديث allFamilies في الذاكرة فوراً
     const idx = allFamilies.findIndex(f => f.id === familyId)
     if (idx !== -1) allFamilies[idx] = { ...allFamilies[idx], camp_id: toCamp }
-    if (!_alwaysLocal && navigator.onLine) {
+    if (navigator.onLine) {
       await db.from('families').update({ camp_id: toCamp, updated_at: new Date().toISOString() }).eq('id', familyId)
     } else {
       await localDB.sync_queue.add({ action:'update_family', record_id:familyId, data: JSON.stringify({camp_id:toCamp,updated_at:new Date().toISOString(),org_id:ORG_ID}), status:'pending', created_at:new Date().toISOString() })
@@ -10740,7 +10747,7 @@ async function saveMovement(familyId, currentCampId) {
   }
 
   // رفع للسيرفر
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     const { id: _id, ...mvData } = movement
     const { error } = await db.from('family_movements').insert(mvData)
     if (error) showToast('⚠️ حُفظ محلياً — سيُزامن لاحقاً')
@@ -11509,7 +11516,7 @@ async function loadMovementsPage() {
   const tLabel  = { entry:'🟢 دخول', exit:'🔴 خروج', transfer:'🔵 نقل' }
 
   let movements = []
-  if (!_alwaysLocal && navigator.onLine) {
+  if (navigator.onLine) {
     let q = db.from('family_movements')
       .select('*, families(head_name,head_id)')
       .eq('org_id', ORG_ID)
