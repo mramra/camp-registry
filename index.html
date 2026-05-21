@@ -5653,30 +5653,44 @@ async function loadUsers() {
   const container = document.getElementById('usersList'); if(!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
 
-  // Offline-First
-  if (!navigator.onLine) {
+  // اعرض المحلي أولاً دائماً (سريع وموثوق)
+  const showLocal = async () => {
     try {
       const local = await localDB.org_members.where('org_id').equals(ORG_ID).toArray()
       const filtered = currentMember.role === 'platform_owner'
         ? local.filter(u => u.role !== 'platform_owner')
         : local.filter(u => u.created_by === currentMember.id)
-      if (filtered.length) { renderUsersList(filtered, container); return }
+      if (filtered.length) { renderUsersList(filtered, container); return true }
     } catch(e) {}
-    container.innerHTML = '<div class="empty"><div class="empty-icon">📴</div>لا توجد بيانات محلية</div>'
+    return false
+  }
+
+  // في الوضع المحلي: اعرض من IndexedDB مباشرة
+  if (_alwaysLocal) {
+    const shown = await showLocal()
+    if (!shown) container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون محلياً<br><small style="color:var(--muted);font-size:11px;">قم بجلب البيانات أولاً</small></div>'
     return
   }
-  let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
 
-  if (currentMember.role === 'platform_owner') {
-    // يرى الكل بما فيهم نفسه
-  } else if (['super_admin','camp_delegate'].includes(currentMember.role)) {
-    // يرى فقط من أنشأهم هو
+  // إذا متصل: جلب من السيرفر وتحديث الكاش
+  const _realConn = await checkRealConnection()
+  if (!_realConn) {
+    const shown = await showLocal()
+    if (!shown) container.innerHTML = '<div class="empty"><div class="empty-icon">📴</div>لا توجد بيانات محلية</div>'
+    return
+  }
+
+  let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
+  if (!['platform_owner'].includes(currentMember.role)) {
     usersQ = usersQ.eq('created_by', currentMember.id)
   }
-  const { data: users } = await usersQ.order('created_at', { ascending: false })
-  if (!users?.length) { container.innerHTML='<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'; return }
+  const { data: users, error: ue } = await usersQ.order('created_at', { ascending: false })
+  if (ue || !users?.length) {
+    const shown = await showLocal()
+    if (!shown) container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'
+    return
+  }
   try { await localDB.org_members.bulkPut(users) } catch(e) {}
-  const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
   renderUsersList(users, container)
 }
 
@@ -5815,7 +5829,8 @@ async function saveEditUser(id) {
 }
 
 async function deleteUser(id, name) {
-  if (!_netOk) { showToast('📴 حذف المستخدم يحتاج اتصالاً', true); return }
+  const _realOnline = await checkRealConnection()
+  if (!_realOnline) { showToast('📴 حذف المستخدم يحتاج اتصالاً حقيقياً', true); return }
   if (!confirm(`حذف المستخدم "${name}"؟ لا يمكن التراجع`)) return
   try {
     // 1. جلب user_id قبل الحذف
@@ -5846,12 +5861,14 @@ async function deleteUser(id, name) {
 }
 
 async function toggleUserStatus(id, isActive) {
+  if (!(await checkRealConnection())) { showToast('📴 تغيير الحالة يحتاج اتصالاً', true); return }
   await db.from('org_members').update({ is_active: !isActive }).eq('id', id)
   logAction(isActive?'إيقاف مستخدم':'تفعيل مستخدم', id, '')
   showToast(isActive?'🚫 تم الإيقاف':'✅ تم التفعيل'); loadUsers()
 }
 
 async function resetUserPassword(id, name) {
+  if (!(await checkRealConnection())) { showToast('📴 إعادة كلمة المرور تحتاج اتصالاً', true); return }
   try {
     const { data: member } = await db.from('org_members').select('user_id,phone').eq('id', id).single()
     if (!member) { showToast('❌ لم يُعثر على المستخدم', true); return }
