@@ -2686,30 +2686,46 @@ function familyHasInfant(familyMembers, headDob) {
 
 // هل هذه الأم مرضعة تلقائياً؟ (أنثى + يوجد رضيع في الأسرة + عمرها إنجابي)
 function isNursingMother(member, familyMembers, headDob) {
-  const gender   = (member.gender||'').toLowerCase()
-  const relation = (member.relation||'').trim()
+  const relation = (member.relation || '').trim()
+  const gender   = (member.gender  || '').toLowerCase()
+  const age      = calcAge(member.dob)
 
-  // يجب أن تكون أنثى
-  if (!gender.includes('أنثى') && !gender.includes('female') && gender !== 'f') return false
+  // 1. يجب أن تكون أنثى
+  const isFemale = gender.includes('أنثى') || gender.includes('female') || gender === 'f'
+  if (!isFemale) return false
 
-  // سن الإنجاب 15-50
-  const age = calcAge(member.dob)
+  // 2. سن منطقي للرضاعة
   if (age !== null && (age < 15 || age > 50)) return false
 
-  // إذا صلة القرابة محددة، يجب أن تكون زوجة أو أم فقط — لا البنات أو الأخوات
-  const MOTHER_RELATIONS = ['زوجة','زوجه','أم','wife','mother','زوجة ثانية','زوجة ثالثة','زوجة رابعة']
-  const NON_MOTHER_RELATIONS = ['ابنة','بنت','أخت','خالة','عمة','ابنة أخ','ابنة أخت','حفيدة','daughter','sister']
+  const VALID_MOTHERS = [
+    'زوجة','زوجة ثانية','زوجة ثالثة','زوجة رابعة',
+    'زوجه','أم','wife','mother'
+  ]
 
-  if (NON_MOTHER_RELATIONS.some(r => relation.includes(r))) return false
-  if (relation && !MOTHER_RELATIONS.includes(relation)) {
-    // صلة غير معروفة — نشترط وجود رضيع والأسرة فيها أم واحدة فقط
-    const hasExplicitMother = familyMembers.some(m =>
-      MOTHER_RELATIONS.includes((m.relation||'').trim()) && m.id !== member.id
+  // 3. فحص صلة القرابة
+  if (relation) {
+    // relation موجود: يجب أن يكون من VALID_MOTHERS حصراً
+    if (!VALID_MOTHERS.includes(relation)) return false
+  } else {
+    // relation فارغ: نقبلها فقط إذا لا توجد زوجة مسجّلة أخرى في الأسرة
+    const hasNamedWife = familyMembers.some(m =>
+      VALID_MOTHERS.includes((m.relation||'').trim()) && m.id !== member.id
     )
-    if (hasExplicitMother) return false  // موجودة أم صريحة → هذه ليست هي
+    if (hasNamedWife) return false  // يوجد زوجة مسجّلة → هذه ليست هي
   }
 
-  return familyHasInfant(familyMembers, headDob)
+  // 4. يجب وجود طفل حقيقي أقل من سنتين في الأسرة
+  const CHILD_RELATIONS = [
+    'ابن','ابنة','بنت','طفل','طفلة','رضيع',
+    'ابنه','بنته','son','daughter'
+  ]
+  const hasInfant = familyMembers.some(m => {
+    const a   = calcAge(m.dob)
+    const rel = (m.relation || '').trim()
+    return CHILD_RELATIONS.includes(rel) && a !== null && a < 2
+  })
+
+  return hasInfant
 }
 
 // دالة مساعدة: هل الأسرة كبيرة (+7 أفراد)؟
@@ -7132,7 +7148,7 @@ async function loadChildrenPage() {
   })
 
   // أعمار: رضيع 0-2، صغير 3-6، طفل 7-12، مراهق 13-17
-  const infants = filtered.filter(m => { const a=calcAge(m.dob); return a!==null && a<=2 })
+  const infants = filtered.filter(m => { const a=calcAge(m.dob); return a!==null && a<2 })
   const young   = filtered.filter(m => { const a=calcAge(m.dob); return a!==null && a>=3 && a<=6 })
   const child   = filtered.filter(m => { const a=calcAge(m.dob); return a!==null && a>=7 && a<=12 })
   const teen    = filtered.filter(m => { const a=calcAge(m.dob); return a!==null && a>=13 })
@@ -8110,7 +8126,7 @@ async function exportGCDGFormat() {
     const wife  = fMems.find(m => ['زوجة','أم'].includes((m.relation||'').trim()))
     const tags  = (f.tags||[]).map(t => ({'food':'غذاء','medicine':'دواء','clothes':'ملابس','shelter':'مأوى','special':'احتياج خاص'}[t]||t)).join(' - ')
     const totalCount = fMems.length + 1  // +1 لرب الأسرة
-    const nursing  = fMems.filter(m => m.health === 'مرضع' || (m.gender==='أنثى' && calcAge(m.dob) !== null && calcAge(m.dob) >= 15 && calcAge(m.dob) <= 45)).length
+    const nursing  = fMems.filter(m => m.health === 'مرضع' || (Array.isArray(m.female_status) && m.female_status.includes('مرضع'))).length
     const pregnant = fMems.filter(m => m.health === 'حامل').length
     const special  = fMems.filter(m => ['معاق','مزمن'].includes(m.health)).length
 
@@ -12070,13 +12086,15 @@ async function loadWomenPage() {
   )
   // مرضعة = مسجّلة يدوياً أو تلقائياً (أنثى في سن الإنجاب + رضيع في الأسرة)
   const nursing = filtered.filter(w => {
+    // حالة 1: مسجّلة صريحاً كمرضعة
     if (Array.isArray(w.female_status) && w.female_status.includes('مرضع')) return true
-    // للمرضعات التلقائيات: نُنشئ كائن member بالحقول الصحيحة
+    // حالة 2: زوجة أو أم في أسرة فيها رضيع
     const memberObj = {
-      gender: w.isHead ? (w._fam?.head_gender || 'أنثى') : 'أنثى',
-      dob:    w.isHead ? w._fam?.head_dob : w.dob,
+      gender:   'أنثى',
+      dob:      w.isHead ? w._fam?.head_dob : w.dob,
+      relation: w.isHead ? 'أم' : (w.relation || '').trim(),
     }
-    return isNursingMother(memberObj, w._mems, w._fam?.head_dob)
+    return isNursingMother(memberObj, w._mems || [], w._fam?.head_dob)
   })
   const pregnant = filtered.filter(w => Array.isArray(w.female_status) && w.female_status.includes('حامل'))
   const injured  = filtered.filter(w => Array.isArray(w.injuries) && w.injuries.length)
@@ -12868,9 +12886,5 @@ async function doInstallPWA() {
 }
 
 </script>
-  <script src="https://cdn.jsdelivr.net/npm/rxdb@15.8.0/dist/rxdb.min.js"></script>
-<script src="js/rxdb/rxdb-config.js"></script>
-<script src="js/rxdb/offline-db.js"></script>
-<script src="js/rxdb/sync-manager.js"></script>
 </body>
 </html>
