@@ -8531,6 +8531,11 @@ async function pushPendingChanges() {
           const local = await localDB.camp_distributions.get(localId)
           if (local) { await localDB.camp_distributions.delete(localId); await localDB.camp_distributions.put({ ...local, id: srv.id }) }
         }
+
+      } else if (item.action === 'insert_dist_families') {
+        const records = Array.isArray(data) ? data : [data]
+        const { error } = await db.from('camp_dist_families').insert(records)
+        if (error) throw error
       }
       await localDB.sync_queue.update(item.id, { status: 'done' })
       success++
@@ -9877,7 +9882,8 @@ async function saveNewRound() {
   }
 
   let roundId
-  if (navigator.onLine) {
+  const _roundOnline = await checkRealConnection()
+  if (_roundOnline) {
     const { data, error } = await db.from('dist_rounds').insert(roundData).select('id').single()
     if (error) { errEl.textContent='خطأ: '+error.message; errEl.style.display='block'; return }
     roundId = data.id
@@ -10082,7 +10088,8 @@ async function saveNewBatch(roundId) {
   }
 
   let batchId
-  if (navigator.onLine) {
+  const _batchOnline = await checkRealConnection()
+  if (_batchOnline) {
     const { data, error } = await db.from('camp_distributions').insert(batchData).select('id').single()
     if (error) { errEl.textContent='خطأ: '+error.message; errEl.style.display='block'; return }
     batchId = data.id
@@ -10092,6 +10099,7 @@ async function saveNewBatch(roundId) {
     batchData.id = batchId
     await localDB.camp_distributions.put(batchData)
     await localDB.sync_queue.add({ action:'insert_batch', data: JSON.stringify(batchData), status:'pending', created_at: new Date().toISOString() })
+    showToast('✅ تم إنشاء الدفعة محلياً — سيُزامن عند الاتصال')
   }
 
   logAction('إنشاء دفعة', batchId, batchData.description)
@@ -10526,17 +10534,19 @@ async function confirmDistribution(distId) {
     notes: note,
   }))
 
-  if (navigator.onLine) {
+  const _recvOnline = await checkRealConnection()
+  // حفظ محلي دائماً أولاً
+  for (const r of records) {
+    await localDB.camp_dist_families.put({ ...r, id: r.distribution_id + '_' + r.family_id })
+  }
+  if (_recvOnline) {
     const { error } = await db.from('camp_dist_families').insert(records)
-    if (error) { showToast('خطأ: ' + error.message, true); return }
-    for (const r of records) {
-      await localDB.camp_dist_families.put({ ...r, id: r.distribution_id + '_' + r.family_id })
+    if (error) {
+      showToast('⚠️ حُفظ محلياً — سيُزامن لاحقاً')
+      await localDB.sync_queue.add({ action: 'insert_dist_families', data: JSON.stringify(records), status: 'pending', created_at: new Date().toISOString() })
     }
   } else {
-    for (const r of records) {
-      await localDB.camp_dist_families.put({ ...r, id: r.distribution_id + '_' + r.family_id })
-    }
-    await localDB.sync_queue.add({ action: 'insert_dist', data: JSON.stringify(records), status: 'pending', created_at: new Date().toISOString() })
+    await localDB.sync_queue.add({ action: 'insert_dist_families', data: JSON.stringify(records), status: 'pending', created_at: new Date().toISOString() })
   }
 
   logAction('تسجيل توزيع', distId, `${selected.length} أسرة`)
@@ -11668,25 +11678,29 @@ async function saveMovement(familyId, currentCampId) {
   await localDB.family_movements.put(movement)
 
   // إذا نقل — حدّث camp_id في الأسرة + allFamilies
+  const _mvOnline = await checkRealConnection()
+
   if (type === 'transfer' && toCamp) {
     const localF = await localDB.families.get(familyId)
     if (localF) await localDB.families.put({ ...localF, camp_id: toCamp, updated_at: new Date().toISOString() })
-    // تحديث allFamilies في الذاكرة فوراً
     const idx = allFamilies.findIndex(f => f.id === familyId)
     if (idx !== -1) allFamilies[idx] = { ...allFamilies[idx], camp_id: toCamp }
-    if (navigator.onLine) {
-      await db.from('families').update({ camp_id: toCamp, updated_at: new Date().toISOString() }).eq('id', familyId)
+    if (_mvOnline) {
+      const { error: te } = await db.from('families').update({ camp_id: toCamp, updated_at: new Date().toISOString() }).eq('id', familyId)
+      if (te) showToast('⚠️ خطأ في تحديث المخيم: ' + te.message, true)
     } else {
       await localDB.sync_queue.add({ action:'update_family', record_id:familyId, data: JSON.stringify({camp_id:toCamp,updated_at:new Date().toISOString(),org_id:ORG_ID}), status:'pending', created_at:new Date().toISOString() })
     }
   }
 
   // رفع للسيرفر
-  if (navigator.onLine) {
+  if (_mvOnline) {
     const { id: _id, ...mvData } = movement
     const { error } = await db.from('family_movements').insert(mvData)
-    if (error) showToast('⚠️ حُفظ محلياً — سيُزامن لاحقاً')
-    else logAction('حركة أسرة', familyId, mvTypeLabel[type])
+    if (error) {
+      showToast('⚠️ حُفظ محلياً — سيُزامن لاحقاً')
+      await localDB.sync_queue.add({ action:'insert_movement', data: JSON.stringify(movement), status:'pending', created_at: new Date().toISOString() })
+    } else logAction('حركة أسرة', familyId, mvTypeLabel[type])
   } else {
     await localDB.sync_queue.add({ action:'insert_movement', data: JSON.stringify(movement), status:'pending', created_at: new Date().toISOString() })
     updatePendingBadge()
