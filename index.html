@@ -406,7 +406,7 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <span style="font-size:18px;">⬇️</span>
       <div>
         <div>جلب البيانات من الخادم</div>
-        <div style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;">تحميل كل الأسر والمخيمات إلى الجهاز للعمل أوف لاين</div>
+        <div style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;">تحميل آخر البيانات من الخادم وتحديث الكاش المحلي</div>
       </div>
     </button>
 
@@ -693,15 +693,32 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <div class="card-title" id="campFormTitle">➕ مخيم جديد</div>
       <div class="form-group"><label>اسم المخيم *</label><input type="text" id="campName" placeholder="مثال: مخيم العزايزة"></div>
       <div class="form-grid-2">
-        <div class="form-group"><label>العنوان</label><input type="text" id="campAddress" placeholder="العنوان الكامل"></div>
+        <div class="form-group"><label>نوع المخيم</label>
+          <select id="campType" onchange="toggleParentCampField()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
+            <option value="main">🏕️ رئيسي (مستقل)</option>
+            <option value="branch">🔗 فرعي (تابع لمخيم رئيسي)</option>
+          </select>
+        </div>
         <div class="form-group"><label>الحالة</label><select id="campStatus"><option value="active">✅ نشط</option><option value="suspended">⏸️ موقوف</option><option value="closed">🔴 مغلق</option></select></div>
+      </div>
+      <div class="form-group" id="parentCampField" style="display:none;">
+        <label>المخيم الرئيسي (الأب)</label>
+        <select id="parentCampId" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
+          <option value="">— اختر المخيم الرئيسي —</option>
+        </select>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group"><label>العنوان</label><input type="text" id="campAddress" placeholder="العنوان الكامل"></div>
       </div>
       <div class="form-grid-2">
         <div class="form-group"><label>السعة (عدد الأسر)</label><input type="number" id="campCapacity" placeholder="مثال: 200" dir="ltr"></div>
         <div class="form-group"><label>عدد المرافق</label><input type="number" id="campFacilities" placeholder="مثال: 10" dir="ltr"></div>
         <div class="form-group"><label>خط العرض (Latitude)</label><input type="text" id="campLat" placeholder="31.5204" dir="ltr"></div>
       </div>
-      <div class="form-group"><label>خط الطول (Longitude)</label><input type="text" id="campLng" placeholder="34.4584" dir="ltr"></div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div class="form-group" style="flex:1;"><label>خط الطول (Longitude)</label><input type="text" id="campLng" placeholder="34.4584" dir="ltr"></div>
+        <button onclick="getCampGPS()" style="background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:9px 14px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:12px;white-space:nowrap;">📍 GPS تلقائي</button>
+      </div>
       <!-- قسم المندوب — يظهر فقط لمدير الإيواء عند إنشاء مخيم جديد -->
       <div id="delegateSection" style="display:none;border-top:1px solid var(--border);margin-top:12px;padding-top:12px;">
         <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px;">👤 تعيين مندوب (اختياري)</div>
@@ -891,45 +908,6 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   </div>
 
   <!-- Analysis -->
-  <div class="page" id="page-analysis">
-    <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px;">📊 التقارير</div>
-
-    <!-- تبويبات التقارير -->
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
-      <button onclick="showReport('families')" id="rTab-families" class="btn btn-primary" style="flex:1;font-size:12px;padding:8px;">👨‍👩‍👧 الأسر</button>
-      <button onclick="showReport('age')"      id="rTab-age"      class="btn" style="flex:1;font-size:12px;padding:8px;background:var(--surface2);border:1px solid var(--border);">👶 الفئات العمرية</button>
-      <button onclick="showReport('dist')"     id="rTab-dist"     class="btn" style="flex:1;font-size:12px;padding:8px;background:var(--surface2);border:1px solid var(--border);">📦 التوزيعات</button>
-    </div>
-
-    <!-- فلاتر مشتركة -->
-    <div class="card" style="margin-bottom:12px;">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
-        <div style="flex:1;min-width:120px;">
-          <label style="font-size:11px;color:var(--muted);">المخيم</label>
-          <select id="rFilterCamp" onchange="loadReport()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
-            <option value="">كل المخيمات</option>
-          </select>
-        </div>
-        <div style="flex:1;min-width:120px;">
-          <label style="font-size:11px;color:var(--muted);">الحالة</label>
-          <select id="rFilterStatus" onchange="loadReport()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
-            <option value="">كل الحالات</option>
-            <option value="ok">✅ مستقر</option>
-            <option value="need">⚠️ يحتاج</option>
-            <option value="urgent">🚨 عاجل</option>
-          </select>
-        </div>
-        <div style="display:flex;gap:6px;">
-          <button onclick="exportReport()" style="background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:7px 12px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">📥 Excel</button>
-          <button onclick="printReport()"  style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:7px 12px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">🖨️ طباعة</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- محتوى التقرير -->
-    <div id="reportContent"><div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div></div>
-  </div>
-
   <!-- Analysis -->
   <div class="page" id="page-analysis2">
     <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px;">📈 تحليل البيانات</div>
@@ -1358,6 +1336,62 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   </div>
   <!-- ════════════════ نهاية صفحة الحالات الصحية ════════════════ -->
 
+
+  <!-- ════════════════ صفحة مقارنة البيانات ════════════════ -->
+  <div class="page" id="page-sync-compare">
+    <div class="card">
+      <div class="card-title" style="color:var(--blue);">🔄 مقارنة البيانات</div>
+
+      <!-- أزرار التحكم -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <button onclick="runSyncCompare()" class="btn btn-primary" style="flex:1;">
+          🔍 مقارنة الآن
+        </button>
+        <button onclick="pushAllLocalToServer()" style="flex:1;background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">
+          ⬆️ رفع كل الزيادة المحلية
+        </button>
+        <button onclick="pushFullLocalOverwrite()" style="flex:1;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">
+          🔄 رفع محلي كامل (upsert)
+        </button>
+      </div>
+
+      <!-- نتائج الإحصائيات -->
+      <div id="syncCompareStats" style="display:none;margin-bottom:12px;">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+            <div id="scLocalCount"  style="font-size:22px;font-weight:900;color:var(--blue);">—</div>
+            <div style="font-size:10px;color:var(--muted);">💾 محلي</div>
+          </div>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+            <div id="scServerCount" style="font-size:22px;font-weight:900;color:var(--accent);">—</div>
+            <div style="font-size:10px;color:var(--muted);">☁️ السيرفر</div>
+          </div>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+            <div id="scDiffCount"   style="font-size:22px;font-weight:900;color:var(--red);">—</div>
+            <div style="font-size:10px;color:var(--muted);">⚡ فروقات</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:10px;text-align:center;">
+            <div id="scLocalOnlyCount" style="font-size:18px;font-weight:900;color:var(--green);">0</div>
+            <div style="font-size:10px;color:var(--muted);">📥 في المحلي فقط</div>
+          </div>
+          <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:10px;text-align:center;">
+            <div id="scServerOnlyCount" style="font-size:18px;font-weight:900;color:var(--accent);">0</div>
+            <div style="font-size:10px;color:var(--muted);">☁️ في السيرفر فقط</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- منطقة النتائج -->
+      <div id="syncCompareContent">
+        <div class="empty"><div class="empty-icon">🔄</div>
+        <div style="font-size:13px;color:var(--muted);">اضغط "مقارنة الآن" للبدء</div></div>
+      </div>
+    </div>
+  </div>
+  <!-- ════════ نهاية صفحة مقارنة البيانات ════════ -->
+
   <div class="page" id="page-sms">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--green);">💬 إرسال رسائل SMS</div>
@@ -1662,6 +1696,22 @@ localDB.version(10).stores({
   children_registry: 'id, org_id, camp_id, child_id, guardian_id, created_at'
 })
 
+// v11: المخيمات الفرعية — parent_camp_id + camp_type
+localDB.version(11).stores({
+  families:       'id, camp_id, org_id, status, updated_at, economic_level',
+  family_members: 'id, family_id, national_id, orphan_status',
+  camps:          'id, org_id, parent_camp_id, camp_type',
+  sync_queue:     '++id, status',
+  meta:           'key',
+  dist_rounds:        'id, camp_id, org_id, status',
+  camp_distributions: 'id, camp_id, org_id, status, round_id',
+  camp_dist_families: 'id, distribution_id, family_id',
+  org_members:    'id, org_id, role, camp_id, created_by, user_id',
+  family_movements: 'id, family_id, org_id, type, date',
+  family_history: 'id, family_id, org_id, created_at',
+  children_registry: 'id, org_id, camp_id, child_id, guardian_id, created_at'
+})
+
 let currentUser   = null
 let currentMember = null
 let allCamps      = []
@@ -1671,15 +1721,11 @@ let formMembers   = []
 let editingCampId = null
 
 // ── الاتصال الفعلي (لا تعتمد على navigator.onLine وحده) ──
-let _netOk      = false           // دائماً false حتى يُفعِّله المستخدم صراحةً
+let _netOk      = navigator.onLine
 let _lastPingAt = 0
-let _alwaysLocal = true           // ← المفتاح الرئيسي: كل العمليات محلية افتراضياً
-                                  //   يُفعَّل فقط أثناء الجلب/التزامن اليدوي
-
 async function pingServer(timeoutMs = 3000) {
   // إذا كان وضع المحلي مفعّلاً، أرجع false مباشرة
-  if (_alwaysLocal) { _netOk = false; return false }
-  if (Date.now() - _lastPingAt < 5000) return _netOk
+    if (Date.now() - _lastPingAt < 5000) return _netOk
   _lastPingAt = Date.now()
   if (!navigator.onLine) { _netOk = false; updateNetDot(); return false }
   try {
@@ -1696,7 +1742,7 @@ async function pingServer(timeoutMs = 3000) {
   return _netOk
 }
 
-// تحقق حقيقي للاتصال بدون تأثير _alwaysLocal (للعرض فقط)
+// فحص اتصال حقيقي بدون cache (للعرض في الـ UI)
 async function checkRealConnection() {
   if (!navigator.onLine) return false
   try {
@@ -1714,16 +1760,9 @@ function updateNetDot() {
   const dot = document.getElementById('onlineDot')
   const txt = document.getElementById('onlineText')
   if (!dot || !txt) return
-  if (_alwaysLocal) {
-    // وضع محلي — الدوت رمادي للإشارة
-    dot.style.background = navigator.onLine ? 'var(--accent)' : 'var(--red)'
-    txt.textContent      = navigator.onLine ? 'وضع محلي' : 'غير متصل'
-    txt.style.color      = navigator.onLine ? 'var(--accent)' : 'var(--red)'
-  } else {
-    dot.style.background = _netOk ? 'var(--green)' : 'var(--red)'
-    txt.textContent      = _netOk ? 'متصل'         : 'غير متصل'
-    txt.style.color      = _netOk ? 'var(--green)' : 'var(--red)'
-  }
+  dot.style.background = _netOk ? 'var(--green)' : 'var(--red)'
+  txt.textContent      = _netOk ? 'متصل'         : 'غير متصل'
+  txt.style.color      = _netOk ? 'var(--green)' : 'var(--red)'
 }
 
 // مساعد: إرجاع local أو server حسب الاتصال الحقيقي (مع timeout)
@@ -1920,7 +1959,7 @@ async function init() {
     buildSidebar()
     checkOnlineStatus()
 
-    if (navigator.onLine && !_alwaysLocal) {
+    if (navigator.onLine ) {
       // withTimeout: إذا تأخرت الشبكة أكثر من 8 ثوانٍ نتجاوز التحقق ونشغّل الأوفلاين
       const sessionResult = await withTimeout(db.auth.getSession(), 8000)
       const session = sessionResult?.data?.session
@@ -1988,14 +2027,16 @@ async function init() {
     return
   }
 
-  // لا كاش — لا نستطيع العمل بدون تسجيل دخول
-  if (!_alwaysLocal) {
-    const _initOnline = await pingServer(4000)
-    const { data: { session } } = await db.auth.getSession()
-    if (session) {
-      currentUser = session.user
-      await loadMember()
-    }
+  // لا كاش — حاول تسجيل الدخول إذا متصل
+  const _initOnline = await pingServer(4000)
+  if (_initOnline) {
+    try {
+      const { data: { session } } = await db.auth.getSession()
+      if (session) {
+        currentUser = session.user
+        await loadMember()
+      }
+    } catch(e) { console.warn('initApp auth:', e.message) }
   }
 }
 
@@ -2017,6 +2058,7 @@ async function loadMember() {
   hideLoginScreen()
   buildSidebar()
   checkOnlineStatus()
+  initRealtime()  // تفعيل المزامنة الفورية
   await loadCampsFromServer()
 
   // مزامنة فورية بعد الدخول
@@ -2170,6 +2212,7 @@ async function doChangePassword() {
 }
 
 async function logout() {
+  stopRealtime()
   logAction('تسجيل خروج', null, '')
   await db.auth.signOut()
   localStorage.removeItem('current_member')
@@ -2197,52 +2240,62 @@ function buildSidebar() {
   const role = currentMember.role
   let html   = ''
 
-  html += navItem('🏠', 'الرئيسية', 'page-dashboard')
-  html += '<div class="nav-section">الأسر</div>'
-  html += navItem('👨‍👩‍👧', 'قائمة الأسر', 'page-families')
-  html += navItem('🧒', 'سجل الأطفال', 'page-children')
-  if (canWrite()) html += navItem('📦', 'توزيع المساعدات', 'page-dist')
-  if (canViewReports()) html += navItem('📊', 'التقارير', 'page-analysis')
-  if (canViewReports()) html += navItem('📈', 'تحليل البيانات', 'page-analysis2')
-  if (canViewReports()) html += navItem('👩', 'إحصاءات النساء', 'page-women')
-  if (canViewReports()) html += navItem('📋', 'تقارير الاحتياجات', 'page-needs-report')
-  if (canViewReports()) html += navItem('⚕️', 'الحالات الصحية', 'page-health-report')
-  if (canViewReports()) html += navItem('🚶', 'حركات الأسر', 'page-movements')
-  if (canViewReports()) html += navItem('📝', 'سجل تغييرات الأسر', 'page-history')
-  if (['platform_owner','super_admin','camp_delegate'].includes(role)) html += `
-    <button class="nav-item" onclick="showPage('page-alerts');closeSidebar()">
-      <span style="width:20px;text-align:center;">🔔</span> التنبيهات
-      <span id="alertsBadge" style="display:none;background:var(--red);color:#fff;border-radius:50%;min-width:16px;height:16px;font-size:9px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;margin-right:auto;padding:0 3px;"></span>
-    </button>`
-  if (canViewReports()) html += navItem('📁', 'استيراد/تصدير', 'page-data')
-  if (canWrite()) html += navItem('💬', 'إرسال رسائل', 'page-sms')
   const canAddFam = currentMember.role !== 'assistant' || currentMember.can_add === true
-  if (canAddFam) html += navItem('➕', 'إضافة أسرة', 'page-add-family')
 
-  if (['platform_owner','super_admin','camp_delegate'].includes(role)) {
-    html += '<div class="nav-section">المخيم</div>'
-    html += navItem('⛺', 'المخيمات', 'page-camps')
+  // ══ Accordion: الرئيسية ══
+  let sec1 = ''
+  sec1 += navItem('🏠', 'لوحة التحكم', 'page-dashboard')
+  sec1 += navItem('👨‍👩‍👧', 'قائمة الأسر', 'page-families')
+  if (canAddFam) sec1 += navItem('➕', 'إضافة أسرة', 'page-add-family')
+  if (canViewReports()) sec1 += navItem('📈', 'تحليل البيانات', 'page-analysis2')
+  if (canWrite()) sec1 += navItem('💬', 'رسائل SMS', 'page-sms')
+  html += navSection('sec-main', '🏠', 'الرئيسية', sec1)
+
+  // ══ Accordion: الكشوف والتقارير ══
+  if (canViewReports()) {
+    let sec2 = ''
+    sec2 += navItem('👩', 'النساء', 'page-women')
+    sec2 += navItem('🧒', 'سجل الأطفال', 'page-children')
+    sec2 += navItem('⚕️', 'الحالات الصحية', 'page-health-report')
+    sec2 += navItem('📋', 'تقارير الاحتياجات', 'page-needs-report')
+    sec2 += navItem('📁', 'استيراد/تصدير', 'page-data')
+    sec2 += navItem('🚶', 'حركات الأسر', 'page-movements')
+    sec2 += navItem('📝', 'سجل التغييرات', 'page-history')
+    html += navSection('sec-reports', '📋', 'الكشوف والتقارير', sec2)
   }
 
-  if (canAdmin() || role === 'camp_delegate') {
-    html += '<div class="nav-section">الإدارة</div>'
-    html += navItem('👥', 'المستخدمون', 'page-users')
-    if (['platform_owner','super_admin'].includes(currentMember.role)) {
-      html += navItem('📋', 'سجل نشاط المستخدمين', 'page-audit')
-    }
+  // ══ Accordion: التوزيع ══
+  if (canWrite()) {
+    let sec3 = ''
+    sec3 += navItem('📦', 'توزيع المساعدات', 'page-dist')
+    html += navSection('sec-dist', '📦', 'التوزيع', sec3)
+  }
+
+  // ══ Accordion: الإدارة ══
+  if (canAdmin() || role === 'camp_delegate' || ['platform_owner','super_admin','camp_delegate'].includes(role)) {
+    let sec4 = ''
+    if (['platform_owner','super_admin','camp_delegate'].includes(role))
+      sec4 += navItem('⛺', 'المخيمات', 'page-camps')
+    if (canAdmin() || role === 'camp_delegate')
+      sec4 += navItem('👥', 'المستخدمون', 'page-users')
+    if (['platform_owner','super_admin','camp_delegate'].includes(role))
+      sec4 += `<button class="nav-item" onclick="showPage('page-alerts');closeSidebar()"><span style="width:20px;text-align:center;">🔔</span> التنبيهات<span id="alertsBadge" style="display:none;background:var(--red);color:#fff;border-radius:50%;min-width:16px;height:16px;font-size:9px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;margin-right:auto;padding:0 3px;"></span></button>`
+    if (['platform_owner','super_admin'].includes(currentMember.role))
+      sec4 += navItem('📋', 'سجل النشاط', 'page-audit')
+    if (['platform_owner','super_admin'].includes(currentMember.role))
+      sec4 += navItem('🔄', 'مقارنة البيانات', 'page-sync-compare')
     if (currentMember.role === 'platform_owner') {
-      html += `<button class="nav-item" onclick="showPage('page-devices');closeSidebar()">
-        <span style="width:20px;text-align:center;">📱</span> الأجهزة
-        <span id="devicesBadge" style="display:none;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:900;align-items:center;justify-content:center;margin-right:auto;"></span>
-      </button>`
-      html += navItem('💳', 'الاشتراكات', 'page-subscription')
+      sec4 += `<button class="nav-item" onclick="showPage('page-devices');closeSidebar()"><span style="width:20px;text-align:center;">📱</span> الأجهزة<span id="devicesBadge" style="display:none;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:900;align-items:center;justify-content:center;margin-right:auto;"></span></button>`
+      sec4 += navItem('💳', 'الاشتراكات', 'page-subscription')
     }
+    html += navSection('sec-admin', '⚙️', 'الإدارة', sec4)
   }
 
-  // الإعدادات لجميع الأدوار (تغيير كلمة المرور)
-  html += '<div class="nav-section">الحساب</div>'
-  html += navItem('⚙️', 'الإعدادات', 'page-settings')
-  html += navItem('❓', 'المساعدة', 'page-help')
+  // ══ Accordion: الحساب ══
+  let sec5 = ''
+  sec5 += navItem('⚙️', 'الإعدادات', 'page-settings')
+  sec5 += navItem('❓', 'المساعدة', 'page-help')
+  html += navSection('sec-account', '👤', 'الحساب', sec5)
 
   nav.innerHTML = html
   // تحقق من الأجهزة المعلقة
@@ -2250,7 +2303,62 @@ function buildSidebar() {
 }
 
 function navItem(icon, label, page) {
-  return `<button class="nav-item" onclick="showPage('${page}');closeSidebar()"><span style="width:20px;text-align:center;">${icon}</span> ${label}</button>`
+  const isActive = document.querySelector('.page.active')?.id === page
+  return `<button class="nav-item ${isActive ? 'nav-item-active' : ''}"
+    onclick="showPage('${page}');closeSidebar()"
+    style="${isActive
+      ? 'background:rgba(245,158,11,0.15);color:var(--accent);border-right:3px solid var(--accent);font-weight:800;'
+      : ''}">
+    <span style="width:20px;text-align:center;">${icon}</span> ${label}
+    ${isActive ? '<span style="margin-right:auto;font-size:9px;">●</span>' : ''}
+  </button>`
+}
+
+// بناء قسم accordion في القائمة الجانبية
+function navSection(id, icon, label, itemsHtml) {
+  const activePage = document.querySelector('.page.active')?.id || ''
+  // تحقق إذا أحد العناصر هو الصفحة الحالية
+  const isOpen = itemsHtml.includes(`'${activePage}'`)
+  return `
+    <div class="nav-accordion" id="${id}">
+      <button class="nav-section-btn" onclick="toggleNavSection('${id}')"
+        style="width:100%;display:flex;align-items:center;justify-content:space-between;
+               padding:10px 14px;background:transparent;border:none;color:var(--text);
+               font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;
+               border-radius:8px;transition:background .15s;"
+        onmouseover="this.style.background='var(--surface2)'"
+        onmouseout="this.style.background='transparent'">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:14px;">${icon}</span> ${label}
+        </span>
+        <span class="nav-chevron" style="font-size:10px;transition:transform .2s;
+          transform:${isOpen ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
+      </button>
+      <div class="nav-section-items" style="overflow:hidden;transition:max-height .25s ease;
+        max-height:${isOpen ? '600px' : '0px'};padding-right:10px;">
+        ${itemsHtml}
+      </div>
+    </div>`
+}
+
+function toggleNavSection(id) {
+  const sec   = document.getElementById(id)
+  if (!sec) return
+  const items   = sec.querySelector('.nav-section-items')
+  const chevron = sec.querySelector('.nav-chevron')
+  const isOpen  = items.style.maxHeight !== '0px'
+  // أغلق كل الأقسام
+  document.querySelectorAll('.nav-section-items').forEach(el => {
+    el.style.maxHeight = '0px'
+  })
+  document.querySelectorAll('.nav-chevron').forEach(el => {
+    el.style.transform = 'rotate(0deg)'
+  })
+  // افتح المطلوب إذا كان مغلقاً
+  if (!isOpen) {
+    items.style.maxHeight = '600px'
+    chevron.style.transform = 'rotate(90deg)'
+  }
 }
 
 async function checkPendingDevices() {
@@ -2313,6 +2421,8 @@ function isOwner()        { return hasPermission('owner') }
 
 // ══ NAVIGATION ══
 async function showPage(pageId) {
+  // إعادة بناء القائمة لتحديث تمييز الصفحة النشطة
+  setTimeout(() => { if (typeof buildSidebar === 'function') buildSidebar() }, 50)
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
   document.getElementById(pageId)?.classList.add('active')
 
@@ -2326,7 +2436,6 @@ async function showPage(pageId) {
     'page-children':   ['🧒 سجل الأطفال', ''],
   'page-sms':        ['💬 رسائل SMS', ''],
     'page-dist':       ['📦 توزيع المساعدات', ''],
-    'page-analysis':   ['📊 تحليل البيانات', ''],
     'page-data':       ['📁 استيراد / تصدير', ''],
     'page-audit':      ['📋 سجل النشاط', ''],
     'page-settings':   ['⚙️ الإعدادات', ''],
@@ -2338,6 +2447,7 @@ async function showPage(pageId) {
     'page-family-needs': ['📋 احتياجات الأسرة', 'الفئات الاجتماعية والاقتصادية'],
     'page-member-needs': ['🩺 الحالات الصحية', 'الإعاقات والإصابات والأمراض'],
     'page-needs-report':  ['📋 تقارير الاحتياجات', 'فلترة وتصدير حسب الفئة'],
+    'page-sync-compare':  ['🔄 مقارنة البيانات', 'مقارنة المحلي بالسيرفر'],
     'page-health-report': ['⚕️ الحالات الصحية', 'إعاقات وإصابات وأمراض مزمنة'],
   }
 
@@ -2352,7 +2462,6 @@ async function showPage(pageId) {
   if (pageId === 'page-camps')      loadCampsList().catch(e => console.warn('camps:', e.message))
   if (pageId === 'page-devices')    safeLoad(loadDevices, 'devicesContent', '📴 إدارة الأجهزة تحتاج اتصالاً')
   if (pageId === 'page-dist')        loadDistPage().catch(e => console.warn('dist:', e.message))
-  if (pageId === 'page-analysis')   safeLoad(initReportsPage, 'reportContent', '📴 التقارير تحتاج اتصالاً')
   if (pageId === 'page-analysis2')  loadAnalysisWithCharts().catch(e => console.warn('analysis2:', e.message))
   if (pageId === 'page-women') {
     const sel = document.getElementById('womenCampFilter')
@@ -2362,6 +2471,7 @@ async function showPage(pageId) {
     loadWomenPage().catch(e => console.warn('women:', e.message))
   }
   if (pageId === 'page-needs-report') loadNeedsReport().catch(e => console.warn('needs-report:', e.message))
+  if (pageId === 'page-sync-compare') initSyncComparePage()
   if (pageId === 'page-health-report') initHealthReport()
   if (pageId === 'page-data')        loadDataPage().catch(e => console.warn('data:', e.message))
   if (pageId === 'page-audit')       safeLoad(loadAuditLog, 'auditContent', '📴 سجل النشاط يحتاج اتصالاً')
@@ -2448,7 +2558,7 @@ async function safeLoad(fn, containerId, offlineMsg = '📴 هذه الصفحة 
 
 // ══ ONLINE STATUS ══
 function checkOnlineStatus() {
-  // عرض الاتصال الفعلي (بدون تأثير _alwaysLocal)
+  // فحص الاتصال الحقيقي
   checkRealConnection().then(online => {
     const dot = document.getElementById('onlineDot')
     const txt = document.getElementById('onlineText')
@@ -2924,6 +3034,7 @@ async function doCustomExport() {
       return row
     })
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(famRows), 'الأسر')
+    await applyBannerToWorkbook(wb, activeCampId || allCamps[0]?.id)
     XLSX.writeFile(wb, `كشف_الأسر_${campLabel}_${date}.xlsx`)
     showToast(`✅ تم التصدير — ${families.length} أسرة`)
 
@@ -2991,6 +3102,7 @@ async function doCustomExport() {
       })
     })
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(memRows), 'الأفراد')
+    await applyBannerToWorkbook(wb, activeCampId || allCamps[0]?.id)
     XLSX.writeFile(wb, `كشف_الأفراد_${campLabel}_${date}.xlsx`)
     showToast(`✅ تم التصدير — ${memRows.length} فرد`)
   }
@@ -3024,7 +3136,7 @@ async function loadDashboard() {
     }
 
     // ═══ تحقق احتياطي: إذا كان هناك عمليات معلقة و نحن متصلون، زامنها ═══
-    if (!_alwaysLocal && navigator.onLine && !_syncInProgress) {
+    if (_netOk && !_syncInProgress) {
       const pending = await localDB.sync_queue.where('status').anyOf(['pending','error']).toArray()
       if (pending.length) {
         console.log(`⚠️ وجدت ${pending.length} عملية معلقة — جارٍ المزامنة...`)
@@ -3053,7 +3165,7 @@ async function loadDashboard() {
     document.getElementById('statMembers').textContent    = fams.length + members.length || '0'
 
     // جلب من السيرفر فقط في وضع التزامن اليدوي
-    const _dashOnline = !_alwaysLocal && await pingServer()
+    const _dashOnline = await pingServer()
     if (_dashOnline) {
       try {
         let q = db.from('families')
@@ -3990,7 +4102,7 @@ async function openFamily(id) {
 
   let f, members
   // في الوضع المحلي: اقرأ من IndexedDB فقط
-  if (!_alwaysLocal && navigator.onLine) {
+  if (_netOk) {
     const r1 = await db.from('families').select('*').eq('id', id).single()
     const r2 = await db.from('family_members').select('*').eq('family_id', id)
     f = r1.data; members = r2.data || []
@@ -4989,7 +5101,9 @@ async function doSaveFamily() {
 
     let savedFamilyId = null
 
-    if (_netOk && !_alwaysLocal) {
+    // الحفظ للسيرفر: يفحص الاتصال الحقيقي
+    const _canSaveNew = await checkRealConnection()
+    if (_canSaveNew) {
       const { data: family, error } = await db.from('families').insert(familyData).select('id,org_id,camp_id,head_name,head_id,head_dob,head_gender,head_marital,phone1,phone2,notes,status,updated_at').single()
       if (error) throw error
       await localDB.families.put(family)
@@ -5155,7 +5269,9 @@ async function doUpdateFamily(id) {
       await localDB.family_members.bulkPut(newInserts)
     }
 
-    if (_netOk && !_alwaysLocal) {
+    // الحفظ للسيرفر: يفحص الاتصال الحقيقي
+    const _canSaveToServer = await checkRealConnection()
+    if (_canSaveToServer) {
       setSyncing()
       // محاولة قراءة version — إذا العمود غير موجود، تجاهل
       let newVersion = null
@@ -5248,7 +5364,7 @@ async function doUpdateFamily(id) {
         console.error('=== كل الأخطاء ===\n', allErrors.join('\n'))
       }
     } else {
-      // offline → queue operations
+      // أوف لاين أو لا اتصال → queue للتزامن لاحقاً
       await localDB.sync_queue.add({ action:'update_family', record_id:id, data: JSON.stringify(updateData), status:'pending', created_at: new Date().toISOString() })
       for (const m of toDelete) {
         if (!m.id.toString().startsWith('local_m_')) {
@@ -5681,13 +5797,6 @@ async function loadUsers() {
     return false
   }
 
-  // في الوضع المحلي: اعرض من IndexedDB مباشرة
-  if (_alwaysLocal) {
-    const shown = await showLocal()
-    if (!shown) container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون محلياً<br><small style="color:var(--muted);font-size:11px;">قم بجلب البيانات أولاً</small></div>'
-    return
-  }
-
   // إذا متصل: جلب من السيرفر وتحديث الكاش
   const _realConn = await checkRealConnection()
   if (!_realConn) {
@@ -5950,6 +6059,43 @@ function editCamp(id) {
 
 function hideCampForm() { document.getElementById('campForm').style.display='none'; editingCampId=null }
 
+// ── إظهار/إخفاء حقل المخيم الأب ──
+function toggleParentCampField() {
+  const type = document.getElementById('campType')?.value
+  const field = document.getElementById('parentCampField')
+  if (!field) return
+  field.style.display = type === 'branch' ? 'block' : 'none'
+  if (type === 'branch') {
+    // عبّئ قائمة المخيمات الرئيسية
+    const sel = document.getElementById('parentCampId')
+    if (!sel) return
+    const editingId = document.getElementById('campEditId')?.value || ''
+    sel.innerHTML = '<option value="">— اختر المخيم الرئيسي —</option>'
+    allCamps
+      .filter(c => c.camp_type !== 'branch' && c.id !== editingId)
+      .forEach(c => { sel.innerHTML += `<option value="${c.id}">${esc(c.name)}</option>` })
+  }
+}
+
+// ── جلب GPS تلقائياً ──
+function getCampGPS() {
+  if (!navigator.geolocation) { showToast('⚠️ GPS غير مدعوم على هذا الجهاز', true); return }
+  showToast('📍 جارٍ تحديد الموقع...')
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const lat = pos.coords.latitude.toFixed(6)
+      const lng = pos.coords.longitude.toFixed(6)
+      const latEl = document.getElementById('campLat')
+      const lngEl = document.getElementById('campLng')
+      if (latEl) latEl.value = lat
+      if (lngEl) lngEl.value = lng
+      showToast(`✅ تم تحديد الموقع: ${lat}, ${lng}`)
+    },
+    err => showToast('❌ فشل تحديد الموقع: ' + err.message, true),
+    { enableHighAccuracy: true, timeout: 10000 }
+  )
+}
+
 async function saveCamp() {
   const name  = document.getElementById('campName').value.trim()
   const errEl = document.getElementById('campFormError')
@@ -5957,6 +6103,11 @@ async function saveCamp() {
   if (!name) { errEl.textContent='يرجى إدخال اسم المخيم'; errEl.style.display='block'; return }
 
   btn.disabled=true; btn.textContent='جارٍ الحفظ...'; errEl.style.display='none'
+  const _campType     = document.getElementById('campType')?.value || 'main'
+  const _parentCampId = _campType === 'branch'
+    ? (document.getElementById('parentCampId')?.value || null)
+    : null
+
   const campData = {
     org_id:    ORG_ID, name,
     address:   document.getElementById('campAddress').value.trim()||null,
@@ -5965,12 +6116,14 @@ async function saveCamp() {
     status:    document.getElementById('campStatus').value,
     latitude:  parseFloat(document.getElementById('campLat').value)||null,
     longitude: parseFloat(document.getElementById('campLng').value)||null,
-    // مدير الإيواء يملك المخيم تلقائياً
+    camp_type:      _campType,
+    parent_camp_id: _parentCampId,
     manager_id: currentMember.role === 'super_admin' ? currentMember.id : null,
   }
 
   try {
-    if (!navigator.onLine) {
+    const _campOnline = await checkRealConnection()
+    if (!_campOnline) {
       // حفظ محلي
       if (editingCampId) {
         campData.id = editingCampId
@@ -7379,6 +7532,7 @@ async function exportChildrenExcel() {
   const ws = XLSX.utils.json_to_sheet(data)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'كشف الأطفال')
+  await applyBannerToWorkbook(wb, campId || allCamps[0]?.id)
   XLSX.writeFile(wb, `كشف_الأطفال_${new Date().toLocaleDateString('ar-SA')}.xlsx`)
   showToast(`✅ تم تصدير ${rows.length} طفل`)
 }
@@ -7456,6 +7610,172 @@ async function importChildrenExcel(event) {
 }
 // ════════════════ نهاية سجل الأطفال ════════════════
 
+
+
+// ════════════════════════════════════════════════════════
+// ║           بانر Excel الموحّد                         ║
+// ════════════════════════════════════════════════════════
+
+// جلب بيانات مندوب المخيم للبانر
+async function getCampDelegateInfo(campId) {
+  try {
+    // ابحث عن مدير الإيواء المرتبط بهذا المخيم
+    const members = await localDB.org_members.toArray()
+    const camp    = allCamps.find(c => c.id === campId)
+
+    // مدير الإيواء الذي أنشأ المخيم أو مرتبط به
+    const delegate = members.find(m =>
+      m.camp_id === campId &&
+      ['super_admin','camp_delegate'].includes(m.role) &&
+      m.is_active !== false
+    ) || members.find(m =>
+      ['super_admin'].includes(m.role) && m.is_active !== false
+    )
+
+    const lat  = camp?.latitude  ? String(camp.latitude)  : ''
+    const lng  = camp?.longitude ? String(camp.longitude) : ''
+    const gps  = lat && lng ? `${lat}, ${lng}` : '—'
+
+    return {
+      campName:    camp?.name          || '—',
+      campAddress: camp?.address       || '—',
+      gps,
+      delegateName:  delegate?.full_name || delegate?.name || '—',
+      delegatePhone: delegate?.phone     || '—',
+      exportDate:    new Date().toLocaleDateString('ar-EG', { year:'numeric', month:'long', day:'numeric' }),
+      exportTime:    new Date().toLocaleTimeString('ar-EG', { hour:'2-digit', minute:'2-digit' }),
+      exportedBy:    currentMember?.full_name || currentMember?.name || '—',
+    }
+  } catch(e) {
+    return {
+      campName:'—', campAddress:'—', gps:'—',
+      delegateName:'—', delegatePhone:'—',
+      exportDate: new Date().toLocaleDateString('ar-EG'),
+      exportTime: new Date().toLocaleTimeString('ar-EG'),
+      exportedBy: currentMember?.full_name || '—',
+    }
+  }
+}
+
+// إضافة بانر لشيت Excel
+function addExcelBanner(ws, info, totalCols) {
+  // نبني البانر كأول صفوف قبل البيانات
+  const cols = Math.max(totalCols || 6, 4)
+  const lastCol = String.fromCharCode(64 + cols)  // A→Z
+
+  // الصف 1: عنوان المخيم
+  const r1 = {}
+  r1['A'] = `⛺ ${info.campName}`
+  ws['A1'] = { v: `⛺ ${info.campName}`, t: 's' }
+
+  // نعيد بناء الشيت بصفوف البانر في الأول
+  return { bannerRows: 5, info }  // 5 صفوف للبانر
+}
+
+// دالة رئيسية: تُضيف البانر لـ worksheet موجود (بدون حذف البيانات)
+function injectBannerToSheet(ws, info) {
+  if (!ws || !info) return ws
+
+  // ── 1. اقرأ كل البيانات الموجودة ──
+  const existingData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+  let maxCol = 4
+  if (ws['!ref']) {
+    const ref = XLSX.utils.decode_range(ws['!ref'])
+    maxCol = Math.max(ref.e.c + 1, 4)
+  }
+
+  // ── 2. صفوف البانر (3 صفوف فقط — بدون فاصل) ──
+  const line1 = `⛺  ${info.campName}   •   📍 ${info.campAddress}`
+  const line2 = `👤  ${info.delegateName}   •   📞 ${info.delegatePhone}   •   🗺️ ${info.gps}`
+  const line3 = `📅  ${info.exportDate}  —  ${info.exportTime}   |   صادر عن: ${info.exportedBy}`
+
+  const bannerRows = [[line1], [line2], [line3]]
+  const BANNER_COUNT = 3
+
+  // ── 3. أنشئ شيت جديد = بانر + بيانات قديمة ──
+  const combined = [...bannerRows, ...existingData]
+  const newWs = XLSX.utils.aoa_to_sheet(combined)
+
+  // ── 4. دمج خلايا البانر ──
+  newWs['!merges'] = []
+  for (let r = 0; r < BANNER_COUNT; r++) {
+    newWs['!merges'].push({ s:{r,c:0}, e:{r,c:maxCol-1} })
+  }
+
+  // ── 5. تنسيق صفوف البانر ──
+  const STYLES = [
+    { fill:'1a3a5c', font:'FFFFFF', sz:14, bold:true  },  // سطر 1 - اسم المخيم
+    { fill:'2563EB', font:'FFFFFF', sz:11, bold:false },  // سطر 2 - المندوب
+    { fill:'DBEAFE', font:'1e3a5f', sz:10, bold:false },  // سطر 3 - التاريخ
+  ]
+  STYLES.forEach((st, r) => {
+    const ref = XLSX.utils.encode_cell({r, c:0})
+    if (newWs[ref]) {
+      newWs[ref].s = {
+        fill:      { patternType:'solid', fgColor:{rgb:st.fill} },
+        font:      { color:{rgb:st.font}, bold:st.bold, sz:st.sz, name:'Cairo' },
+        alignment: { horizontal:'center', vertical:'center', wrapText:false },
+        border:    { bottom:{ style:'thin', color:{rgb:'93C5FD'} } }
+      }
+    }
+  })
+
+  // ── 6. تنسيق صف رؤوس الأعمدة (الصف الرابع) ──
+  const headerRow = BANNER_COUNT  // index 3
+  for (let c = 0; c < maxCol; c++) {
+    const ref = XLSX.utils.encode_cell({r: headerRow, c})
+    if (newWs[ref]) {
+      newWs[ref].s = {
+        fill:      { patternType:'solid', fgColor:{rgb:'1e40af'} },
+        font:      { color:{rgb:'FFFFFF'}, bold:true, sz:10 },
+        alignment: { horizontal:'center', vertical:'center' },
+        border:    { bottom:{ style:'medium', color:{rgb:'FFFFFF'} } }
+      }
+    }
+  }
+
+  // ── 7. تنسيق صفوف البيانات (خلفية متبادلة) ──
+  for (let r = BANNER_COUNT + 1; r < combined.length; r++) {
+    const isEven = (r - BANNER_COUNT) % 2 === 0
+    for (let c = 0; c < maxCol; c++) {
+      const ref = XLSX.utils.encode_cell({r, c})
+      if (newWs[ref]) {
+        newWs[ref].s = {
+          fill:      { patternType:'solid', fgColor:{rgb: isEven ? 'EFF6FF' : 'FFFFFF'} },
+          font:      { sz:10 },
+          alignment: { horizontal:'right', vertical:'center' }
+        }
+      }
+    }
+  }
+
+  // ── 8. ارتفاع الصفوف ──
+  newWs['!rows'] = [
+    { hpt: 28 },  // بانر 1
+    { hpt: 20 },  // بانر 2
+    { hpt: 18 },  // بانر 3
+    { hpt: 22 },  // رؤوس الأعمدة
+  ]
+
+  // ── 9. عرض الأعمدة تلقائي ──
+  const colWidths = ws['!cols'] || Array(maxCol).fill({wch:18})
+  newWs['!cols'] = colWidths
+
+  return newWs
+}
+
+// تطبيق البانر على كل شيتات workbook
+async function applyBannerToWorkbook(wb, campId) {
+  const info = await getCampDelegateInfo(campId)
+  wb.SheetNames.forEach(sheetName => {
+    if (sheetName.includes('تعليمات') || sheetName.includes('قالب')) return
+    const ws = wb.Sheets[sheetName]
+    if (ws) injectBannerToSheet(ws, info)
+  })
+  return { wb, info }
+}
+
+// ════════════════ نهاية بانر Excel ════════════════
 
 
 // ════════════════════════════════════════════════════════
@@ -7792,6 +8112,7 @@ async function exportHealthReport(type) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_chr.length ? s_chr : [{ملاحظة:'لا توجد'}]), 'مزمن')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_prg.length ? s_prg : [{ملاحظة:'لا توجد'}]), 'حامل')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s_nur.length ? s_nur : [{ملاحظة:'لا توجد'}]), 'مرضع')
+    await applyBannerToWorkbook(wb, activeCamp || allCamps[0]?.id)
     XLSX.writeFile(wb, `كشف_الحالات_الصحية_${date}.xlsx`)
     showToast(`تم التصدير: ${s_dis.length} اعاقة / ${s_inj.length} اصابة / ${s_chr.length} مزمن / ${s_prg.length} حامل / ${s_nur.length} مرضع`)
 
@@ -7804,6 +8125,7 @@ async function exportHealthReport(type) {
     else if (type === 'chronic')  list = chronic
     const singleToRow = type==='disabled' ? toRowDisabled : type==='injured' ? toRowInjured : type==='chronic' ? toRowChronic : toRowSimple
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(list.length ? list.map(singleToRow) : [{ملاحظة:'لا توجد'}]), sheetName)
+    await applyBannerToWorkbook(wb, activeCamp || allCamps[0]?.id)
     XLSX.writeFile(wb, `كشف_${fileName}_${date}.xlsx`)
     showToast(`✅ تم تصدير ${list.length} حالة`)
   }
@@ -7829,7 +8151,6 @@ function closeSyncPanel() {
 }
 
 async function _refreshSyncPanel() {
-  // حالة الاتصال الفعلي (بدون تأثير _alwaysLocal)
   const online = await checkRealConnection()
   const dot    = document.getElementById('syncStatusDot')
   const txt    = document.getElementById('syncStatusText')
@@ -7894,10 +8215,78 @@ async function pullAllData() {
   document.getElementById('syncLog').style.display = 'block'
 
   try {
-    // تفعيل الاتصال مؤقتاً للجلب
-    _alwaysLocal = false
+    // تفعيل الاتصال مؤقتاً
     _lastPingAt  = 0
     _netOk       = true
+
+    // ── خطوة 0: رفع التعديلات المحلية أولاً (منع فقدان البيانات) ──
+    const pendingItems = await localDB.sync_queue
+      .where('status').equals('pending').toArray()
+
+    if (pendingItems.length > 0) {
+      _syncLog(`⬆️ يوجد ${pendingItems.length} تعديل محلي — سيُرفع أولاً...`, 'var(--accent)')
+      let pushed = 0, pushFailed = 0
+
+      for (const item of pendingItems) {
+        try {
+          const data = JSON.parse(item.data || '{}')
+          if (item.action === 'update_family') {
+            const famId = item.record_id || data.id
+            if (famId) await db.from('families').update(data).eq('id', famId)
+          } else if (item.action === 'insert_family') {
+            const isLocal = (data.id||'').startsWith('local_')
+            if (isLocal) delete data.id
+            await db.from('families').insert(data)
+          } else if (item.action === 'update_member') {
+            const { id: _mid, ...mf } = data
+            const memId = item.record_id || _mid
+            if (memId) await db.from('family_members').update(mf).eq('id', memId)
+          } else if (item.action === 'insert_member') {
+            const isLocal = (data.id||'').startsWith('local_')
+            if (isLocal) delete data.id
+            await db.from('family_members').insert(data)
+          } else if (item.action === 'delete_member') {
+            await db.from('family_members').delete().eq('id', item.record_id)
+          } else if (item.action === 'delete_family') {
+            await db.from('family_members').delete().eq('family_id', item.record_id)
+            await db.from('families').delete().eq('id', item.record_id)
+          } else if (item.action === 'insert_camp') {
+            const isLocal = (data.id||'').startsWith('local_')
+            const localCampId = isLocal ? data.id : null
+            if (isLocal) delete data.id
+            const { data: srvCamp } = await db.from('camps').insert(data).select('id').single()
+            if (srvCamp?.id && localCampId) {
+              // حدّث المحلي والأسر والطابور
+              const localC = await localDB.camps.get(localCampId)
+              if (localC) { await localDB.camps.delete(localCampId); await localDB.camps.put({ ...localC, id: srvCamp.id }) }
+              allCamps = allCamps.map(c => c.id === localCampId ? { ...c, id: srvCamp.id } : c)
+              const fams = await localDB.families.where('camp_id').equals(localCampId).toArray()
+              for (const f of fams) {
+                await localDB.families.update(f.id, { camp_id: srvCamp.id })
+                if (!f.id.startsWith('local_')) await db.from('families').update({ camp_id: srvCamp.id }).eq('id', f.id)
+              }
+            }
+          } else if (item.action === 'update_camp') {
+            const { id, ...uf } = data
+            await db.from('camps').update(uf).eq('id', item.record_id || id)
+          }
+          await localDB.sync_queue.update(item.id, { status: 'done' })
+          pushed++
+        } catch(pe) {
+          await localDB.sync_queue.update(item.id, { status: 'error', error: pe.message })
+          pushFailed++
+        }
+      }
+
+      _syncLog(
+        `${pushed > 0 ? '✅' : '⚠️'} رُفع ${pushed} تعديل${pushFailed ? ` • ❌ فشل ${pushFailed}` : ''}`,
+        pushed > 0 ? 'var(--green)' : 'var(--red)'
+      )
+      if (pushFailed > 0) {
+        _syncLog('⚠️ بعض التعديلات فشلت — سيتم الجلب من الخادم', 'var(--accent)')
+      }
+    }
+
     _syncLog('بدء جلب البيانات من الخادم...')
 
     // جلب المخيمات
@@ -7966,8 +8355,6 @@ async function pullAllData() {
     _syncLog(`❌ خطأ: ${e.message}`, 'var(--red)')
     showToast('❌ فشل الجلب: ' + e.message, true)
   } finally {
-    // إعادة الوضع المحلي دائماً بعد الجلب
-    _alwaysLocal = true
     _netOk       = false
     _lastPingAt  = 0
     updateNetDot()
@@ -8009,7 +8396,6 @@ async function pushPendingChanges() {
     _syncLog(`🗜️ دُمجت ${pending.length} → ${pendingFinal.length} عملية`, 'var(--accent)')
 
   // تفعيل الاتصال مؤقتاً للرفع
-  _alwaysLocal = false
   _lastPingAt  = 0
   _netOk       = true
   _syncLog(`بدء رفع ${pendingFinal.length} تغيير...`)
@@ -8019,18 +8405,132 @@ async function pushPendingChanges() {
     try {
       const data = JSON.parse(item.data || '{}')
       if (item.action === 'insert_family') {
-        const { error } = await db.from('families').upsert(data)
+        // إذا بدأ الـ ID بـ local_ احذفه وأنشئ UUID جديد من الخادم
+        const isLocal = (data.id||'').startsWith('local_')
+        const localId = data.id
+        if (isLocal) delete data.id
+        const { data: srv, error } = await db.from('families').insert(data).select('id').single()
         if (error) throw error
+        if (isLocal && srv?.id) {
+          const localFam = await localDB.families.get(localId)
+          if (localFam) { await localDB.families.delete(localId); await localDB.families.put({ ...localFam, id: srv.id }) }
+          // حدّث أفراد الأسرة المحليين
+          const mems = await localDB.family_members.where('family_id').equals(localId).toArray()
+          for (const m of mems) await localDB.family_members.update(m.id, { family_id: srv.id })
+        }
+
       } else if (item.action === 'update_family') {
-        const { error } = await db.from('families').update(data).eq('id', data.id)
+        const famId = item.record_id || data.id
+        if (!famId) throw new Error('معرّف الأسرة غير موجود')
+        const { error } = await db.from('families').update(data).eq('id', famId)
         if (error) throw error
+
+      } else if (item.action === 'delete_family') {
+        await db.from('family_members').delete().eq('family_id', item.record_id)
+        const { error } = await db.from('families').delete().eq('id', item.record_id)
+        if (error) throw error
+
+      } else if (item.action === 'insert_member') {
+        const isLocal = (data.id||'').startsWith('local_')
+        if (isLocal) delete data.id
+        const { error } = await db.from('family_members').insert(data)
+        if (error) throw error
+
+      } else if (item.action === 'update_member') {
+        const { id: _mid, ...memberFields } = data
+        const memId = item.record_id || _mid
+        if (!memId) throw new Error('معرّف الفرد غير موجود')
+        const { error } = await db.from('family_members').update(memberFields).eq('id', memId)
+        if (error) throw error
+
+      } else if (item.action === 'delete_member') {
+        const { error } = await db.from('family_members').delete().eq('id', item.record_id)
+        if (error) throw error
+
+      } else if (item.action === 'insert_camp') {
+        const isLocal = (data.id||'').startsWith('local_')
+        const localId = data.id
+        if (isLocal) delete data.id
+        const { data: srv, error } = await db.from('camps').insert(data).select('id').single()
+        if (error) throw error
+        if (isLocal && srv?.id) {
+          // تحديث المحلي
+          const local = await localDB.camps.get(localId)
+          if (local) { await localDB.camps.delete(localId); await localDB.camps.put({ ...local, id: srv.id }) }
+          allCamps = allCamps.map(c => c.id === localId ? { ...c, id: srv.id } : c)
+
+          // ── تحديث camp_id في الأسر المنقولة لهذا المخيم ──
+          const famWithLocalCamp = await localDB.families.where('camp_id').equals(localId).toArray()
+          for (const f of famWithLocalCamp) {
+            await localDB.families.update(f.id, { camp_id: srv.id })
+            // تحديث على السيرفر إذا الأسرة موجودة فيه
+            if (!f.id.startsWith('local_')) {
+              await db.from('families').update({ camp_id: srv.id }).eq('id', f.id)
+            }
+          }
+          if (famWithLocalCamp.length > 0) {
+            _syncLog(`  ✅ حُدِّث camp_id لـ ${famWithLocalCamp.length} أسرة`, 'var(--green)')
+          }
+
+          // تحديث org_members المرتبطين
+          const memsWithLocalCamp = await localDB.org_members.where('camp_id').equals(localId).toArray()
+          for (const m of memsWithLocalCamp) {
+            await localDB.org_members.update(m.id, { camp_id: srv.id })
+            if (!m.id.startsWith('local_')) {
+              await db.from('org_members').update({ camp_id: srv.id }).eq('id', m.id)
+            }
+          }
+
+          // تحديث الطابور — أي عمليات تشير للـ ID المحلي
+          const queueItems = await localDB.sync_queue.where('status').equals('pending').toArray()
+          for (const qi of queueItems) {
+            if (qi.data && qi.data.includes(localId)) {
+              await localDB.sync_queue.update(qi.id, {
+                data: qi.data.replaceAll(localId, srv.id),
+                record_id: qi.record_id === localId ? srv.id : qi.record_id
+              })
+            }
+          }
+        }
+
+      } else if (item.action === 'update_camp') {
+        const { id, ...updateFields } = data
+        const { error } = await db.from('camps').update(updateFields).eq('id', item.record_id || id)
+        if (error) throw error
+
       } else if (item.action === 'delete_camp') {
-        // تنظيف الجداول المرتبطة قبل الحذف
-        await db.from('org_members').update({ camp_id: null }).eq('camp_id', data.id)
-        await db.from('camp_distributions').delete().eq('camp_id', data.id)
-        await db.from('dist_rounds').delete().eq('camp_id', data.id)
-        const { error } = await db.from('camps').delete().eq('id', data.id)
+        await db.from('org_members').update({ camp_id: null }).eq('camp_id', data.id || item.record_id)
+        await db.from('camp_distributions').delete().eq('camp_id', data.id || item.record_id)
+        await db.from('dist_rounds').delete().eq('camp_id', data.id || item.record_id)
+        const { error } = await db.from('camps').delete().eq('id', data.id || item.record_id)
         if (error) throw error
+
+      } else if (item.action === 'insert_movement') {
+        const { id: _id, ...mvData } = data
+        const { error } = await db.from('family_movements').insert(mvData)
+        if (error) throw error
+
+      } else if (item.action === 'insert_round') {
+        const isLocal = (data.id||'').startsWith('local_')
+        const localId = data.id
+        if (isLocal) delete data.id
+        const { data: srv, error } = await db.from('dist_rounds').insert(data).select('id').single()
+        if (error) throw error
+        if (isLocal && srv?.id) {
+          const local = await localDB.dist_rounds.get(localId)
+          if (local) { await localDB.dist_rounds.delete(localId); await localDB.dist_rounds.put({ ...local, id: srv.id }) }
+        }
+
+      } else if (item.action === 'insert_batch') {
+        const isLocal = (data.id||'').startsWith('local_')
+        const localId = data.id
+        if (isLocal) delete data.id
+        const { data: srv, error } = await db.from('camp_distributions').insert(data).select('id').single()
+        if (error) throw error
+        if (isLocal && srv?.id) {
+          const local = await localDB.camp_distributions.get(localId)
+          if (local) { await localDB.camp_distributions.delete(localId); await localDB.camp_distributions.put({ ...local, id: srv.id }) }
+        }
       }
       await localDB.sync_queue.update(item.id, { status: 'done' })
       success++
@@ -8047,7 +8547,6 @@ async function pushPendingChanges() {
   showToast(failed ? `⚠️ تم ${success} وفشل ${failed}` : `✅ تم رفع ${success} تغيير`)
 
   // إعادة الوضع المحلي دائماً بعد الرفع
-  _alwaysLocal = true
   _netOk       = false
   _lastPingAt  = 0
   updateNetDot()
@@ -8072,6 +8571,507 @@ async function updateSyncBadge() {
 }
 
 // ════════════════ نهاية الجلب والتزامن ════════════════
+
+// ════════════════════════════════════════════════════════
+// ║           مقارنة البيانات المحلية بالسيرفر          ║
+// ════════════════════════════════════════════════════════
+
+function initSyncComparePage() {
+  // جاهز للمقارنة عند الطلب
+  const content = document.getElementById('syncCompareContent')
+  if (content) content.innerHTML = '<div class="empty"><div class="empty-icon">🔄</div><div style="font-size:13px;color:var(--muted);">اضغط "مقارنة الآن" للبدء</div></div>'
+  document.getElementById('syncCompareStats')?.style && (document.getElementById('syncCompareStats').style.display = 'none')
+}
+
+async function runSyncCompare() {
+  const content = document.getElementById('syncCompareContent')
+  const statsEl  = document.getElementById('syncCompareStats')
+  content.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ المقارنة...</div></div>'
+
+  const online = await checkRealConnection()
+  if (!online) {
+    content.innerHTML = '<div class="empty"><div class="empty-icon">📴</div><div style="font-size:13px;color:var(--muted);">يحتاج اتصالاً بالإنترنت</div></div>'
+    return
+  }
+
+  try {
+    // ── 1. جلب بيانات محلية ──
+    const localFams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+    const localMap  = {}
+    localFams.forEach(f => localMap[f.id] = f)
+
+    // ── 2. جلب بيانات السيرفر (الأعداد والـ IDs فقط أولاً) ──
+    let srvFams = [], page = 0
+    while (true) {
+      const { data: batch } = await db.from('families')
+        .select('id, head_name, head_id, camp_id, updated_at, status')
+        .eq('org_id', ORG_ID)
+        .range(page * 1000, page * 1000 + 999)
+      if (!batch?.length) break
+      srvFams = srvFams.concat(batch)
+      page++
+      if (batch.length < 1000) break
+    }
+    const srvMap = {}
+    srvFams.forEach(f => srvMap[f.id] = f)
+
+    // ── 3. المقارنة ──
+    const localOnly  = localFams.filter(f => !srvMap[f.id] && !f.id?.startsWith('local_'))
+    const srvOnly    = srvFams.filter(f => !localMap[f.id])
+
+    // الأسر الموجودة في الاثنين لكن تاريخ تحديث مختلف
+    const diffUpdated = localFams.filter(f => {
+      const srv = srvMap[f.id]
+      if (!srv || !f.updated_at || !srv.updated_at) return false
+      const localTime = new Date(f.updated_at).getTime()
+      const srvTime   = new Date(srv.updated_at).getTime()
+      return Math.abs(localTime - srvTime) > 1000  // فرق أكثر من ثانية
+    })
+
+    const campMap = {}
+    allCamps.forEach(c => campMap[c.id] = c.name)
+
+    // ── 4. تحديث الإحصائيات ──
+    statsEl.style.display = 'block'
+    document.getElementById('scLocalCount').textContent  = localFams.length
+    document.getElementById('scServerCount').textContent = srvFams.length
+    document.getElementById('scDiffCount').textContent   = localOnly.length + srvOnly.length + diffUpdated.length
+    document.getElementById('scLocalOnlyCount').textContent  = localOnly.length
+    document.getElementById('scServerOnlyCount').textContent = srvOnly.length
+
+    if (localOnly.length + srvOnly.length + diffUpdated.length === 0) {
+      content.innerHTML = `<div style="background:rgba(16,185,129,0.08);border:1px solid var(--green);border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:24px;margin-bottom:8px;">✅</div>
+        <div style="font-size:14px;font-weight:700;color:var(--green);">البيانات متطابقة تماماً</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">المحلي والسيرفر متزامنان</div>
+      </div>`
+      return
+    }
+
+    // ── 5. عرض الفروقات ──
+    const renderRow = (f, type, srvF) => {
+      const camp = campMap[f.camp_id] || '—'
+      const localDate = f.updated_at ? new Date(f.updated_at).toLocaleDateString('ar-EG') : '—'
+      const srvDate   = srvF?.updated_at ? new Date(srvF.updated_at).toLocaleDateString('ar-EG') : '—'
+      const colors = { local:'var(--green)', server:'var(--accent)', diff:'var(--blue)' }
+      const labels = { local:'في المحلي فقط', server:'في السيرفر فقط', diff:'تاريخ مختلف' }
+      const icons  = { local:'💾', server:'☁️', diff:'⚡' }
+      return `
+        <div style="background:var(--surface);border:1px solid var(--border);border-right:3px solid ${colors[type]};border-radius:8px;padding:10px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div style="font-size:13px;font-weight:700;">${esc(f.head_name||'—')}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+                🪪 ${f.head_id||'—'} • ⛺ ${esc(camp)}
+              </div>
+              ${type === 'diff' ? `<div style="font-size:10px;color:var(--blue);margin-top:2px;">
+                💾 ${localDate} • ☁️ ${srvDate}
+              </div>` : ''}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+              <span style="font-size:10px;background:${colors[type]}22;color:${colors[type]};padding:2px 8px;border-radius:8px;font-weight:700;">${icons[type]} ${labels[type]}</span>
+              ${type === 'server' ? `<button onclick="fetchOneFamilyFromServer('${f.id}','${(f.head_name||'').replace(/'/g,"\\'")}') " style="font-size:10px;background:rgba(245,158,11,0.1);border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:3px 10px;cursor:pointer;font-family:Cairo,sans-serif;">⬇️ جلب</button>` : ''}
+              ${type === 'diff' ? `<button onclick="resolveConflict('${f.id}','${(f.head_name||'').replace(/'/g,"\\'")}') " style="font-size:10px;background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:3px 10px;cursor:pointer;font-family:Cairo,sans-serif;">⚡ حل التعارض</button>` : ''}
+            </div>
+          </div>
+        </div>`
+    }
+
+    let html = ''
+
+    if (localOnly.length) {
+      html += `<div style="font-size:12px;font-weight:700;color:var(--green);margin:12px 0 6px;">
+        💾 في المحلي فقط (${localOnly.length}) — سيُرفع تلقائياً
+      </div>`
+      html += localOnly.map(f => renderRow(f, 'local', null)).join('')
+    }
+
+    if (srvOnly.length) {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+        <span style="font-size:12px;font-weight:700;color:var(--accent);">☁️ في السيرفر فقط (${srvOnly.length})</span>
+        <button onclick="fetchAllServerOnly()" style="font-size:11px;background:rgba(245,158,11,0.1);border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:Cairo,sans-serif;font-weight:700;">⬇️ جلب الكل</button>
+      </div>`
+      html += srvOnly.map(f => renderRow(f, 'server', null)).join('')
+    }
+
+    if (diffUpdated.length) {
+      html += `<div style="font-size:12px;font-weight:700;color:var(--blue);margin:12px 0 6px;">
+        ⚡ تاريخ تحديث مختلف (${diffUpdated.length})
+      </div>`
+      html += diffUpdated.map(f => renderRow(f, 'diff', srvMap[f.id])).join('')
+    }
+
+    content.innerHTML = html
+
+    // حفظ نتائج المقارنة للاستخدام في رفع الكل
+    window._scLocalOnly  = localOnly
+    window._scSrvOnly    = srvOnly
+    window._scDiff       = diffUpdated
+    window._scSrvMap     = srvMap
+
+  } catch(e) {
+    content.innerHTML = `<div style="color:var(--red);padding:12px;">❌ خطأ: ${esc(e.message)}</div>`
+  }
+}
+
+// ── جلب أسرة واحدة من السيرفر ──
+async function fetchOneFamilyFromServer(famId, famName) {
+  if (!confirm(`جلب بيانات "${famName}" من السيرفر؟`)) return
+  try {
+    const { data: f } = await db.from('families').select('*').eq('id', famId).single()
+    if (f) await localDB.families.put(f)
+    const { data: mems } = await db.from('family_members').select('*').eq('family_id', famId)
+    if (mems?.length) await localDB.family_members.bulkPut(mems)
+    showToast(`✅ تم جلب "${famName}"`)
+    runSyncCompare()
+  } catch(e) { showToast('❌ ' + e.message, true) }
+}
+
+// ── جلب كل الأسر الموجودة في السيرفر فقط ──
+async function fetchAllServerOnly() {
+  const list = window._scSrvOnly
+  if (!list?.length) { showToast('⚠️ لا توجد بيانات', true); return }
+  showToast(`⏳ جارٍ جلب ${list.length} أسرة...`)
+  let done = 0
+  for (const f of list) {
+    try {
+      const { data: full } = await db.from('families').select('*').eq('id', f.id).single()
+      if (full) await localDB.families.put(full)
+      const { data: mems } = await db.from('family_members').select('*').eq('family_id', f.id)
+      if (mems?.length) await localDB.family_members.bulkPut(mems)
+      done++
+    } catch(e) {}
+  }
+  showToast(`✅ تم جلب ${done} أسرة`)
+  runSyncCompare()
+}
+
+// ── رفع كل البيانات المحلية الزائدة ──
+async function pushAllLocalToServer() {
+  const list = window._scLocalOnly
+  if (!list?.length) {
+    showToast('لا توجد بيانات زائدة محلياً — قم بالمقارنة أولاً', true)
+    return
+  }
+  const online = await checkRealConnection()
+  if (!online) { showToast('📴 يحتاج اتصال', true); return }
+  showToast(`⏳ جارٍ رفع ${list.length} أسرة...`)
+  let done = 0
+  for (const f of list) {
+    try {
+      const { id, ...famData } = f
+      await db.from('families').upsert({ ...famData, id })
+      const mems = await localDB.family_members.where('family_id').equals(f.id).toArray()
+      if (mems.length) {
+        for (const m of mems) await db.from('family_members').upsert(m)
+      }
+      done++
+    } catch(e) {}
+  }
+  showToast(`✅ تم رفع ${done} أسرة`)
+  runSyncCompare()
+}
+
+// ── حل التعارض: المحلي أم السيرفر؟ ──
+async function resolveConflict(famId, famName) {
+  const choice = confirm(
+    `تعارض في بيانات "${famName}"\n\n` +
+    `اضغط "موافق" لاستخدام النسخة المحلية (رفعها للسيرفر)\n` +
+    `اضغط "إلغاء" لاستخدام نسخة السيرفر (جلبها محلياً)`
+  )
+  if (choice) {
+    // المحلي يطغى على السيرفر
+    try {
+      const local = await localDB.families.get(famId)
+      if (local) await db.from('families').update(local).eq('id', famId)
+      showToast('✅ تم رفع النسخة المحلية')
+    } catch(e) { showToast('❌ ' + e.message, true) }
+  } else {
+    // السيرفر يطغى على المحلي
+    await fetchOneFamilyFromServer(famId, famName)
+    return
+  }
+  runSyncCompare()
+}
+
+
+// ════════════════════════════════════════════════════════
+// ║     رفع محلي كامل — Upsert كل المحلي للسيرفر       ║
+// ════════════════════════════════════════════════════════
+
+async function pushFullLocalOverwrite() {
+  const online = await checkRealConnection()
+  if (!online) { showToast('📴 يحتاج اتصالاً بالإنترنت', true); return }
+
+  const confirmed = confirm(
+    'سيتم رفع كل البيانات المحلية للسيرفر (upsert).\n' +
+    'ما هو موجود في السيرفر سيُحدَّث بالنسخة المحلية.\n' +
+    'هذا لا يحذف شيئاً من السيرفر.\n\n' +
+    'متابعة؟'
+  )
+  if (!confirmed) return
+
+  const content = document.getElementById('syncCompareContent')
+  content.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ الرفع الكامل...</div></div>'
+
+  const log = []
+  const addLog = (msg, color='var(--muted)') => {
+    log.push({ msg, color })
+    content.innerHTML = `<div style="background:var(--surface2);border-radius:8px;padding:10px;font-size:11px;font-family:monospace;max-height:300px;overflow-y:auto;">
+      ${log.map(l => `<div style="color:${l.color};margin-bottom:3px;">${l.msg}</div>`).join('')}
+    </div>`
+  }
+
+  try {
+    // ── 1. مخيمات ──
+    addLog('⬆️ رفع المخيمات...')
+    const localCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
+    const realCamps  = localCamps.filter(c => !c.id.startsWith('local_'))
+    const fakeCamps  = localCamps.filter(c =>  c.id.startsWith('local_'))
+
+    // رفع المخيمات الحقيقية
+    if (realCamps.length) {
+      const { error: ce } = await db.from('camps').upsert(realCamps, { onConflict: 'id' })
+      if (ce) addLog(`⚠️ مخيمات: ${ce.message}`, 'var(--accent)')
+      else addLog(`✅ مخيمات: ${realCamps.length} مخيم`, 'var(--green)')
+    }
+
+    // إنشاء المخيمات المؤقتة وتحديث IDs
+    const campIdMap = {}  // localId → realId
+    for (const c of fakeCamps) {
+      const { id: _fakeId, ...campData } = c
+      const { data: srv } = await db.from('camps').insert(campData).select('id').single()
+      if (srv?.id) {
+        campIdMap[c.id] = srv.id
+        await localDB.camps.delete(c.id)
+        await localDB.camps.put({ ...c, id: srv.id })
+        addLog(`  ✅ مخيم جديد: ${c.name} → ${srv.id.slice(0,8)}`, 'var(--green)')
+      }
+    }
+
+    // ── 2. تحديث camp_id في الأسر إذا كانت تشير لـ IDs مؤقتة ──
+    if (Object.keys(campIdMap).length) {
+      for (const [fakeId, realId] of Object.entries(campIdMap)) {
+        const fams = await localDB.families.where('camp_id').equals(fakeId).toArray()
+        for (const f of fams) await localDB.families.update(f.id, { camp_id: realId })
+        if (fams.length) addLog(`  ↳ حُدِّث camp_id لـ ${fams.length} أسرة`, 'var(--accent)')
+      }
+    }
+
+    // ── 3. أسر ──
+    addLog('⬆️ رفع الأسر...')
+    let allLocalFams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+    const realFams = allLocalFams.filter(f => !f.id.startsWith('local_'))
+    const fakeFams = allLocalFams.filter(f =>  f.id.startsWith('local_'))
+
+    // rفع الأسر الحقيقية على دفعات
+    let famDone = 0
+    for (let i = 0; i < realFams.length; i += 100) {
+      const batch = realFams.slice(i, i + 100)
+      const { error: fe } = await db.from('families').upsert(batch, { onConflict: 'id' })
+      if (fe) addLog(`⚠️ أسر دفعة ${i}: ${fe.message}`, 'var(--accent)')
+      else famDone += batch.length
+      addLog(`  جارٍ: ${Math.min(i+100, realFams.length)}/${realFams.length}`)
+    }
+
+    // إنشاء الأسر المؤقتة
+    const famIdMap = {}
+    for (const f of fakeFams) {
+      const { id: _fakeId, ...famData } = f
+      const { data: srv } = await db.from('families').insert(famData).select('id').single()
+      if (srv?.id) {
+        famIdMap[f.id] = srv.id
+        await localDB.families.delete(f.id)
+        await localDB.families.put({ ...f, id: srv.id })
+        famDone++
+      }
+    }
+    addLog(`✅ الأسر: ${famDone} أسرة رُفعت`, 'var(--green)')
+
+    // ── 4. أفراد الأسر ──
+    addLog('⬆️ رفع الأفراد...')
+    let allMems = await localDB.family_members.toArray()
+
+    // تصحيح family_id للأسر المؤقتة
+    for (const [fakeId, realId] of Object.entries(famIdMap)) {
+      allMems = allMems.map(m => m.family_id === fakeId ? { ...m, family_id: realId } : m)
+    }
+
+    // فصل الحقيقيين عن المؤقتين
+    const realMems = allMems.filter(m => !m.id.startsWith('local_m_'))
+    const fakeMems = allMems.filter(m =>  m.id.startsWith('local_m_'))
+
+    // رفع الحقيقيين
+    let memDone = 0
+    for (let i = 0; i < realMems.length; i += 500) {
+      const batch = realMems.slice(i, i + 500)
+      const { error: me } = await db.from('family_members').upsert(batch, { onConflict: 'id' })
+      if (!me) memDone += batch.length
+      addLog(`  جارٍ: ${Math.min(i+500, realMems.length)}/${realMems.length}`)
+    }
+
+    // إدراج المؤقتين كجدد
+    for (const m of fakeMems) {
+      const { id: _fakeId, ...mData } = m
+      const { data: srv } = await db.from('family_members').insert(mData).select('id').single()
+      if (srv?.id) {
+        await localDB.family_members.delete(m.id)
+        await localDB.family_members.put({ ...m, id: srv.id })
+        memDone++
+      }
+    }
+    addLog(`✅ الأفراد: ${memDone} فرد رُفع`, 'var(--green)')
+
+    // ── 5. تنظيف الطابور ──
+    await localDB.sync_queue.where('status').anyOf(['pending','error']).modify({ status: 'done' })
+    addLog('✅ تم تنظيف طابور التزامن', 'var(--green)')
+
+    addLog('─────────────────────────────')
+    addLog(`✅ اكتمل الرفع الكامل!`, 'var(--green)')
+    showToast(`✅ تم رفع ${famDone} أسرة و${memDone} فرد للسيرفر`)
+
+    // تحديث allFamilies
+    allFamilies = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+    loadDashboard()
+
+  } catch(e) {
+    addLog(`❌ خطأ: ${e.message}`, 'var(--red)')
+    showToast('❌ ' + e.message, true)
+  }
+}
+
+// ════════════════ نهاية الرفع الكامل ════════════════
+// ════════════════ نهاية مقارنة البيانات ════════════════
+
+
+// ════════════════════════════════════════════════════════
+// ║           Supabase Realtime — مزامنة فورية          ║
+// ════════════════════════════════════════════════════════
+
+let _realtimeChannel = null
+
+function initRealtime() {
+  if (_realtimeChannel) {
+    db.removeChannel(_realtimeChannel)
+    _realtimeChannel = null
+  }
+
+  if (!navigator.onLine || !currentMember) return
+
+  const campFilter = currentMember.camp_id
+    ? `camp_id=eq.${currentMember.camp_id}`
+    : `org_id=eq.${ORG_ID}`
+
+  _realtimeChannel = db.channel('camp-realtime-' + ORG_ID)
+
+  // ── مراقبة جدول families ──
+  _realtimeChannel.on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'families',
+      filter: currentMember.camp_id
+        ? `camp_id=eq.${currentMember.camp_id}`
+        : `org_id=eq.${ORG_ID}` },
+    async (payload) => {
+      try {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          await localDB.families.put(payload.new)
+        } else if (payload.eventType === 'DELETE') {
+          await localDB.families.delete(payload.old.id)
+        }
+        _realtimeRefreshPage('families')
+        updateSyncBadge()
+      } catch(e) { console.warn('RT families:', e.message) }
+    }
+  )
+
+  // ── مراقبة جدول family_members ──
+  .on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'family_members' },
+    async (payload) => {
+      try {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          await localDB.family_members.put(payload.new)
+        } else if (payload.eventType === 'DELETE') {
+          await localDB.family_members.delete(payload.old.id)
+        }
+        _realtimeRefreshPage('members')
+      } catch(e) { console.warn('RT members:', e.message) }
+    }
+  )
+
+  // ── مراقبة جدول camps ──
+  .on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'camps',
+      filter: `org_id=eq.${ORG_ID}` },
+    async (payload) => {
+      try {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          await localDB.camps.put(payload.new)
+          allCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
+          fillCampSelect('filterCamp', true)
+          fillCampSelect('familyCamp')
+        } else if (payload.eventType === 'DELETE') {
+          await localDB.camps.delete(payload.old.id)
+          allCamps = allCamps.filter(c => c.id !== payload.old.id)
+        }
+        _realtimeRefreshPage('camps')
+      } catch(e) { console.warn('RT camps:', e.message) }
+    }
+  )
+
+  .subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      console.log('✅ Realtime connected')
+      // إظهار مؤشر realtime
+      const dot = document.getElementById('onlineDot')
+      if (dot) dot.style.boxShadow = '0 0 6px var(--green)'
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      console.warn('⚠️ Realtime disconnected:', status)
+      // إعادة المحاولة بعد 5 ثوانٍ
+      setTimeout(initRealtime, 5000)
+    }
+  })
+}
+
+// تحديث الصفحة الحالية عند وصول تغيير Realtime
+let _rtRefreshTimer = null
+function _realtimeRefreshPage(source) {
+  // تجنّب التحديث المتكرر السريع (debounce 800ms)
+  clearTimeout(_rtRefreshTimer)
+  _rtRefreshTimer = setTimeout(async () => {
+    const activePage = document.querySelector('.page.active')?.id
+    if (!activePage) return
+
+    if (source === 'families' || source === 'members') {
+      if (activePage === 'page-families')  loadFamilies()
+      if (activePage === 'page-dashboard') loadDashboard()
+      if (activePage === 'page-needs-report') loadNeedsReport()
+      if (activePage === 'page-health-report') loadHealthReport()
+    }
+    if (source === 'camps') {
+      if (activePage === 'page-camps') loadCampsList()
+      if (activePage === 'page-dashboard') loadDashboard()
+    }
+
+    // إظهار إشعار خفيف
+    showToast('🔄 تم تحديث البيانات تلقائياً', false, 1500)
+  }, 800)
+}
+
+// إيقاف Realtime عند تسجيل الخروج
+function stopRealtime() {
+  if (_realtimeChannel) {
+    db.removeChannel(_realtimeChannel)
+    _realtimeChannel = null
+  }
+  const dot = document.getElementById('onlineDot')
+  if (dot) dot.style.boxShadow = ''
+}
+
+// ════════════════ نهاية Realtime ════════════════
+
 
 // ── قالب GCDG (مجموعة غزة للثقافة والتنمية) ──
 function downloadGCDGTemplate() {
@@ -8157,6 +9157,8 @@ async function exportGCDGFormat() {
   XLSX.utils.book_append_sheet(wb, wsCamp, 'بيانات المخيم')
   XLSX.utils.book_append_sheet(wb, wsFam,  'المقيمون في الإيواء')
   const campLabel = campName || 'الكل'
+  const _gcdgCamp = campFilter || allCamps[0]?.id
+  await applyBannerToWorkbook(wb, _gcdgCamp)
   XLSX.writeFile(wb, `كشف_GCDG_${campLabel}_${date}.xlsx`)
   showToast(`✅ تم تصدير ${rows.length} أسرة بصيغة GCDG`)
 }
@@ -9009,11 +10011,11 @@ async function openRound(roundId) {
     <div class="card">
       <div class="card-title" style="color:var(--red);">⏳ لم يستلموا بعد (${remaining})</div>
       <div style="max-height:200px;overflow-y:auto;">
-        ${families.filter(f=>!allReceivedIds.has(f.id)).slice(0,20).map(f=>`
-          <div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:11px;">
-            ${f.head_name} <span style="color:var(--muted);">— ${campMap[f.camp_id]||'—'}</span>
+        ${families.filter(f=>!allReceivedIds.has(f.id)).map(f=>`
+          <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:600;">${esc(f.head_name||'—')}</span>
+            <span style="color:var(--muted);font-size:10px;">⛺ ${esc(campMap[f.camp_id]||'—')}</span>
           </div>`).join('')}
-        ${remaining>20?`<div style="font-size:10px;color:var(--muted);padding:6px 0;">...و ${remaining-20} أسرة أخرى</div>`:''}
       </div>
     </div>` : `
     <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:14px;text-align:center;font-size:13px;color:var(--green);">
@@ -9867,51 +10869,6 @@ async function loadDataPage() {
   if (sel && currentMember.camp_id) sel.value = currentMember.camp_id
 }
 
-function initReportsPage() {
-  // ملء فلتر المخيمات مع عدد الأسر
-  const sel = document.getElementById('rFilterCamp')
-  if (!sel) return
-
-  // احسب عدد الأسر لكل مخيم
-  localDB.families.where('org_id').equals(ORG_ID).toArray().then(fams => {
-    const cCount = {}
-    fams.forEach(f => cCount[f.camp_id] = (cCount[f.camp_id]||0)+1)
-
-    const myCamps = currentMember.role === 'super_admin'
-      ? allCamps.filter(x => x.manager_id === currentMember.id)
-      : currentMember.camp_id
-      ? allCamps.filter(x => x.id === currentMember.camp_id)
-      : allCamps
-
-    const total = myCamps.reduce((s, x) => s+(cCount[x.id]||0), 0)
-    sel.innerHTML = `<option value="">كل المخيمات (${total})</option>`
-    myCamps.forEach(camp => {
-      const n = cCount[camp.id]||0
-      sel.innerHTML += `<option value="${camp.id}">${camp.name} (${n})</option>`
-    })
-    if (currentMember.camp_id) sel.value = currentMember.camp_id
-
-    showReport('families')
-  })
-}
-
-function showReport(type) {
-  currentReport = type
-  // تحديث التبويبات
-  ;['families','age','dist'].forEach(t => {
-    const btn = document.getElementById(`rTab-${t}`)
-    if (!btn) return
-    if (t === type) {
-      btn.className = 'btn btn-primary'
-      btn.style.cssText = 'flex:1;font-size:12px;padding:8px;'
-    } else {
-      btn.className = 'btn'
-      btn.style.cssText = 'flex:1;font-size:12px;padding:8px;background:var(--surface2);border:1px solid var(--border);'
-    }
-  })
-  loadReport()
-}
-
 async function getReportData() {
   const campId  = document.getElementById('rFilterCamp')?.value  || ''
   const status  = document.getElementById('rFilterStatus')?.value || ''
@@ -9962,25 +10919,6 @@ function getReportHeader(campId) {
       ${camp?.latitude ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;" dir="ltr">📍 ${lat}, ${lng}</div>` : ''}
       <div style="font-size:11px;color:var(--muted);margin-top:4px;">📅 ${new Date().toLocaleDateString('ar-EG')}</div>
     </div>`
-}
-
-async function loadReport() {
-  const out = document.getElementById('reportContent')
-  if (!out) return
-  out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
-
-  const { fams, mems } = await getReportData()
-  const campId = document.getElementById('rFilterCamp')?.value || ''
-  const header = getReportHeader(campId)
-  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
-
-  if (currentReport === 'families') {
-    await renderFamiliesReport(out, fams, mems, header, campMap)
-  } else if (currentReport === 'age') {
-    await renderAgeReport(out, fams, mems, header, campMap)
-  } else if (currentReport === 'dist') {
-    await renderDistReport(out, header)
-  }
 }
 
 // ── تقرير الأسر ──
@@ -10149,42 +11087,6 @@ async function exportReport() {
 }
 
 // ── طباعة التقرير ──
-function printReport() {
-  const content = document.getElementById('reportContent')?.innerHTML || ''
-  const campId  = document.getElementById('rFilterCamp')?.value || ''
-  const camp    = allCamps.find(c => c.id === campId)
-  const campName = camp?.name || 'كل المخيمات'
-  const delegate = currentMember.role === 'camp_delegate' ? currentMember : null
-
-  const win = window.open('', '_blank')
-  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head>
-    <meta charset="UTF-8">
-    <title>تقرير — ${campName}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
-    <style>
-      body { font-family: Cairo, sans-serif; padding: 20px; direction: rtl; }
-      h2 { color: #d97706; text-align: center; }
-      .header-info { text-align:center; margin-bottom:20px; padding:12px; border:1px solid #e5e7eb; border-radius:8px; }
-      table { width:100%; border-collapse:collapse; font-size:12px; margin-top:12px; }
-      th { background:#1e3a5f; color:#fff; padding:8px; border:1px solid #d1d5db; font-weight:700; }
-      td { padding:6px 8px; border:1px solid #d1d5db; }
-      tr:nth-child(even) { background:#f9fafb; }
-      .stat-box { display:inline-block; margin:8px; padding:12px 24px; border:1px solid #e5e7eb; border-radius:8px; text-align:center; }
-      @media print { body { padding:10px; } }
-    </style>
-  </head><body>
-    <div class="header-info">
-      <h2>⛺ ${campName}</h2>
-      ${delegate ? `<p>👤 المندوب: ${esc(delegate.full_name)} | 📱 ${esc(delegate.phone)}</p>` : ''}
-      ${camp?.latitude ? `<p dir="ltr">📍 ${camp.latitude}, ${camp.longitude}</p>` : ''}
-      <p>📅 ${new Date().toLocaleDateString('ar-EG')}</p>
-    </div>
-    ${content}
-    <script>window.onload=()=>window.print()<\/script>
-  </body></html>`)
-  win.document.close()
-}
-
 // ══ TOAST ══
 async function changeMyPassword() {
   const newPass  = document.getElementById('settingsNewPass').value
@@ -12194,6 +13096,8 @@ async function exportWomenExcel() {
     ])
   ]
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), 'النساء')
+  const _womenCamp = document.getElementById('womenCampFilter')?.value || allCamps[0]?.id
+  await applyBannerToWorkbook(wb, _womenCamp)
   XLSX.writeFile(wb, `كشف_النساء_${new Date().toLocaleDateString('ar')}.xlsx`)
   logAction('تصدير كشف النساء', null, `${women.length} امرأة`)
 }
@@ -12408,6 +13312,7 @@ async function exportNeedsReport(mode) {
     const wb2 = XLSX.utils.book_new()
     const n = await _exportOrphansSheet(wb2, families, mByFam, campMap)
     const date2 = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
+    await applyBannerToWorkbook(wb2, document.getElementById('nrFilterCamp')?.value || allCamps[0]?.id)
     XLSX.writeFile(wb2, `كشف_الأيتام_${date2}.xlsx`)
     showToast(`✅ تم تصدير ${n} يتيم`)
     logAction('تصدير كشف الأيتام', null, `${n} يتيم`)
@@ -12417,6 +13322,7 @@ async function exportNeedsReport(mode) {
     const wb3 = XLSX.utils.book_new()
     const n = await _exportMartyrsSheet(wb3, families, mByFam, campMap)
     const date3 = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
+    await applyBannerToWorkbook(wb3, document.getElementById('nrFilterCamp')?.value || allCamps[0]?.id)
     XLSX.writeFile(wb3, `كشف_أسر_الشهداء_${date3}.xlsx`)
     showToast(`✅ تم تصدير ${n} أسرة`)
     logAction('تصدير أسر الشهداء', null, `${n} أسرة`)
@@ -12448,6 +13354,8 @@ async function exportNeedsReport(mode) {
     })
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'الأسر')
     const date = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')
+    const _needsCampId = document.getElementById('nrFilterCamp')?.value || allCamps[0]?.id
+    await applyBannerToWorkbook(wb, _needsCampId)
     XLSX.writeFile(wb, `تقرير_احتياجات_الأسر_${date}.xlsx`)
     showToast(`✅ تم تصدير ${families.length} أسرة`)
 
