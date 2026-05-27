@@ -663,15 +663,49 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
         <div class="form-group"><label>رقم الجوال * (كلمة المرور الأولى)</label><input type="tel" id="uPhone" placeholder="05xxxxxxxx" dir="ltr"></div>
         <div class="form-group"><label>الدور *</label><select id="uRole" onchange="onRoleChange()"><option value="">اختر الدور</option><option value="super_admin">🔴 مدير الإيواء</option><option value="camp_delegate">🟠 مندوب المخيم</option><option value="assistant">🟡 مساعد</option></select></div>
       </div>
-      <div id="uCampSection" style="display:none;" class="form-group"><label>المخيم *</label><select id="uCamp"><option value="">اختر المخيم</option></select></div>
+      <!-- مخيم واحد للمساعد -->
+      <div id="uCampSection" style="display:none;" class="form-group">
+        <label>المخيم *</label>
+        <select id="uCamp" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
+          <option value="">اختر المخيم</option>
+        </select>
+      </div>
+
+      <!-- مخيمات متعددة للمندوب -->
+      <div id="uDelegateCampsSection" style="display:none;margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:700;color:var(--text);display:block;margin-bottom:8px;">🏕️ المخيمات المُعيَّن عليها *</label>
+        <div id="uDelegateCampsList" style="display:flex;flex-direction:column;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;max-height:200px;overflow-y:auto;">
+          <div style="font-size:11px;color:var(--muted);">جارٍ تحميل المخيمات...</div>
+        </div>
+      </div>
+
+      <!-- صلاحيات المساعد حسب الصفحة -->
       <div id="uPermissionsSection" style="display:none;margin-bottom:14px;">
-        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;">صلاحيات المساعد</div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;">
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" id="uCanAdd" checked style="width:16px;height:16px;accent-color:var(--accent);"> إضافة</label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" id="uCanEdit" checked style="width:16px;height:16px;accent-color:var(--accent);"> تعديل</label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" id="uCanDelete" style="width:16px;height:16px;accent-color:var(--accent);"> حذف</label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" id="uCanExport" style="width:16px;height:16px;accent-color:var(--accent);"> تصدير/طباعة</label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" id="uCanImport" style="width:16px;height:16px;accent-color:var(--accent);"> استيراد</label>
+        <label style="font-size:12px;font-weight:700;color:var(--text);display:block;margin-bottom:10px;">🔑 صلاحيات الصفحات</label>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+          <div style="display:grid;grid-template-columns:1fr repeat(3,44px);gap:0;padding:8px 12px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--muted);text-align:center;">
+            <div style="text-align:right;">الصفحة</div>
+            <div>➕</div><div>✏️</div><div>🗑️</div>
+          </div>
+          ${[
+            ['families',    '👨‍👩‍👧 قائمة الأسر'],
+            ['add_family',  '➕ إضافة أسرة'],
+            ['dist',        '📦 التوزيع'],
+            ['women',       '👩 النساء'],
+            ['children',    '🧒 الأطفال'],
+            ['health',      '⚕️ الحالات الصحية'],
+            ['needs',       '📋 تقارير الاحتياجات'],
+          ].map(([key,label]) => `
+          <div style="display:grid;grid-template-columns:1fr repeat(3,44px);padding:8px 12px;border-bottom:1px solid var(--border);align-items:center;">
+            <div style="font-size:12px;">${label}</div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_${key}_add"   style="accent-color:var(--accent);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_${key}_edit"  style="accent-color:var(--blue);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_${key}_del"   style="accent-color:var(--red);width:16px;height:16px;"></div>
+          </div>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button onclick="setAllPerms(true)"  style="flex:1;background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:6px;padding:5px;font-size:11px;font-family:Cairo,sans-serif;cursor:pointer;">✅ تحديد الكل</button>
+          <button onclick="setAllPerms(false)" style="flex:1;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:5px;font-size:11px;font-family:Cairo,sans-serif;cursor:pointer;">❌ إلغاء الكل</button>
         </div>
       </div>
       <div style="display:flex;gap:10px;">
@@ -5701,8 +5735,59 @@ function hideAddUserForm() {
 
 function onRoleChange() {
   const role = document.getElementById('uRole').value
-  document.getElementById('uCampSection').style.display = ['camp_delegate','assistant'].includes(role)?'block':'none'
-  document.getElementById('uPermissionsSection').style.display = role==='assistant'?'block':'none'
+  // مخيم واحد للمساعد
+  document.getElementById('uCampSection').style.display = role === 'assistant' ? 'block' : 'none'
+  // مخيمات متعددة للمندوب
+  const delegateSection = document.getElementById('uDelegateCampsSection')
+  if (delegateSection) {
+    delegateSection.style.display = role === 'camp_delegate' ? 'block' : 'none'
+    if (role === 'camp_delegate') buildDelegateCampsList('uDelegateCampsList')
+  }
+  // صلاحيات الصفحات للمساعد
+  document.getElementById('uPermissionsSection').style.display = role === 'assistant' ? 'block' : 'none'
+}
+
+// بناء قائمة checkboxes للمخيمات
+function buildDelegateCampsList(containerId, selectedIds = []) {
+  const el = document.getElementById(containerId)
+  if (!el) return
+  if (!allCamps.length) { el.innerHTML = '<div style="font-size:11px;color:var(--muted);">لا توجد مخيمات</div>'; return }
+  el.innerHTML = allCamps.map(c => `
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:12px;">
+      <input type="checkbox" value="${c.id}" ${selectedIds.includes(c.id)?'checked':''}
+        style="width:16px;height:16px;accent-color:var(--accent);" class="delegate-camp-cb">
+      <span>⛺ ${esc(c.name)}</span>
+    </label>`).join('')
+}
+
+// الحصول على IDs المخيمات المحددة
+function getSelectedDelegateCamps(containerId) {
+  const el = document.getElementById(containerId)
+  if (!el) return []
+  return [...el.querySelectorAll('.delegate-camp-cb:checked')].map(cb => cb.value)
+}
+
+// تحديد/إلغاء كل الصلاحيات
+function setAllPerms(val) {
+  const pages = ['families','add_family','dist','women','children','health','needs']
+  const actions = ['add','edit','del']
+  pages.forEach(p => actions.forEach(a => {
+    const el = document.getElementById(`uperm_${p}_${a}`)
+    if (el) el.checked = val
+  }))
+}
+
+// قراءة صلاحيات الصفحات
+function getPagePermissions() {
+  const pages = ['families','add_family','dist','women','children','health','needs']
+  const perms = {}
+  pages.forEach(p => {
+    const add  = document.getElementById(`uperm_${p}_add`)?.checked
+    const edit = document.getElementById(`uperm_${p}_edit`)?.checked
+    const del  = document.getElementById(`uperm_${p}_del`)?.checked
+    if (add || edit || del) perms[p] = { add: !!add, edit: !!edit, del: !!del }
+  })
+  return perms
 }
 
 // ══ ADMIN API HELPER ══
@@ -5741,7 +5826,14 @@ async function createUser() {
   if (!nationalId||nationalId.length<9) { errEl.textContent='رقم الهوية 9 أرقام'; errEl.style.display='block'; return }
   if (!phone)      { errEl.textContent='يرجى إدخال رقم الجوال'; errEl.style.display='block'; return }
   if (!role)       { errEl.textContent='يرجى اختيار الدور'; errEl.style.display='block'; return }
-  if (['camp_delegate','assistant'].includes(role)&&!campId) { errEl.textContent='يرجى اختيار المخيم'; errEl.style.display='block'; return }
+  // للمندوب: تحقق من مخيم واحد على الأقل
+  let delegateCampIds = []
+  if (role === 'camp_delegate') {
+    delegateCampIds = getSelectedDelegateCamps('uDelegateCampsList')
+    if (!delegateCampIds.length) { errEl.textContent='يرجى اختيار مخيم واحد على الأقل'; errEl.style.display='block'; return }
+  }
+  // للمساعد: تحقق من مخيم
+  if (role === 'assistant' && !campId) { errEl.textContent='يرجى اختيار المخيم'; errEl.style.display='block'; return }
 
   if (!navigator.onLine) {
     errEl.innerHTML='📴 إضافة المستخدمين تحتاج اتصالاً بالإنترنت<br><span style="font-size:11px;color:var(--muted);">السبب: يجب إنشاء حساب في نظام المصادقة</span>'
@@ -5755,20 +5847,36 @@ async function createUser() {
     const userId  = resData.id
     if (!userId) throw new Error('فشل إنشاء الحساب')
 
-    const { error: mErr } = await db.from('org_members').insert({
-      org_id: ORG_ID, user_id: userId, camp_id: campId||null, role,
+    // تحديد camp_id الرئيسي (أول مخيم للمندوب أو مخيم المساعد)
+    const mainCampId = role === 'camp_delegate' ? (delegateCampIds[0] || null) : (campId || null)
+    const pagePerms  = role === 'assistant' ? getPagePermissions() : {}
+
+    const { data: newMember, error: mErr } = await db.from('org_members').insert({
+      org_id: ORG_ID, user_id: userId, camp_id: mainCampId, role,
       full_name: fullName, phone, national_id: nationalId,
       must_change_pass: true,
-      can_add:    role==='assistant'?document.getElementById('uCanAdd').checked:true,
-      can_edit:   role==='assistant'?document.getElementById('uCanEdit').checked:true,
-      can_delete: role==='assistant'?document.getElementById('uCanDelete').checked:false,
-      can_export: role==='assistant'?document.getElementById('uCanExport')?.checked:true,
-      can_import: role==='assistant'?document.getElementById('uCanImport')?.checked:(role==='camp_delegate'),
+      can_add:    role === 'assistant' ? Object.values(pagePerms).some(p=>p.add)    : true,
+      can_edit:   role === 'assistant' ? Object.values(pagePerms).some(p=>p.edit)   : true,
+      can_delete: role === 'assistant' ? Object.values(pagePerms).some(p=>p.del)    : false,
+      can_export: true,
+      can_import: role === 'camp_delegate',
       is_active:  true,
-      // لو platform_owner ينشئ مندوب — يُعيَّن created_by لمدير الإيواء المسؤول عن المخيم
-      created_by: await getCreatedBy(role, campId),
-    })
+      page_permissions: pagePerms,
+      created_by: await getCreatedBy(role, mainCampId),
+    }).select('id').single()
     if (mErr) throw mErr
+
+    // للمندوب: إضافة كل المخيمات في delegate_camps
+    if (role === 'camp_delegate' && newMember?.id && delegateCampIds.length > 0) {
+      const dcRows = delegateCampIds.map(cid => ({
+        delegate_id: newMember.id,
+        camp_id: cid,
+        org_id: ORG_ID,
+      }))
+      const { error: dcErr } = await db.from('delegate_camps').insert(dcRows)
+      if (dcErr) console.warn('delegate_camps insert:', dcErr.message)
+    }
+
     logAction('إضافة مستخدم', null, fullName, { role })
     showToast(`✅ تم إنشاء حساب ${fullName}`)
     hideAddUserForm(); loadUsers()
@@ -8536,6 +8644,16 @@ async function pushPendingChanges() {
         const records = Array.isArray(data) ? data : [data]
         const { error } = await db.from('camp_dist_families').insert(records)
         if (error) throw error
+      } else if (item.action === 'update_dist') {
+        const { id, ...upd } = data
+        const { error } = await db.from('camp_distributions').update(upd).eq('id', item.record_id || id)
+        if (error) throw error
+      } else if (item.action === 'delete_dist_family') {
+        const { error } = await db.from('camp_dist_families')
+          .delete()
+          .eq('distribution_id', data.distribution_id)
+          .eq('family_id', data.family_id)
+        if (error) throw error
       }
       await localDB.sync_queue.update(item.id, { status: 'done' })
       success++
@@ -10108,6 +10226,229 @@ async function saveNewBatch(roundId) {
   await openDist(batchId)
 }
 
+// ── تبديل تبويب التوزيع (لم يستلموا / استلموا) ──
+let _distActiveTab = 'pending'  // pending | received
+
+function switchDistTab(distId, tab) {
+  _distActiveTab = tab
+  const tabPending  = document.getElementById('distTabPending')
+  const tabReceived = document.getElementById('distTabReceived')
+  const candList    = document.getElementById('distCandidatesList')
+  const recvList    = document.getElementById('distReceivedList')
+  const sortRow     = document.getElementById('distSortRow')
+
+  if (tab === 'pending') {
+    tabPending.style.background  = 'var(--accent)'
+    tabPending.style.color       = '#000'
+    tabReceived.style.background = 'transparent'
+    tabReceived.style.color      = 'var(--muted)'
+    candList.style.display = ''
+    recvList.style.display = 'none'
+    if (sortRow) sortRow.style.display = ''
+    applyDistFilter(distId)
+  } else {
+    tabReceived.style.background = 'var(--green)'
+    tabReceived.style.color      = '#fff'
+    tabPending.style.background  = 'transparent'
+    tabPending.style.color       = 'var(--muted)'
+    candList.style.display = 'none'
+    recvList.style.display = ''
+    if (sortRow) sortRow.style.display = 'none'
+    renderReceivedTab(distId)
+  }
+}
+
+// ── عرض المستلمين مع زر إلغاء الاستلام ──
+async function renderReceivedTab(distId) {
+  const out = document.getElementById('distReceivedList')
+  if (!out) return
+  out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
+
+  // جلب المستلمين (محلي + سيرفر)
+  const localR = await localDB.camp_dist_families.where('distribution_id').equals(distId).toArray()
+  let recv = [...localR]
+  const _on = await checkRealConnection()
+  if (_on) {
+    try {
+      const { data } = await db.from('camp_dist_families').select('*').eq('distribution_id', distId)
+      if (data) {
+        const seen = new Set(recv.map(r => r.family_id))
+        data.forEach(r => { if (!seen.has(r.family_id)) recv.push(r) })
+      }
+    } catch(e) {}
+  }
+
+  if (!recv.length) {
+    out.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div style="font-size:13px;color:var(--muted);">لم يستلم أحد بعد</div></div>'
+    return
+  }
+
+  // جلب بيانات الأسر
+  const famIds = recv.map(r => r.family_id)
+  const fams = await localDB.families.bulkGet(famIds)
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+
+  out.innerHTML = `
+    <div style="font-size:11px;color:var(--green);margin-bottom:8px;font-weight:700;">
+      ✅ المستلمون (${recv.length})
+    </div>
+    ${recv.map((r, i) => {
+      const f = fams[i]
+      if (!f) return ''
+      const date = r.received_at ? new Date(r.received_at).toLocaleDateString('ar-EG') : '—'
+      return `
+        <div style="background:var(--surface);border:1px solid var(--border);border-right:3px solid var(--green);border-radius:8px;padding:10px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:700;">${esc(f.head_name||'—')}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+                ⛺ ${esc(campMap[f.camp_id]||'—')} • 📅 ${date}
+              </div>
+              ${r.notes ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;">📝 ${esc(r.notes)}</div>` : ''}
+            </div>
+            <button onclick="unmarkReceived('${distId}','${f.id}','${(f.head_name||'').replace(/'/g,"\\'")}')"
+              style="flex-shrink:0;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:5px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">
+              🔙 إلغاء
+            </button>
+          </div>
+        </div>`
+    }).join('')}
+  `
+}
+
+// ── إلغاء استلام أسرة ──
+async function unmarkReceived(distId, famId, famName) {
+  if (!confirm(`إلغاء استلام "${famName}"؟\nسيُسمح لها بالاستلام مرة أخرى.`)) return
+  const recordId = distId + '_' + famId
+
+  // حذف محلي
+  try { await localDB.camp_dist_families.delete(recordId) } catch(e) {}
+
+  // حذف من السيرفر
+  const _on = await checkRealConnection()
+  if (_on) {
+    const { error } = await db.from('camp_dist_families')
+      .delete()
+      .eq('distribution_id', distId)
+      .eq('family_id', famId)
+    if (error) {
+      await localDB.sync_queue.add({
+        action: 'delete_dist_family',
+        data: JSON.stringify({ distribution_id: distId, family_id: famId }),
+        status: 'pending',
+        created_at: new Date().toISOString()
+      })
+    }
+  } else {
+    await localDB.sync_queue.add({
+      action: 'delete_dist_family',
+      data: JSON.stringify({ distribution_id: distId, family_id: famId }),
+      status: 'pending',
+      created_at: new Date().toISOString()
+    })
+  }
+
+  showToast(`✅ تم إلغاء استلام ${famName}`)
+  // تحديث العرض
+  await openDist(distId)
+}
+
+
+async function openEditDist(distId) {
+  let dist = await localDB.camp_distributions.get(distId)
+  if (!dist) {
+    const _on = await checkRealConnection()
+    if (_on) { const {data} = await db.from('camp_distributions').select('*').eq('id',distId).single(); dist = data }
+  }
+  if (!dist) { showToast('❌ لم يتم العثور على الدفعة', true); return }
+
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+
+  // جلب من استلم
+  const localRec = await localDB.camp_dist_families.where('distribution_id').equals(distId).toArray()
+  const receivedFamIds = new Set(localRec.map(r=>r.family_id))
+
+  // جلب كل الأسر المرتبطة بهذه الدفعة
+  let allFamsInDist = []
+  if (dist.camp_id) {
+    allFamsInDist = await localDB.families.where('camp_id').equals(dist.camp_id).toArray()
+  } else {
+    allFamsInDist = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+  }
+
+  const modal = document.createElement('div')
+  modal.id = 'editDistModal'
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:900;display:flex;align-items:flex-end;justify-content:center;padding:0;'
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-top:2px solid var(--accent);border-radius:16px 16px 0 0;width:100%;max-width:500px;padding:20px;padding-bottom:28px;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div style="font-size:14px;font-weight:700;color:var(--accent);">✏️ تعديل الدفعة</div>
+        <button onclick="document.getElementById('editDistModal').remove()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:4px 12px;cursor:pointer;font-family:Cairo,sans-serif;">✕</button>
+      </div>
+
+      <div class="form-group">
+        <label>اسم/وصف الدفعة</label>
+        <input type="text" id="edDistDesc" value="${esc(dist.description||'')}"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
+      </div>
+      <div class="form-group">
+        <label>الكمية الإجمالية (عدد الأسر)</label>
+        <input type="number" id="edDistQty" value="${dist.quantity||0}" min="0"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;" dir="ltr">
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">👨‍👩‍👧 الأسر المُدرجة في الدفعة (${allFamsInDist.length})</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">الأسر التي استلمت (${receivedFamIds.size}) مؤشّرة ولا يمكن إلغاؤها</div>
+        <div style="max-height:200px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;">
+          ${allFamsInDist.map(f => {
+            const received = receivedFamIds.has(f.id)
+            const campName = campMap[f.camp_id]||'—'
+            return `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);cursor:${received?'default':'pointer'};">
+              <input type="checkbox" value="${f.id}" ${received?'checked disabled':''}
+                ${!received?'class="edit-dist-fam-cb"':''}
+                style="width:15px;height:15px;accent-color:var(--accent);">
+              <span style="flex:1;font-size:11px;">${esc(f.head_name||'—')}</span>
+              <span style="font-size:10px;color:var(--muted);">⛺ ${esc(campName)}</span>
+              ${received?'<span style="font-size:9px;color:var(--green);">✅</span>':''}
+            </label>`
+          }).join('')}
+        </div>
+      </div>
+
+      <div id="edDistErr" style="display:none;color:var(--red);font-size:12px;margin-bottom:10px;"></div>
+      <button onclick="saveEditDist('${distId}')" class="btn btn-primary" style="width:100%;">💾 حفظ التعديلات</button>
+    </div>`
+
+  document.body.appendChild(modal)
+}
+
+async function saveEditDist(distId) {
+  const desc = document.getElementById('edDistDesc')?.value.trim()
+  const qty  = parseInt(document.getElementById('edDistQty')?.value) || 0
+  const errEl = document.getElementById('edDistErr')
+
+  if (!desc) { errEl.textContent='يرجى إدخال اسم الدفعة'; errEl.style.display='block'; return }
+
+  const upd = { description: desc, quantity: qty, updated_at: new Date().toISOString() }
+
+  // تحديث محلي
+  await localDB.camp_distributions.update(distId, upd)
+
+  // تحديث السيرفر
+  const _on = await checkRealConnection()
+  if (_on) {
+    const { error } = await db.from('camp_distributions').update(upd).eq('id', distId)
+    if (error) { errEl.textContent='خطأ: '+error.message; errEl.style.display='block'; return }
+  } else {
+    await localDB.sync_queue.add({ action:'update_dist', record_id:distId, data:JSON.stringify({id:distId,...upd}), status:'pending', created_at:new Date().toISOString() })
+  }
+
+  showToast('✅ تم حفظ التعديلات')
+  document.getElementById('editDistModal')?.remove()
+  openDist(distId)
+}
+
 async function editRound(roundId) {
   let round = await localDB.dist_rounds.get(roundId)
   if (!round && navigator.onLine) {
@@ -10308,14 +10649,14 @@ async function openDist(distId) {
 
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
 
-  // من استلم هذه الدفعة
+  // من استلم هذه الدفعة — محلي أولاً
   let receivedIds = new Set()
-  if (navigator.onLine) {
-    const { data } = await db.from('camp_dist_families').select('family_id').eq('distribution_id', distId)
-    receivedIds = new Set((data||[]).map(r => r.family_id))
-  } else {
-    const r = await localDB.camp_dist_families.where('distribution_id').equals(distId).toArray()
-    receivedIds = new Set(r.map(r => r.family_id))
+  const localR = await localDB.camp_dist_families.where('distribution_id').equals(distId).toArray()
+  localR.forEach(r => receivedIds.add(r.family_id))
+  const _openOn = await checkRealConnection()
+  if (_openOn) {
+    const { data: srvR } = await db.from('camp_dist_families').select('family_id').eq('distribution_id', distId)
+    if (srvR) srvR.forEach(r => receivedIds.add(r.family_id))
   }
 
   const qty       = dist.quantity || 0
@@ -10329,8 +10670,12 @@ async function openDist(distId) {
           <div style="font-size:14px;font-weight:700;">${dist.description||'دفعة'}</div>
           <div style="font-size:11px;color:var(--muted);">${dist.camp_id?campMap[dist.camp_id]:'كل المخيمات'}</div>
         </div>
-        <button onclick="${dist.round_id?`openRound('${dist.round_id}')`:'loadDistPage()'}"
-          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">← رجوع</button>
+        <div style="display:flex;gap:6px;">
+          <button onclick="openEditDist('${distId}')"
+            style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">✏️ تعديل</button>
+          <button onclick="${dist.round_id?`openRound('${dist.round_id}')`:'loadDistPage()'}"
+            style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">← رجوع</button>
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px;">
         <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center;">
@@ -10348,25 +10693,36 @@ async function openDist(distId) {
       </div>
     </div>
 
-    <!-- فلاتر الترشيح -->
+    <!-- تبويبان: لم يستلموا / استلموا -->
     <div class="card" style="margin-bottom:12px;">
-      <div class="card-title">🎯 اختر الأسر للتوزيع</div>
+      <!-- التبويبات -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:12px;background:var(--surface2);border-radius:10px;padding:4px;">
+        <button id="distTabPending" onclick="switchDistTab('${distId}','pending')"
+          style="padding:9px;border-radius:8px;border:none;background:var(--accent);color:#000;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">
+          ⏳ لم يستلموا
+        </button>
+        <button id="distTabReceived" onclick="switchDistTab('${distId}','received')"
+          style="padding:9px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">
+          ✅ استلموا
+        </button>
+      </div>
 
-      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;flex:1;">
-          <input type="checkbox" id="distFilterSameType" onchange="applyDistFilter('${distId}')" checked
-            style="width:15px;height:15px;accent-color:var(--accent);">
-          لم يستلموا في هذه الجولة
-        </label>
+      <!-- فلتر الترتيب (للتبويب الأول فقط) -->
+      <div id="distSortRow" style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
         <select id="distFilterPriority" onchange="applyDistFilter('${distId}')"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
           <option value="priority">🔴 الأولوية أولاً</option>
           <option value="alpha">🔤 أبجدي</option>
           <option value="members_desc">👨‍👩‍👧 أكبر أسرة أولاً</option>
           <option value="members_asc">👤 أصغر أسرة أولاً</option>
         </select>
       </div>
+
+      <!-- مخفي للتوافق مع كود الفلتر القديم -->
+      <input type="checkbox" id="distFilterSameType" checked style="display:none;">
+
       <div id="distCandidatesList"><div class="loading-wrap"><div class="spinner"></div></div></div>
+      <div id="distReceivedList" style="display:none;"></div>
     </div>
   `
 
@@ -10393,25 +10749,33 @@ async function applyDistFilter(distId) {
   if (!dist) dist = await localDB.camp_distributions.get(distId)
   if (!dist) { container.innerHTML='<div style="color:var(--red)">لم يتم العثور على الدفعة</div>'; return }
 
-  // من استلم هذه الدفعة
+  // من استلم هذه الدفعة — محلي أولاً دائماً
   let receivedIds = new Set()
-  if (navigator.onLine) {
-    const { data } = await db.from('camp_dist_families').select('family_id').eq('distribution_id', distId)
-    receivedIds = new Set((data||[]).map(r => r.family_id))
-  } else {
-    const r = await localDB.camp_dist_families.where('distribution_id').equals(distId).toArray()
-    receivedIds = new Set(r.map(r => r.family_id))
+  const _localR2 = await localDB.camp_dist_families.where('distribution_id').equals(distId).toArray()
+  _localR2.forEach(r => receivedIds.add(r.family_id))
+  const _filtOn = await checkRealConnection()
+  if (_filtOn) {
+    const { data: _srvR2 } = await db.from('camp_dist_families').select('family_id').eq('distribution_id', distId)
+    if (_srvR2) _srvR2.forEach(r => receivedIds.add(r.family_id))
   }
 
-  // من استلم في نفس الجولة (كل الدفعات)
+  // من استلم في نفس الجولة (كل الدفعات) — محلي + سيرفر
   let roundReceivedIds = new Set(receivedIds)
   if (dist.round_id) {
-    if (navigator.onLine) {
+    // من الكاش المحلي أولاً
+    const localBatches = await localDB.camp_distributions.where('round_id').equals(dist.round_id).toArray()
+    for (const b of localBatches) {
+      const recs = await localDB.camp_dist_families.where('distribution_id').equals(b.id).toArray()
+      recs.forEach(r => roundReceivedIds.add(r.family_id))
+    }
+    // ثم من السيرفر إذا متصل
+    const _distOnline = await checkRealConnection()
+    if (_distOnline) {
       const { data: bd } = await db.from('camp_distributions').select('id').eq('round_id', dist.round_id)
       if (bd?.length) {
         const { data: br } = await db.from('camp_dist_families')
           .select('family_id').in('distribution_id', bd.map(d=>d.id))
-        roundReceivedIds = new Set((br||[]).map(r=>r.family_id))
+        if (br) br.forEach(r => roundReceivedIds.add(r.family_id))
       }
     }
   }
@@ -10446,10 +10810,15 @@ async function applyDistFilter(distId) {
     families = families.filter(f => f.camp_id === currentMember.camp_id)
   }
 
-  // فلاتر أخرى — استثني من استلم في الجولة كلها
+  // فلاتر أخرى
   if (tagFilter) families = families.filter(f => (f.tags||[]).includes(tagFilter))
-  families = families.filter(f => !roundReceivedIds.has(f.id))
-  if (sameTypeIds.size) families = families.filter(f => !sameTypeIds.has(f.id))
+  // فلتر "لم يستلموا في هذه الجولة" — يستثني كل من استلم (نفس الدفعة + الجولة)
+  if (sameType) {
+    const hideIds = new Set([...receivedIds, ...roundReceivedIds])
+    if (hideIds.size > 0) {
+      families = families.filter(f => !hideIds.has(f.id))
+    }
+  }
 
   // الترتيب
   const allMems2 = await localDB.family_members.toArray()
