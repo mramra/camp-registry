@@ -523,7 +523,13 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
         </div>
       </div>
       <div class="form-grid-2">
-        <div class="form-group"><label>رقم الخيمة</label><input type="text" id="familyTent" placeholder="مثال: A-12"></div>
+        <div class="form-group">
+        <label>رقم الخيمة</label>
+        <input type="text" id="familyTent" placeholder="مثال: A-12" autocomplete="off"
+          oninput="checkTentDuplicate(this.value)"
+          style="width:100%;">
+        <div id="tentDupMsg" style="display:none;margin-top:4px;font-size:11px;padding:6px 10px;border-radius:6px;"></div>
+      </div>
         <div class="form-group"><label>خيمة ثانية</label><input type="text" id="familyTent2" placeholder="اختياري"></div>
       </div>
       <div class="form-grid-2">
@@ -5089,6 +5095,54 @@ async function saveFamily() {
   }
   await doSaveFamily()
 }
+
+// ── فحص تكرار رقم الخيمة (live) ──
+let _tentCheckTimer = null
+function checkTentDuplicate(val) {
+  const msgEl = document.getElementById('tentDupMsg')
+  const inputEl = document.getElementById('familyTent')
+  if (!msgEl) return
+  val = (val || '').trim()
+  if (!val) { msgEl.style.display = 'none'; return }
+
+  clearTimeout(_tentCheckTimer)
+  _tentCheckTimer = setTimeout(async () => {
+    // حدد المخيم الحالي (في نموذج إضافة/تعديل)
+    const campId = document.getElementById('familyCamp')?.value ||
+                   document.getElementById('editFamilyCamp')?.value ||
+                   activeCampId || null
+
+    // البحث في localDB
+    let query = localDB.families.where('org_id').equals(ORG_ID)
+    const fams = await query.toArray()
+
+    // الأسرة الحالية عند التعديل
+    const editingId = document.getElementById('editFamilyId')?.value || null
+
+    const dup = fams.find(f =>
+      f.tent && f.tent.trim() === val &&
+      f.id !== editingId &&
+      (!campId || f.camp_id === campId)
+    )
+
+    if (dup) {
+      msgEl.style.display = 'block'
+      msgEl.style.background = 'rgba(239,68,68,0.1)'
+      msgEl.style.border = '1px solid var(--red)'
+      msgEl.style.color = 'var(--red)'
+      msgEl.innerHTML = `⚠️ الخيمة <b>${esc(val)}</b> مسجلة لـ <b>${esc(dup.head_name||'—')}</b>`
+      if (inputEl) inputEl.style.borderColor = 'var(--red)'
+    } else {
+      msgEl.style.display = 'block'
+      msgEl.style.background = 'rgba(16,185,129,0.1)'
+      msgEl.style.border = '1px solid var(--green)'
+      msgEl.style.color = 'var(--green)'
+      msgEl.textContent = '✅ رقم الخيمة متاح'
+      if (inputEl) inputEl.style.borderColor = 'var(--green)'
+    }
+  }, 400)
+}
+
 
 async function doSaveFamily() {
   const headName = document.getElementById('headName').value.trim()
@@ -10302,7 +10356,7 @@ async function renderReceivedTab(distId) {
             <div style="flex:1;min-width:0;">
               <div style="font-size:13px;font-weight:700;">${esc(f.head_name||'—')}</div>
               <div style="font-size:10px;color:var(--muted);margin-top:2px;">
-                ⛺ ${esc(campMap[f.camp_id]||'—')} • 📅 ${date}
+                ⛺ ${esc(campMap[f.camp_id]||'—')} ${f.tent?`• 🏠 خيمة ${esc(f.tent)}`:''} • 📅 ${date}
               </div>
               ${r.notes ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;">📝 ${esc(r.notes)}</div>` : ''}
             </div>
@@ -10715,6 +10769,8 @@ async function openDist(distId) {
           <option value="alpha">🔤 أبجدي</option>
           <option value="members_desc">👨‍👩‍👧 أكبر أسرة أولاً</option>
           <option value="members_asc">👤 أصغر أسرة أولاً</option>
+          <option value="tent_asc">🏠 رقم خيمة تصاعدي</option>
+          <option value="tent_desc">🏠 رقم خيمة تنازلي</option>
         </select>
       </div>
 
@@ -10834,6 +10890,19 @@ async function applyDistFilter(distId) {
     families.sort((a, b) => (mCnt[b.id]||0) - (mCnt[a.id]||0))
   } else if (sortMode === 'members_asc') {
     families.sort((a, b) => (mCnt[a.id]||0) - (mCnt[b.id]||0))
+  } else if (sortMode === 'tent_asc' || sortMode === 'tent_desc') {
+    families.sort((a, b) => {
+      const ta = (a.tent || '').trim()
+      const tb = (b.tent || '').trim()
+      if (!ta && !tb) return 0
+      if (!ta) return 1   // بلا خيمة → آخر القائمة
+      if (!tb) return -1
+      const na = parseFloat(ta), nb = parseFloat(tb)
+      let cmp = (!isNaN(na) && !isNaN(nb))
+        ? na - nb
+        : ta.localeCompare(tb, 'ar', { numeric: true })
+      return sortMode === 'tent_desc' ? -cmp : cmp
+    })
   }
 
   const allMembers = allMems2
@@ -13648,7 +13717,7 @@ async function loadNeedsReport() {
         <div style="flex:1;">
           <div style="font-size:13px;font-weight:700;">${esc(f.head_name||'—')}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:3px;">
-            ${esc(campMap[f.camp_id]||'—')} • ${memCount} فرد ${f.phone1?`• <span dir="ltr">${esc(f.phone1)}</span>`:''}
+            ${esc(campMap[f.camp_id]||'—')} • ${memCount} فرد ${f.tent?`• 🏠 خيمة ${esc(f.tent)}`:''} ${f.phone1?`• <span dir="ltr">${esc(f.phone1)}</span>`:''}
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
             ${tagsHtml}${largeTag}
