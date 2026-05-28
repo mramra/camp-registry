@@ -933,13 +933,18 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
 
   <!-- Distributions -->
   <div class="page" id="page-dist">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--accent);">📦 توزيع المساعدات</div>
       <div style="display:flex;gap:8px;">
         <button onclick="toggleDistStats()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 12px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;">📊 إحصائيات</button>
         <button onclick="showNewDistForm()" id="btnNewDist" class="btn btn-primary">➕ توزيع جديد</button>
       </div>
     </div>
+    <!-- فلتر المخيم -->
+    <select id="distCampFilter" onchange="loadDistPage()"
+      style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;margin-bottom:12px;">
+      <option value="">⛺ كل المخيمات</option>
+    </select>
     <!-- إحصائيات التوزيعات (مخفية افتراضياً) -->
     <div id="distStatsPanel" style="display:none;margin-bottom:14px;">
       <div id="distStatsContent"><div class="loading-wrap"><div class="spinner"></div></div></div>
@@ -1752,6 +1757,36 @@ localDB.version(11).stores({
   children_registry: 'id, org_id, camp_id, child_id, guardian_id, created_at'
 })
 
+// v12 — جولات مباشرة بدون دفعات: camp_dist_families تُربط بـ round_id مباشرة
+localDB.version(12).stores({
+  families:       'id, camp_id, org_id, status, updated_at, economic_level',
+  family_members: 'id, family_id, national_id, orphan_status',
+  camps:          'id, org_id, parent_camp_id, camp_type',
+  sync_queue:     '++id, status',
+  meta:           'key',
+  dist_rounds:        'id, camp_id, org_id, status',
+  camp_distributions: 'id, camp_id, org_id, status, round_id',
+  camp_dist_families: 'id, round_id, family_id, distribution_id',
+  org_members:    'id, org_id, role, camp_id, created_by, user_id',
+  family_movements: 'id, family_id, org_id, type, date',
+  family_history: 'id, family_id, org_id, created_at',
+  children_registry: 'id, org_id, camp_id, child_id, guardian_id, created_at'
+}).upgrade(async tx => {
+  // هجرة البيانات المحلية: أضف round_id من camp_distributions
+  try {
+    const batches = await tx.table('camp_distributions').toArray()
+    const batchMap = {}
+    batches.forEach(b => { if (b.round_id) batchMap[b.id] = b.round_id })
+    const dfs = await tx.table('camp_dist_families').toArray()
+    for (const df of dfs) {
+      if (!df.round_id && df.distribution_id && batchMap[df.distribution_id]) {
+        await tx.table('camp_dist_families').update(df.id, { round_id: batchMap[df.distribution_id] })
+      }
+    }
+    // إذا الـ localDB لا يحتوي camp_distributions — جلب من السيرفر لاحقاً
+  } catch(e) { console.warn('v12 migration:', e) }
+})
+
 let currentUser   = null
 let currentMember = null
 let allCamps      = []
@@ -2125,6 +2160,7 @@ async function loadMember() {
 
   showPage('page-dashboard')
   await loadDashboard() // بعد المزامنة — البيانات جاهزة في localDB
+  syncDistFamiliesRoundId()  // مزامنة round_id في التوزيعات (مرة واحدة)
 }
 
 // ══ LOGIN (AUTH) ══
@@ -2501,7 +2537,19 @@ async function showPage(pageId) {
   if (pageId === 'page-users')      safeLoad(loadUsers, 'usersContent', '📴 إدارة المستخدمين تحتاج اتصالاً')
   if (pageId === 'page-camps')      loadCampsList().catch(e => console.warn('camps:', e.message))
   if (pageId === 'page-devices')    safeLoad(loadDevices, 'devicesContent', '📴 إدارة الأجهزة تحتاج اتصالاً')
-  if (pageId === 'page-dist')        loadDistPage().catch(e => console.warn('dist:', e.message))
+  if (pageId === 'page-dist') {
+    // ملء فلتر المخيمات عند فتح الصفحة
+    const campSel = document.getElementById('distCampFilter')
+    if (campSel) {
+      const prev = campSel.value
+      campSel.innerHTML = '<option value="">⛺ كل المخيمات</option>'
+      allCamps.forEach(c => {
+        campSel.innerHTML += `<option value="${c.id}">${esc(c.name)}</option>`
+      })
+      if (prev) campSel.value = prev
+    }
+    loadDistPage().catch(e => console.warn('dist:', e.message))
+  }
   if (pageId === 'page-analysis2')  loadAnalysisWithCharts().catch(e => console.warn('analysis2:', e.message))
   if (pageId === 'page-women') {
     const sel = document.getElementById('womenCampFilter')
@@ -6999,7 +7047,8 @@ async function processSyncQueue() {
             if (local) { await localDB.camp_distributions.delete(localId); await localDB.camp_distributions.put({ ...local, id: srv.id }) }
           }
         } else if (item.action === 'insert_dist') {
-          const records = JSON.parse(item.data)
+          const rawRecords = JSON.parse(item.data)
+          const records = Array.isArray(rawRecords) ? rawRecords : [rawRecords]
           await db.from('camp_dist_families').insert(records)
         } else if (item.action === 'insert_movement') {
           const data = JSON.parse(item.data)
@@ -8369,6 +8418,35 @@ function _syncLog(msg, color='var(--muted)') {
   log.scrollTop = log.scrollHeight
 }
 
+// ── مزامنة round_id في camp_dist_families من السيرفر (مرة واحدة) ──
+async function syncDistFamiliesRoundId() {
+  try {
+    // تحقق إذا تم التنفيذ مسبقاً
+    const done = await localDB.meta.get('dist_round_id_synced')
+    if (done?.value === true) return
+
+    const _on = await checkRealConnection()
+    if (!_on) return
+
+    // جلب كل السجلات من السيرفر
+    const { data: srvDfs } = await db.from('camp_dist_families')
+      .select('distribution_id, family_id, round_id, received_at, notes, org_id')
+      .eq('org_id', ORG_ID)
+      .not('round_id', 'is', null)
+
+    if (srvDfs?.length) {
+      const withIds = srvDfs.map(r => ({
+        ...r,
+        id: (r.round_id || r.distribution_id) + '_' + r.family_id
+      }))
+      await localDB.camp_dist_families.bulkPut(withIds)
+      console.log(`✅ synced ${withIds.length} dist_families with round_id`)
+    }
+
+    await localDB.meta.put({ key: 'dist_round_id_synced', value: true })
+  } catch(e) { console.warn('syncDistFamiliesRoundId:', e) }
+}
+
 async function pullAllData() {
   const btn = document.getElementById('btnPullData')
   btn.disabled = true
@@ -8679,8 +8757,25 @@ async function pushPendingChanges() {
         const { data: srv, error } = await db.from('dist_rounds').insert(data).select('id').single()
         if (error) throw error
         if (isLocal && srv?.id) {
+          // تحديث localDB
           const local = await localDB.dist_rounds.get(localId)
           if (local) { await localDB.dist_rounds.delete(localId); await localDB.dist_rounds.put({ ...local, id: srv.id }) }
+          // تحديث الدفعات المحلية التي تشير لـ localId
+          const localBatches = await localDB.camp_distributions.where('round_id').equals(localId).toArray()
+          for (const b of localBatches) {
+            await localDB.camp_distributions.update(b.id, { round_id: srv.id })
+          }
+          // تحديث الطابور المعلق
+          const pending = await localDB.sync_queue.where('status').equals('pending').toArray()
+          for (const q of pending) {
+            try {
+              const qd = JSON.parse(q.data)
+              if (qd.round_id === localId) {
+                qd.round_id = srv.id
+                await localDB.sync_queue.update(q.id, { data: JSON.stringify(qd) })
+              }
+            } catch(e) {}
+          }
         }
 
       } else if (item.action === 'insert_batch') {
@@ -8690,8 +8785,30 @@ async function pushPendingChanges() {
         const { data: srv, error } = await db.from('camp_distributions').insert(data).select('id').single()
         if (error) throw error
         if (isLocal && srv?.id) {
+          // تحديث localDB
           const local = await localDB.camp_distributions.get(localId)
           if (local) { await localDB.camp_distributions.delete(localId); await localDB.camp_distributions.put({ ...local, id: srv.id }) }
+          // تحديث camp_dist_families المحلية
+          const localDf = await localDB.camp_dist_families.where('distribution_id').equals(localId).toArray()
+          for (const df of localDf) {
+            const newId = srv.id + '_' + df.family_id
+            await localDB.camp_dist_families.delete(df.id)
+            await localDB.camp_dist_families.put({ ...df, id: newId, distribution_id: srv.id })
+          }
+          // تحديث الطابور المعلق (insert_dist_families + delete_dist_family)
+          const pending = await localDB.sync_queue.where('status').equals('pending').toArray()
+          for (const q of pending) {
+            try {
+              const qd = JSON.parse(q.data)
+              let changed = false
+              if (Array.isArray(qd)) {
+                qd.forEach(r => { if (r.distribution_id === localId) { r.distribution_id = srv.id; changed = true } })
+              } else if (qd.distribution_id === localId) {
+                qd.distribution_id = srv.id; changed = true
+              }
+              if (changed) await localDB.sync_queue.update(q.id, { data: JSON.stringify(qd) })
+            } catch(e) {}
+          }
         }
 
       } else if (item.action === 'insert_dist_families') {
@@ -8706,6 +8823,18 @@ async function pushPendingChanges() {
         const { error } = await db.from('camp_dist_families')
           .delete()
           .eq('distribution_id', data.distribution_id)
+          .eq('family_id', data.family_id)
+        if (error) throw error
+
+      } else if (item.action === 'insert_round_recv') {
+        const records = Array.isArray(data) ? data : [data]
+        const { error } = await db.from('camp_dist_families').insert(records)
+        if (error) throw error
+
+      } else if (item.action === 'delete_round_recv') {
+        const { error } = await db.from('camp_dist_families')
+          .delete()
+          .eq('round_id', data.round_id)
           .eq('family_id', data.family_id)
         if (error) throw error
       }
@@ -9918,17 +10047,33 @@ async function loadDistPage() {
   if (!out) return
   out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
 
-  // جلب الجولات
+  const campSel = document.getElementById('distCampFilter')
+  const campFilter = campSel?.value || ''
+
+  // جلب الجولات — محلي أولاً ثم سيرفر
   let rounds = []
-  if (navigator.onLine) {
-    const { data, error } = await db.from('dist_rounds')
-      .select('*').eq('org_id', ORG_ID)
-      .order('created_at', { ascending: false })
-    if (error) { out.innerHTML=`<div style="color:var(--red);padding:12px;font-size:12px;">❌ ${esc(error.message)}</div>`; return }
-    rounds = data || []
-    try { await localDB.dist_rounds.bulkPut(rounds) } catch(e) {}
-  } else {
-    try { rounds = await localDB.dist_rounds.where('org_id').equals(ORG_ID).toArray() } catch(e) {}
+  try {
+    let all = await localDB.dist_rounds.where('org_id').equals(ORG_ID).toArray()
+    rounds = campFilter ? all.filter(r => r.camp_id === campFilter || !r.camp_id) : all
+  } catch(e) {}
+
+  const _distOn = await checkRealConnection()
+  if (_distOn) {
+    try {
+      let srvRounds = []
+      if (campFilter) {
+        const { data: d1 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).eq('camp_id', campFilter).order('created_at', { ascending: false })
+        const { data: d2 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).is('camp_id', null).order('created_at', { ascending: false })
+        const seen = new Set(); srvRounds = [...(d1||[]), ...(d2||[])].filter(r => { if(seen.has(r.id)) return false; seen.add(r.id); return true })
+      } else {
+        const { data } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).order('seq', { ascending: false })
+        srvRounds = data || []
+      }
+      if (srvRounds.length) {
+        await localDB.dist_rounds.bulkPut(srvRounds)
+        rounds = srvRounds
+      }
+    } catch(e) { console.warn('dist rounds fetch:', e.message) }
   }
 
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
@@ -9939,9 +10084,8 @@ async function loadDistPage() {
     return
   }
 
+  rounds.sort((a,b) => (b.seq||0) - (a.seq||0) || new Date(b.created_at) - new Date(a.created_at))
   out.innerHTML = rounds.map(r => {
-    const sc = r.status==='active' ? 'var(--green)' : 'var(--muted)'
-    const sl = r.status==='active' ? '🟢 نشطة' : '✅ مكتملة'
     const date = r.created_at ? new Date(r.created_at).toLocaleDateString('ar-EG') : ''
     return `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;">
@@ -9955,31 +10099,60 @@ async function loadDistPage() {
             👥 استلم: <strong id="rc_${r.id}">...</strong> أسرة
           </div>
         </div>
-        <span style="font-size:11px;font-weight:700;color:${sc};">${sl}</span>
+
       </div>
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
         <button onclick="openRound('${r.id}')" style="flex:1;background:var(--accent);color:#000;border:none;border-radius:6px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">📋 فتح الجولة</button>
         ${canWrite()?`<button onclick="editRound('${r.id}')" style="background:rgba(59,130,246,.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✏️</button>`:''}
         ${canWrite()?`<button onclick="deleteRound('${r.id}','${r.name.replace(/'/g,'')}')" style="background:rgba(239,68,68,.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️</button>`:''}
-        ${r.status==='active'?`<button onclick="closeRound('${r.id}')" style="background:rgba(16,185,129,.1);border:1px solid var(--green);color:var(--green);border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✅ إغلاق</button>`:''}
+
       </div>
     </div>`
   }).join('')
 
-  // عدد المستلمين لكل جولة
-  rounds.forEach(async r => {
-    const el = document.getElementById(`rc_${r.id}`)
-    if (!el) return
-    if (navigator.onLine) {
-      const { data: dists } = await db.from('camp_distributions').select('id').eq('round_id', r.id)
-      if (!dists?.length) { el.textContent='0'; return }
-      const distIds = [...new Set(dists.map(d=>d.id))]
-      const { count } = await db.from('camp_dist_families')
-        .select('family_id', { count: 'exact', head: true })
-        .in('distribution_id', distIds)
-      el.textContent = count ?? '0'
-    } else { el.textContent='—' }
-  })
+  // عدد المستلمين — دفعة واحدة من localDB
+  ;(async () => {
+    try {
+      // جلب كل سجلات التوزيع دفعة واحدة
+      const allRecv = await localDB.camp_dist_families.toArray()
+      const cntMap = {}
+      allRecv.forEach(r => {
+        if (r.round_id) cntMap[r.round_id] = (cntMap[r.round_id]||0) + 1
+        // fallback للبيانات القديمة التي لها distribution_id بدون round_id
+      })
+      rounds.forEach(r => {
+        const el = document.getElementById(`rc_${r.id}`)
+        if (el) el.textContent = cntMap[r.id] || 0
+      })
+
+      // تحديث من السيرفر إذا متصل
+      const _rcOn = await checkRealConnection()
+      if (_rcOn) {
+        const roundIds = rounds.map(r => r.id)
+        const { data: srvData } = await db.from('camp_dist_families')
+          .select('round_id, family_id')
+          .in('round_id', roundIds)
+        if (srvData) {
+          const srvMap = {}
+          srvData.forEach(r => { srvMap[r.round_id] = (srvMap[r.round_id]||0) + 1 })
+          rounds.forEach(r => {
+            const el = document.getElementById(`rc_${r.id}`)
+            if (el && srvMap[r.id] !== undefined) el.textContent = srvMap[r.id]
+          })
+          // حفظ في localDB إذا فيه بيانات جديدة
+          if (srvData.length > allRecv.filter(r=>r.round_id).length) {
+            const withIds = srvData.map(r => ({ ...r, id: r.round_id + '_' + r.family_id }))
+            try { await localDB.camp_dist_families.bulkPut(withIds) } catch(e) {}
+          }
+        }
+      }
+    } catch(e) {
+      rounds.forEach(r => {
+        const el = document.getElementById(`rc_${r.id}`)
+        if (el && el.textContent === '...') el.textContent = '—'
+      })
+    }
+  })()
 
 }
 
@@ -9988,300 +10161,550 @@ function showNewDistForm() {
   const existing = document.getElementById('newDistModal')
   if (existing) existing.remove()
 
-  const campOpts = allCamps.map(c =>
-    `<option value="${c.id}">${c.name}</option>`
-  ).join('')
+  const campOpts = allCamps.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')
+  const today    = new Date().toISOString().split('T')[0]
+  const typeOpts = [
+    ['food','🍞 غذاء'],['clothes','👕 ملابس'],['blankets','🧣 بطاطين'],
+    ['medicine','💊 دواء'],['hygiene','🧴 نظافة'],['general','📦 عام']
+  ].map(([v,l])=>`<option value="${v}">${l}</option>`).join('')
 
   const modal = document.createElement('div')
   modal.id = 'newDistModal'
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;overflow-y:auto;padding:16px;display:flex;align-items:flex-start;justify-content:center;padding-top:40px;'
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px;'
   modal.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:440px;">
-      <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:16px;">➕ جولة توزيع جديدة</div>
+    <div style="background:var(--surface);border-radius:16px;padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div style="font-size:15px;font-weight:700;color:var(--accent);">📦 توزيع جديد</div>
+        <button onclick="document.getElementById('newDistModal').remove()"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:4px 12px;cursor:pointer;font-family:Cairo,sans-serif;">✕</button>
+      </div>
 
       <div class="form-group">
-        <label>اسم الجولة *</label>
-        <input type="text" id="roundName" placeholder="مثال: طرود رمضان 2026"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;outline:none;">
+        <label>اسم التوزيع *</label>
+        <input type="text" id="ndName" placeholder="مثال: توزيعة لحمة رمضان"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
       </div>
 
-      <div class="form-grid-2">
-        <div class="form-group">
-          <label>المخيم</label>
-          <select id="roundCamp" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;outline:none;">
-            <option value="">كل المخيمات</option>
-            ${campOpts}
-          </select>
-        </div>
-        <div class="form-group">
-          <label>نوع التوزيع</label>
-          <select id="roundType" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;outline:none;">
-            <option value="general">📦 عام</option>
-            <option value="food">🍞 غذاء</option>
-            <option value="medicine">💊 دواء</option>
-            <option value="clothes">👕 ملابس</option>
-            <option value="shelter">⛺ مأوى</option>
-          </select>
-        </div>
+      <div class="form-group">
+        <label>النوع</label>
+        <select id="ndType" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
+          ${typeOpts}
+        </select>
       </div>
 
-      <div id="newRoundErr" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px;"></div>
-
-      <div style="display:flex;gap:10px;">
-        <button onclick="saveNewRound()" class="btn btn-primary" style="flex:1;">💾 إنشاء الجولة</button>
-        <button onclick="document.getElementById('newDistModal').remove()"
-          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 16px;font-family:Cairo,sans-serif;font-size:13px;cursor:pointer;">إلغاء</button>
+      <div class="form-group">
+        <label>التاريخ</label>
+        <input type="date" id="ndDate" value="${today}" dir="ltr"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">يُستخدم كتاريخ إنشاء الجولة</div>
       </div>
+
+      <div id="ndErr" style="display:none;color:var(--red);font-size:12px;margin-bottom:10px;"></div>
+      <button onclick="saveNewRound()" class="btn btn-primary" style="width:100%;">✅ إنشاء التوزيع</button>
     </div>`
+
   document.body.appendChild(modal)
+  setTimeout(() => document.getElementById('ndName')?.focus(), 100)
 }
+
 
 async function saveNewRound() {
-  const name   = document.getElementById('roundName').value.trim()
-  const campId = document.getElementById('roundCamp').value || null
-  const type   = document.getElementById('roundType').value
-  const errEl  = document.getElementById('newRoundErr')
+  const name    = document.getElementById('ndName')?.value.trim()
+  const type    = document.getElementById('ndType')?.value || 'general'
+  const dateVal = document.getElementById('ndDate')?.value || new Date().toISOString().split('T')[0]
+  const errEl   = document.getElementById('ndErr')
 
-  if (!name) { errEl.textContent='يرجى إدخال اسم الجولة'; errEl.style.display='block'; return }
+  if (!name) { errEl.textContent='يرجى إدخال اسم التوزيع'; errEl.style.display='block'; return }
 
   const roundData = {
+    id:         crypto.randomUUID ? crypto.randomUUID() : 'local_r_' + Date.now(),
     org_id:     ORG_ID,
-    camp_id:    campId,
     name,
     type,
+    camp_id:    null,
     status:     'active',
-    created_at: new Date().toISOString(),
+    created_at: dateVal ? new Date(dateVal).toISOString() : new Date().toISOString(),
   }
 
-  let roundId
-  const _roundOnline = await checkRealConnection()
-  if (_roundOnline) {
+  const _on = await checkRealConnection()
+  if (_on) {
     const { data, error } = await db.from('dist_rounds').insert(roundData).select('id').single()
     if (error) { errEl.textContent='خطأ: '+error.message; errEl.style.display='block'; return }
-    roundId = data.id
-    await localDB.dist_rounds.put({ ...roundData, id: roundId })
+    roundData.id = data.id
   } else {
-    roundId = 'local_r_' + Date.now()
-    roundData.id = roundId
-    await localDB.dist_rounds.put(roundData)
-    await localDB.sync_queue.add({ action:'insert_round', data: JSON.stringify(roundData), status:'pending', created_at: new Date().toISOString() })
-    showToast('✅ تم إنشاء الجولة محلياً — سيُزامن عند الاتصال')
+    if (!roundData.id.startsWith('local_')) roundData.id = 'local_r_' + Date.now()
+    await localDB.sync_queue.add({ action:'insert_round', data:JSON.stringify(roundData), status:'pending', created_at:new Date().toISOString() })
   }
 
-  if (navigator.onLine) document.getElementById('newDistModal').remove()
-  else { try { document.getElementById('newDistModal').remove() } catch(e) {} }
-  if (navigator.onLine) { logAction('إنشاء جولة', roundId, roundData.name); showToast('✅ تم إنشاء الجولة') }
-  await openRound(roundId)
+  await localDB.dist_rounds.put(roundData)
+  document.getElementById('newDistModal')?.remove()
+  showToast(`✅ تم إنشاء: ${name}`)
+  logAction('إنشاء توزيع', roundData.id, name)
+  await openRound(roundData.id)
 }
+
 
 async function openRound(roundId) {
   const out = document.getElementById('distContent')
   if (!out) return
   out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
 
-  // جلب الجولة
-  let round = null
-  if (navigator.onLine) {
+  // جلب بيانات الجولة
+  let round = await localDB.dist_rounds.get(roundId)
+  const _on = await checkRealConnection()
+  if (!round && _on) {
     const { data } = await db.from('dist_rounds').select('*').eq('id', roundId).single()
-    round = data
+    if (data) { round = data; await localDB.dist_rounds.put(data) }
   }
-  if (!round) round = await localDB.dist_rounds.get(roundId)
-  if (!round) { out.innerHTML='<div style="color:var(--red)">لم يتم العثور على الجولة</div>'; return }
+  if (!round) { out.innerHTML='<div style="color:var(--red);padding:12px;">❌ لم يتم العثور على التوزيع</div>'; return }
 
-  // جلب دفعات هذه الجولة
-  let batches = []
-  if (navigator.onLine) {
-    const { data } = await db.from('camp_distributions')
-      .select('*').eq('round_id', roundId)
-      .order('distributed_at', { ascending: false })
-    batches = data || []
-    try { await localDB.camp_distributions.bulkPut(batches) } catch(e) {}
-  } else {
-    try { batches = await localDB.camp_distributions.where('round_id').equals(roundId).toArray() } catch(e) {}
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+  const typeNames = { food:'🍞 غذاء', clothes:'👕 ملابس', blankets:'🧣 بطاطين', medicine:'💊 دواء', hygiene:'🧴 نظافة', general:'📦 عام' }
+
+  // جلب المستلمين (محلي + سيرفر)
+  const localRec = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
+  const receivedIds = new Set(localRec.map(r => r.family_id))
+  if (_on) {
+    const { data: srvRec } = await db.from('camp_dist_families').select('family_id').eq('round_id', roundId)
+    if (srvRec) srvRec.forEach(r => receivedIds.add(r.family_id))
   }
 
-  // جلب كل مستلمي هذه الجولة
-  let allReceivedIds = new Set()
-  if (batches.length) {
-    if (navigator.onLine) {
-      const { data: rec } = await db.from('camp_dist_families')
-        .select('family_id').in('distribution_id', batches.map(b=>b.id))
-      allReceivedIds = new Set((rec||[]).map(r=>r.family_id))
-    } else {
-      for (const b of batches) {
-        const rec = await localDB.camp_dist_families.where('distribution_id').equals(b.id).toArray()
-        rec.forEach(r => allReceivedIds.add(r.family_id))
-      }
-    }
-  }
-
-  // الأسر المستهدفة
-  let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  if (!families.length && navigator.onLine) {
-    const { data } = await db.from('families').select('id,head_name,camp_id').eq('org_id', ORG_ID)
-    families = data || []
-  }
-  if (round.camp_id) families = families.filter(f => f.camp_id === round.camp_id)
-  else if (currentMember.camp_id) families = families.filter(f => f.camp_id === currentMember.camp_id)
-
-  const total     = families.length
-  const received  = allReceivedIds.size
-  const remaining = total - received
-  const campMap   = {}; allCamps.forEach(c => campMap[c.id] = c.name)
-  const typeNames = { general:'📦 عام', food:'🍞 غذاء', medicine:'💊 دواء', clothes:'👕 ملابس', shelter:'⛺ مأوى' }
+  const receivedCount = receivedIds.size
+  const statusBadge = ''
 
   out.innerHTML = `
-    <!-- رأس الجولة -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
         <div>
-          <div style="font-size:14px;font-weight:700;">${round.name}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;">
-            ${typeNames[round.type]||round.type} • ${round.camp_id?campMap[round.camp_id]:'كل المخيمات'}
+          <div style="font-size:15px;font-weight:800;">${esc(round.name)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">
+            ${typeNames[round.type]||round.type||''} • ${round.camp_id?campMap[round.camp_id]||'—':'كل المخيمات'}
+            ${round.created_at ? '• 📅 ' + new Date(round.created_at).toLocaleDateString('ar-EG') : ''}
           </div>
         </div>
-        <button onclick="loadDistPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">← رجوع</button>
+        ${statusBadge}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px;">
-        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center;">
-          <div style="font-size:18px;font-weight:900;color:var(--accent);">${total}</div>
-          <div style="font-size:10px;color:var(--muted);">👥 الأسر</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center;">
-          <div style="font-size:18px;font-weight:900;color:var(--green);">${received}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;">
+        <div style="background:var(--surface2);border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:900;color:var(--green);">${receivedCount}</div>
           <div style="font-size:10px;color:var(--muted);">✅ استلموا</div>
         </div>
-        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center;">
-          <div style="font-size:18px;font-weight:900;color:${remaining>0?'var(--blue)':'var(--green)'};">${remaining}</div>
-          <div style="font-size:10px;color:var(--muted);">📋 متبقي</div>
+        <div style="background:var(--surface2);border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:900;color:var(--red);" id="pendingCount">...</div>
+          <div style="font-size:10px;color:var(--muted);">⏳ لم يستلموا</div>
         </div>
       </div>
-      <button onclick="addBatchToRound('${roundId}')" class="btn btn-primary" style="width:100%;margin-top:10px;${!canWrite()?'display:none;':''}">
-        ➕ إضافة دفعة جديدة
+      <div style="display:flex;gap:8px;">
+        <button onclick="loadDistPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 14px;font-size:12px;font-family:Cairo,sans-serif;cursor:pointer;">← رجوع</button>
+        <button onclick="openEditRound('${roundId}')" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:8px 14px;font-size:12px;font-family:Cairo,sans-serif;cursor:pointer;">✏️ تعديل</button>
+        <button onclick="printRoundReport('${roundId}')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 14px;font-size:12px;font-family:Cairo,sans-serif;cursor:pointer;">🖨️ طباعة</button>
+        <button onclick="exportRoundExcel('${roundId}')" style="background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:8px;font-size:12px;font-family:Cairo,sans-serif;cursor:pointer;">📥 Excel</button>
+      </div>
+    </div>
+
+    <!-- تبويبات -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:12px;background:var(--surface2);border-radius:10px;padding:4px;">
+      <button id="rTabPending" onclick="switchRoundTab('${roundId}','pending')"
+        style="padding:9px;border-radius:8px;border:none;background:var(--accent);color:#000;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">
+        ⏳ لم يستلموا
+      </button>
+      <button id="rTabReceived" onclick="switchRoundTab('${roundId}','received')"
+        style="padding:9px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">
+        ✅ استلموا (${receivedCount})
       </button>
     </div>
 
-    <!-- الدفعات السابقة -->
-    ${batches.length ? `
-    <div class="card" style="margin-bottom:12px;">
-      <div class="card-title">📦 الدفعات (${batches.length})</div>
-      ${batches.map(b => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">
-          <div>
-            <span style="font-weight:700;">${b.description||'دفعة'}</span>
-            <span style="font-size:10px;color:var(--muted);margin-right:6px;">
-              📦 ${b.quantity||0} • 📅 ${b.distributed_at?new Date(b.distributed_at).toLocaleDateString('ar-EG'):'—'}
-            </span>
-          </div>
-          <div style="display:flex;gap:6px;">
-            <button onclick="openDist('${b.id}')" style="background:var(--accent);color:#000;border:none;border-radius:4px;padding:3px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">📋 فتح</button>
-            <button onclick="printDistReport('${b.id}')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:Cairo,sans-serif;">🖨️</button>
-          </div>
-        </div>`).join('')}
-      <div style="margin-top:10px;display:flex;gap:8px;">
-        <button onclick="printRoundReport('${roundId}')" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">🖨️ كشف الجولة كاملة</button>
-        <button onclick="exportRoundExcel('${roundId}')" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;">📊 Excel</button>
-      </div>
-    </div>` : ''}
+    <!-- فلاتر الجولة -->
+    <div id="roundSortRow" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">
 
-    <!-- من لم يستلم -->
-    ${remaining > 0 ? `
-    <div class="card">
-      <div class="card-title" style="color:var(--red);">⏳ لم يستلموا بعد (${remaining})</div>
-      <div style="max-height:200px;overflow-y:auto;">
-        ${families.filter(f=>!allReceivedIds.has(f.id)).map(f=>`
-          <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-weight:600;">${esc(f.head_name||'—')}</span>
-            <span style="color:var(--muted);font-size:10px;">⛺ ${esc(campMap[f.camp_id]||'—')}</span>
-          </div>`).join('')}
-      </div>
-    </div>` : `
-    <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:14px;text-align:center;font-size:13px;color:var(--green);">
-      🎉 اكتملت الجولة — كل الأسر استلمت!
-    </div>`}
+      <!-- فلتر المخيم -->
+      <select id="roundFilterCamp" onchange="applyRoundFilter('${roundId}')"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+        <option value="">⛺ كل المخيمات</option>
+        ${allCamps.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+      </select>
+
+      <!-- فلتر الجولة السابقة -->
+      <select id="roundFilterPrev" onchange="applyRoundFilter('${roundId}')"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+        <option value="">🔄 بدون فلتر جولة سابقة</option>
+        <option value="__loading__" disabled>جارٍ تحميل الجولات...</option>
+      </select>
+
+      <!-- فلتر الترتيب -->
+      <select id="roundFilterSort" onchange="applyRoundFilter('${roundId}')"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
+        <option value="priority">🔴 الأولوية أولاً</option>
+        <option value="alpha">🔤 أبجدي</option>
+        <option value="members_desc">👨‍👩‍👧 أكبر أسرة أولاً</option>
+        <option value="members_asc">👤 أصغر أسرة أولاً</option>
+        <option value="tent_asc">🏠 رقم خيمة تصاعدي</option>
+        <option value="tent_desc">🏠 رقم خيمة تنازلي</option>
+      </select>
+    </div>
+
+    <!-- بحث — أسفل الفلاتر مباشرة فوق القائمة -->
+    <div style="position:relative;margin-bottom:8px;">
+      <input type="text" id="roundSearch" placeholder="🔍 ابحث باسم رب الأسرة..."
+        oninput="applyRoundSearch('${roundId}')"
+        style="width:100%;background:var(--surface2);border:2px solid var(--border);border-radius:10px;
+               padding:10px 38px 10px 14px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;
+               outline:none;box-sizing:border-box;transition:border-color .2s;"
+        onfocus="this.style.borderColor='var(--accent)'"
+        onblur="this.style.borderColor='var(--border)'">
+      <button id="roundSearchClear" onclick="clearRoundSearch('${roundId}')"
+        style="display:none;position:absolute;left:10px;top:50%;transform:translateY(-50%);
+               background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px;">✕</button>
+    </div>
+
+    <div id="roundFamiliesList"><div class="loading-wrap"><div class="spinner"></div></div></div>
+    <div id="roundReceivedList" style="display:none;"></div>
+  `
+
+  await applyRoundFilter(roundId)
+}
+
+// تبديل تبويب الجولة
+function switchRoundTab(roundId, tab) {
+  const tabP = document.getElementById('rTabPending')
+  const tabR = document.getElementById('rTabReceived')
+  const famList = document.getElementById('roundFamiliesList')
+  const recvList = document.getElementById('roundReceivedList')
+  const sortRow  = document.getElementById('roundSortRow')
+
+  if (tab === 'pending') {
+    tabP.style.cssText = 'padding:9px;border-radius:8px;border:none;background:var(--accent);color:#000;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;'
+    tabR.style.cssText = 'padding:9px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;'
+    famList.style.display = ''
+    recvList.style.display = 'none'
+    if (sortRow) sortRow.style.display = ''
+    const srch = document.getElementById('roundSearch'); if (srch) srch.value = ''
+    applyRoundFilter(roundId)
+  } else {
+    tabR.style.cssText = 'padding:9px;border-radius:8px;border:none;background:var(--green);color:#fff;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;'
+    tabP.style.cssText = 'padding:9px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;'
+    famList.style.display = 'none'
+    recvList.style.display = ''
+    if (sortRow) sortRow.style.display = 'none'
+    renderRoundReceivedTab(roundId)
+  }
+}
+
+// عرض المستلمين مع إلغاء الاستلام
+async function renderRoundReceivedTab(roundId) {
+  const out = document.getElementById('roundReceivedList')
+  if (!out) return
+  out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
+
+  const localRec = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
+  let recv = [...localRec]
+  const _on = await checkRealConnection()
+  if (_on) {
+    const { data } = await db.from('camp_dist_families').select('*').eq('round_id', roundId)
+    if (data) {
+      const seen = new Set(recv.map(r => r.family_id))
+      data.forEach(r => { if (!seen.has(r.family_id)) recv.push(r) })
+    }
+  }
+
+  if (!recv.length) {
+    out.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div style="font-size:13px;color:var(--muted);">لم يستلم أحد بعد</div></div>'
+    return
+  }
+
+  const famIds = recv.map(r => r.family_id)
+  const fams   = await localDB.families.bulkGet(famIds)
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+
+  out.innerHTML = `
+    <div style="font-size:11px;color:var(--green);margin-bottom:8px;font-weight:700;">✅ المستلمون (${recv.length})</div>
+    ${recv.map((r, i) => {
+      const f = fams[i]
+      if (!f) return ''
+      const date = r.received_at ? new Date(r.received_at).toLocaleDateString('ar-EG') : '—'
+      return `
+        <div data-name="${(f.head_name||'').toLowerCase()}"
+          style="background:var(--surface);border:1px solid var(--border);border-right:3px solid var(--green);border-radius:8px;padding:10px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;">${esc(f.head_name||'—')}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+                ⛺ ${esc(campMap[f.camp_id]||'—')} ${f.tent?`• 🏠 خيمة ${esc(f.tent)}`:''} • 📅 ${date}
+              </div>
+            </div>
+            <button onclick="unmarkRoundReceived('${roundId}','${f.id}','${(f.head_name||'').replace(/'/g,"\'")}')"
+              style="flex-shrink:0;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:5px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">
+              🔙 إلغاء
+            </button>
+          </div>
+        </div>`
+    }).join('')}
   `
 }
 
-function addBatchToRound(roundId) {
-  const existing = document.getElementById('newBatchModal')
-  if (existing) existing.remove()
+async function unmarkRoundReceived(roundId, famId, famName) {
+  if (!confirm(`إلغاء استلام "${famName}"؟`)) return
+  const recordId = roundId + '_' + famId
 
-  const modal = document.createElement('div')
-  modal.id = 'newBatchModal'
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;'
-  modal.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:380px;">
-      <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:16px;">➕ دفعة جديدة</div>
-      <div class="form-group">
-        <label>اسم الدفعة *</label>
-        <input type="text" id="batchName" placeholder="مثال: دفعة 28 مارس"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;outline:none;">
-      </div>
-      <div class="form-group">
-        <label>عدد الطرود *</label>
-        <input type="number" id="batchQty" placeholder="مثال: 30" min="1" dir="ltr"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;outline:none;">
-      </div>
-      <div id="newBatchErr" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px;"></div>
-      <div style="display:flex;gap:10px;">
-        <button onclick="saveNewBatch('${roundId}')" class="btn btn-primary" style="flex:1;">💾 إضافة وترشيح</button>
-        <button onclick="document.getElementById('newBatchModal').remove()"
-          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 14px;font-family:Cairo,sans-serif;font-size:13px;cursor:pointer;">إلغاء</button>
-      </div>
-    </div>`
-  document.body.appendChild(modal)
-  document.getElementById('batchName').focus()
-}
+  await localDB.camp_dist_families.delete(recordId).catch(() => {})
 
-async function saveNewBatch(roundId) {
-  const name  = document.getElementById('batchName').value.trim()
-  const qty   = parseInt(document.getElementById('batchQty').value) || 0
-  const errEl = document.getElementById('newBatchErr')
-
-  if (!name) { errEl.textContent='يرجى إدخال اسم الدفعة'; errEl.style.display='block'; return }
-  if (qty < 1) { errEl.textContent='يرجى إدخال الكمية'; errEl.style.display='block'; return }
-
-  // جلب بيانات الجولة
-  let round = await localDB.dist_rounds.get(roundId)
-  if (!round && navigator.onLine) {
-    const { data } = await db.from('dist_rounds').select('*').eq('id', roundId).single()
-    round = data
-  }
-
-  const batchData = {
-    org_id:         ORG_ID,
-    camp_id:        round?.camp_id || null,
-    round_id:       roundId,
-    description:    name,
-    quantity:       qty,
-    type:           round?.type || 'general',
-    status:         'active',
-    distributed_at: new Date().toISOString(),
-  }
-
-  let batchId
-  const _batchOnline = await checkRealConnection()
-  if (_batchOnline) {
-    const { data, error } = await db.from('camp_distributions').insert(batchData).select('id').single()
-    if (error) { errEl.textContent='خطأ: '+error.message; errEl.style.display='block'; return }
-    batchId = data.id
-    await localDB.camp_distributions.put({ ...batchData, id: batchId })
+  const _on = await checkRealConnection()
+  if (_on) {
+    const { error } = await db.from('camp_dist_families').delete()
+      .eq('round_id', roundId).eq('family_id', famId)
+    if (error) {
+      await localDB.sync_queue.add({ action:'delete_round_recv', data:JSON.stringify({round_id:roundId,family_id:famId}), status:'pending', created_at:new Date().toISOString() })
+    }
   } else {
-    batchId = 'local_b_' + Date.now()
-    batchData.id = batchId
-    await localDB.camp_distributions.put(batchData)
-    await localDB.sync_queue.add({ action:'insert_batch', data: JSON.stringify(batchData), status:'pending', created_at: new Date().toISOString() })
-    showToast('✅ تم إنشاء الدفعة محلياً — سيُزامن عند الاتصال')
+    await localDB.sync_queue.add({ action:'delete_round_recv', data:JSON.stringify({round_id:roundId,family_id:famId}), status:'pending', created_at:new Date().toISOString() })
   }
 
-  logAction('إنشاء دفعة', batchId, batchData.description)
-  document.getElementById('newBatchModal').remove()
-  showToast('✅ تم إنشاء الدفعة — اختر الأسر')
-  await openDist(batchId)
+  showToast(`✅ تم إلغاء استلام ${famName}`)
+  await openRound(roundId)
 }
 
-// ── تبديل تبويب التوزيع (لم يستلموا / استلموا) ──
-let _distActiveTab = 'pending'  // pending | received
+
+// ── ملء قائمة الجولات السابقة من نفس النوع ──
+async function loadPrevRoundsFilter(roundId, roundType) {
+  const sel = document.getElementById('roundFilterPrev')
+  if (!sel) return
+  let prevRounds = await localDB.dist_rounds
+    .where('org_id').equals(ORG_ID).toArray()
+  prevRounds = prevRounds
+    .filter(r => r.id !== roundId && r.type === roundType)
+    .sort((a,b) => (b.seq||0) - (a.seq||0) || new Date(b.created_at) - new Date(a.created_at))
+  const prevVal = sel.value
+  sel.innerHTML = '<option value="">🔄 بدون فلتر جولة سابقة</option>' +
+    prevRounds.map(r => {
+      const d = new Date(r.created_at).toLocaleDateString('ar-EG')
+      return `<option value="${r.id}">📋 ${esc(r.name)} — ${d}</option>`
+    }).join('')
+  if (prevVal && prevRounds.find(r => r.id === prevVal)) sel.value = prevVal
+}
+
+// ── بحث في أسر الجولة ──
+function applyRoundSearch(roundId) {
+  const raw   = document.getElementById('roundSearch')?.value || ''
+  const query = raw.trim().toLowerCase()
+  const clearBtn = document.getElementById('roundSearchClear')
+  if (clearBtn) clearBtn.style.display = raw.trim() ? 'block' : 'none'
+
+  // دالة فلترة ذكية — يطابق أي جزء من الاسم
+  const matches = (name) => !query || name.includes(query)
+
+  // تبويب لم يستلموا
+  const famRows = document.getElementById('roundFamRows')
+  if (famRows) {
+    famRows.querySelectorAll('[data-name]').forEach(row => {
+      row.style.display = matches(row.dataset.name) ? '' : 'none'
+    })
+  }
+
+  // تبويب استلموا
+  const recvList = document.getElementById('roundReceivedList')
+  if (recvList) {
+    recvList.querySelectorAll('[data-name]').forEach(card => {
+      card.style.display = matches(card.dataset.name) ? '' : 'none'
+    })
+  }
+}
+
+function clearRoundSearch(roundId) {
+  const inp = document.getElementById('roundSearch')
+  if (inp) { inp.value = ''; inp.focus() }
+  const clearBtn = document.getElementById('roundSearchClear')
+  if (clearBtn) clearBtn.style.display = 'none'
+  applyRoundSearch(roundId)
+}
+
+
+async function applyRoundFilter(roundId) {
+  const out = document.getElementById('roundFamiliesList')
+  if (!out) return
+  out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
+
+  const round = await localDB.dist_rounds.get(roundId)
+  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+
+  // ملء قائمة الجولات السابقة (مرة واحدة)
+  await loadPrevRoundsFilter(roundId, round?.type)
+
+  // فلتر المخيم
+  const campFilter = document.getElementById('roundFilterCamp')?.value || ''
+
+  // جلب الأسر المرشحة
+  let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+
+  // تطبيق فلتر المخيم
+  if (campFilter) families = families.filter(f => f.camp_id === campFilter)
+
+  // المستلمون في الجولة الحالية (محلياً + سيرفر)
+  const localRec = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
+  const receivedIds = new Set(localRec.map(r => r.family_id))
+  const _on = await checkRealConnection()
+  if (_on) {
+    const { data: srvRec } = await db.from('camp_dist_families').select('family_id').eq('round_id', roundId)
+    if (srvRec) srvRec.forEach(r => receivedIds.add(r.family_id))
+  }
+
+  // استثني من استلم في الجولة الحالية
+  families = families.filter(f => !receivedIds.has(f.id))
+
+  // فلتر الجولة السابقة — أخفِ من استلم فيها
+  const prevRoundId = document.getElementById('roundFilterPrev')?.value || ''
+  if (prevRoundId) {
+    const prevRec = await localDB.camp_dist_families.where('round_id').equals(prevRoundId).toArray()
+    const prevRecvIds = new Set(prevRec.map(r => r.family_id))
+    if (_on && !prevRec.length) {
+      const { data: srvPrev } = await db.from('camp_dist_families').select('family_id').eq('round_id', prevRoundId)
+      if (srvPrev) srvPrev.forEach(r => prevRecvIds.add(r.family_id))
+    }
+    // أبقِ فقط من لم يستلم في الجولة السابقة
+    families = families.filter(f => !prevRecvIds.has(f.id))
+  }
+
+  // تحديث عداد لم يستلموا
+  const pendingEl = document.getElementById('pendingCount')
+  if (pendingEl) pendingEl.textContent = families.length
+
+  // ترتيب
+  const sortMode = document.getElementById('roundFilterSort')?.value || 'priority'
+  const mems = await localDB.family_members.where('family_id').anyOf(families.map(f=>f.id)).toArray()
+  const mCnt = {}; mems.forEach(m => mCnt[m.family_id] = (mCnt[m.family_id]||0)+1)
+
+  if (sortMode === 'alpha') {
+    families.sort((a,b) => (a.head_name||'').localeCompare(b.head_name||''))
+  } else if (sortMode === 'members_desc') {
+    families.sort((a,b) => (mCnt[b.id]||0) - (mCnt[a.id]||0))
+  } else if (sortMode === 'members_asc') {
+    families.sort((a,b) => (mCnt[a.id]||0) - (mCnt[b.id]||0))
+  } else if (sortMode === 'tent_asc' || sortMode === 'tent_desc') {
+    families.sort((a,b) => {
+      const ta = (a.tent||'').trim(), tb = (b.tent||'').trim()
+      if (!ta && !tb) return 0; if (!ta) return 1; if (!tb) return -1
+      const na = parseFloat(ta), nb = parseFloat(tb)
+      let cmp = (!isNaN(na)&&!isNaN(nb)) ? na-nb : ta.localeCompare(tb,'ar',{numeric:true})
+      return sortMode==='tent_desc' ? -cmp : cmp
+    })
+  } else {
+    const pri = { urgent:0, need:1, ok:2 }
+    families.sort((a,b) => (pri[a.status]||2) - (pri[b.status]||2))
+  }
+
+  if (!families.length) {
+    out.innerHTML = '<div class="empty"><div class="empty-icon">🎉</div><div style="font-size:13px;color:var(--green);font-weight:700;">اكتمل التوزيع — كل الأسر استلمت!</div></div>'
+    return
+  }
+
+  let selectedIds = new Set()
+
+  function renderList() {
+    const selCount = selectedIds.size
+    out.innerHTML = `
+      <div style="background:var(--surface2);border-radius:10px;padding:10px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div style="font-size:11px;color:var(--muted);">${families.length} أسرة لم تستلم</div>
+          <div style="font-size:13px;font-weight:900;color:var(--accent);">✓ ${selCount}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+          <button onclick="selectAllRound()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px;font-size:11px;font-family:Cairo,sans-serif;cursor:pointer;">✅ الكل</button>
+          <button onclick="clearSelectRound()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px;font-size:11px;font-family:Cairo,sans-serif;cursor:pointer;">⬜ إلغاء</button>
+        </div>
+        ${selCount > 0 ? `
+        <div style="margin-bottom:6px;">
+          <textarea id="roundRecvNote" placeholder="ملاحظة (اختياري)" rows="2"
+            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;resize:none;"></textarea>
+        </div>
+        <button onclick="markRoundReceived('${roundId}')" class="btn btn-primary" style="width:100%;font-size:13px;">
+          ✅ تسجيل استلام ${selCount} أسرة
+        </button>` : ''}
+      </div>
+      <div id="roundFamRows">
+        ${families.map(f => {
+          const memCount = mCnt[f.id] || 0
+          const isSelected = selectedIds.has(f.id)
+          const priColor = { urgent:'var(--red)', need:'var(--accent)', ok:'var(--green)' }[f.status] || 'var(--border)'
+          return `
+            <div onclick="toggleRoundFam('${f.id}')"
+              data-name="${(f.head_name||'').toLowerCase()}"
+              style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;margin-bottom:6px;cursor:pointer;
+                     background:${isSelected?'rgba(245,158,11,0.08)':'var(--surface)'};
+                     border:1px solid ${isSelected?'var(--accent)':'var(--border)'};
+                     border-right:3px solid ${priColor};">
+              <div style="width:22px;height:22px;border-radius:6px;border:2px solid ${isSelected?'var(--accent)':'var(--border)'};
+                background:${isSelected?'var(--accent)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                ${isSelected?'<span style="color:#000;font-size:13px;font-weight:900;">✓</span>':''}
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:700;">${esc(f.head_name||'—')}</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+                  ${esc(campMap[f.camp_id]||'—')} • ${memCount} فرد ${f.tent?`• 🏠 خيمة ${esc(f.tent)}`:''}
+                </div>
+              </div>
+            </div>`
+        }).join('')}
+      </div>
+    `
+
+    window._roundFamilies = families
+    window._roundSelectedIds = selectedIds
+    window._roundId = roundId
+
+    window.toggleRoundFam = function(fid) {
+      if (selectedIds.has(fid)) selectedIds.delete(fid)
+      else selectedIds.add(fid)
+      renderList()
+    }
+    window.selectAllRound = function() {
+      families.forEach(f => selectedIds.add(f.id))
+      renderList()
+    }
+    window.clearSelectRound = function() {
+      selectedIds.clear()
+      renderList()
+    }
+  }
+
+  renderList()
+}
+
+async function markRoundReceived(roundId) {
+  const selectedIds = window._roundSelectedIds
+  if (!selectedIds || selectedIds.size === 0) { showToast('⚠️ لم تختر أي أسرة', true); return }
+
+  const note = document.getElementById('roundRecvNote')?.value.trim() || ''
+  const now  = new Date().toISOString()
+  const records = [...selectedIds].map(fid => ({
+    round_id:    roundId,
+    family_id:   fid,
+    received_at: now,
+    notes:       note,
+    org_id:      ORG_ID,
+  }))
+
+  // حفظ محلي أولاً
+  for (const r of records) {
+    await localDB.camp_dist_families.put({ ...r, id: roundId + '_' + r.family_id })
+  }
+
+  const _on = await checkRealConnection()
+  if (_on) {
+    const { error } = await db.from('camp_dist_families').insert(records)
+    if (error) {
+      showToast('⚠️ حُفظ محلياً — سيُزامن لاحقاً')
+      await localDB.sync_queue.add({ action:'insert_round_recv', data:JSON.stringify(records), status:'pending', created_at:now })
+    } else {
+      logAction('تسجيل استلام توزيع', roundId, `${records.length} أسرة`)
+    }
+  } else {
+    await localDB.sync_queue.add({ action:'insert_round_recv', data:JSON.stringify(records), status:'pending', created_at:now })
+    updatePendingBadge()
+  }
+
+  showToast(`✅ تم تسجيل استلام ${records.length} أسرة`)
+  await openRound(roundId)
+}
+
 
 function switchDistTab(distId, tab) {
   _distActiveTab = tab
@@ -10643,46 +11066,96 @@ async function printRoundReport(roundId) {
 
 async function exportRoundExcel(roundId) {
   if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
-  let round = await localDB.dist_rounds.get(roundId)
-  const { data: batches } = navigator.onLine
-    ? await db.from('camp_distributions').select('*').eq('round_id', roundId)
-    : { data: await localDB.camp_distributions.where('round_id').equals(roundId).toArray() }
+  showToast('⏳ جارٍ التصدير...')
 
-  const famMap = {}
-  const allFams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  allFams.forEach(f => famMap[f.id] = f)
+  const round = await localDB.dist_rounds.get(roundId)
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+  const allFams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+  const famMap = {}; allFams.forEach(f => famMap[f.id] = f)
 
-  let allRec = []
-  for (const b of batches||[]) {
-    let rec
-    if (navigator.onLine) {
-      const { data } = await db.from('camp_dist_families').select('family_id,received_at,notes').eq('distribution_id', b.id)
-      rec = data || []
-    } else {
-      rec = await localDB.camp_dist_families.where('distribution_id').equals(b.id).toArray()
+  // جلب المستلمين من round_id مباشرة
+  let recvRecords = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
+  const _on = await checkRealConnection()
+  if (_on) {
+    const { data } = await db.from('camp_dist_families')
+      .select('family_id, received_at, notes, round_id')
+      .eq('round_id', roundId)
+    if (data?.length) {
+      const seen = new Set(recvRecords.map(r => r.family_id))
+      data.forEach(r => { if (!seen.has(r.family_id)) recvRecords.push(r) })
     }
-    rec.forEach(r => { if(!allRec.find(x=>x.family_id===r.family_id)) allRec.push({ ...r, batch: b.description }) })
   }
 
-  const rows = allRec.map(r => {
-    const f = famMap[r.family_id]||{}
-    return { 'الاسم':f.head_name||'', 'الهوية':f.head_id||'', 'المخيم':campMap[f.camp_id]||'',
-      'الخيمة':f.tent||'', 'الجوال':f.phone1||'', 'الدفعة':r.batch||'',
-      'تاريخ الاستلام':r.received_at?new Date(r.received_at).toLocaleDateString('ar-EG'):'',
-      'ملاحظات':r.notes||'' }
+  const recvFamIds = new Set(recvRecords.map(r => r.family_id))
+
+  // ── دالة ترتيب حسب الخيمة ──
+  function sortByTent(arr) {
+    return arr.sort((a, b) => {
+      const fa = famMap[a.family_id || a.id] || a
+      const fb = famMap[b.family_id || b.id] || b
+      const ta = (fa.tent || '').trim()
+      const tb = (fb.tent || '').trim()
+      if (!ta && !tb) return 0
+      if (!ta) return 1
+      if (!tb) return -1
+      const na = parseFloat(ta), nb = parseFloat(tb)
+      if (!isNaN(na) && !isNaN(nb)) return na - nb
+      return ta.localeCompare(tb, 'ar', { numeric: true })
+    })
+  }
+
+  // ── ورقة المستلمين ──
+  sortByTent(recvRecords)
+  const recvRows = recvRecords.map((r, i) => {
+    const f = famMap[r.family_id] || {}
+    return {
+      '#':              i + 1,
+      'رب الأسرة':     f.head_name || '—',
+      'رقم الهوية':    f.head_id || '',
+      'المخيم':        campMap[f.camp_id] || '—',
+      'رقم الخيمة':   f.tent || '',
+      'الجوال':        f.phone1 || '',
+      'تاريخ الاستلام': r.received_at ? new Date(r.received_at).toLocaleDateString('ar-EG') : '',
+      'ملاحظات':       r.notes || '',
+    }
   })
 
-  const notRec = allFams
-    .filter(f => (!round?.camp_id || f.camp_id===round.camp_id) && !allRec.find(r=>r.family_id===f.id))
-    .map(f => ({ 'الاسم':f.head_name||'', 'الهوية':f.head_id||'', 'المخيم':campMap[f.camp_id]||'',
-      'الخيمة':f.tent||'', 'الجوال':f.phone1||'' }))
+  // ── ورقة لم يستلموا ──
+  const notRecvFams = allFams.filter(f => !recvFamIds.has(f.id))
+  notRecvFams.sort((a, b) => {
+    const ta = (a.tent || '').trim(), tb = (b.tent || '').trim()
+    if (!ta && !tb) return 0; if (!ta) return 1; if (!tb) return -1
+    const na = parseFloat(ta), nb = parseFloat(tb)
+    if (!isNaN(na) && !isNaN(nb)) return na - nb
+    return ta.localeCompare(tb, 'ar', { numeric: true })
+  })
+  const notRecvRows = notRecvFams.map((f, i) => ({
+    '#':           i + 1,
+    'رب الأسرة':  f.head_name || '—',
+    'رقم الهوية': f.head_id || '',
+    'المخيم':     campMap[f.camp_id] || '—',
+    'رقم الخيمة':f.tent || '',
+    'الجوال':     f.phone1 || '',
+  }))
 
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'استلموا')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(notRec), 'لم يستلموا')
-  XLSX.writeFile(wb, `${round?.name||'جولة'}_${new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')}.xlsx`)
-  showToast('✅ تم التصدير')
+  const wb  = XLSX.utils.book_new()
+  const ws1 = XLSX.utils.json_to_sheet(recvRows)
+  const ws2 = XLSX.utils.json_to_sheet(notRecvRows)
+
+  // عرض الأعمدة
+  ws1['!cols'] = [
+    {wch:4},{wch:22},{wch:14},{wch:16},{wch:10},{wch:13},{wch:14},{wch:16}
+  ]
+  ws2['!cols'] = [
+    {wch:4},{wch:22},{wch:14},{wch:16},{wch:10},{wch:13}
+  ]
+
+  XLSX.utils.book_append_sheet(wb, ws1, `✅ استلموا (${recvRows.length})`)
+  XLSX.utils.book_append_sheet(wb, ws2, `⏳ لم يستلموا (${notRecvRows.length})`)
+
+  const fname = `${round?.name||'جولة'}_${new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')}.xlsx`
+  XLSX.writeFile(wb, fname)
+  showToast(`✅ تم التصدير — ${recvRows.length} مستلم`)
 }
 
 // ── تحديث openDist ليعمل مع الجولات ──
@@ -13145,26 +13618,69 @@ async function loadDistStats() {
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
 
   try {
-    const rounds = await localDB.dist_rounds.where('org_id').equals(ORG_ID).toArray()
+    const _online = await checkRealConnection()
+
+    // مزامنة من السيرفر إذا متصل لضمان دقة الإحصائيات
+    if (_online) {
+      try {
+        const { data: srvRounds } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID)
+        const { data: srvBatches } = await db.from('camp_distributions').select('*').eq('org_id', ORG_ID)
+        if (srvRounds) {
+          await localDB.dist_rounds.where('org_id').equals(ORG_ID).delete()
+          await localDB.dist_rounds.bulkPut(srvRounds)
+        }
+        if (srvBatches) {
+          await localDB.camp_distributions.where('org_id').equals(ORG_ID).delete()
+          await localDB.camp_distributions.bulkPut(srvBatches)
+        }
+        // مزامنة camp_dist_families
+        const batchIds = (srvBatches||[]).map(b => b.id)
+        if (batchIds.length) {
+          const { data: srvDists } = await db.from('camp_dist_families').select('*').in('distribution_id', batchIds)
+          if (srvDists) {
+            // احذف القديمة وأضف الجديدة
+            for (const bid of batchIds) {
+              await localDB.camp_dist_families.where('distribution_id').equals(bid).delete()
+            }
+            if (srvDists.length) {
+              const withIds = srvDists.map(r => ({ ...r, id: r.distribution_id + '_' + r.family_id }))
+              await localDB.camp_dist_families.bulkPut(withIds)
+            }
+          }
+        }
+      } catch(e) { console.warn('Stats sync:', e.message) }
+    }
+
+    const rounds  = await localDB.dist_rounds.where('org_id').equals(ORG_ID).toArray()
     const batches = await localDB.camp_distributions.where('org_id').equals(ORG_ID).toArray()
-    const dists = await localDB.camp_dist_families.toArray()
+    const dists   = await localDB.camp_dist_families.toArray()
     const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+    const offlineWarn = !_online ? `<div style="background:rgba(239,68,68,0.1);border:1px solid var(--red);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--red);margin-bottom:12px;">⚠️ غير متصل — الإحصائيات من البيانات المحلية وقد تكون غير محدثة</div>` : ''
 
     // إحصائيات عامة
     const totalFamiliesReceived = new Set(dists.map(d => d.family_id)).size
     const totalBatches = batches.length
     const totalRounds = rounds.length
 
-    // أكثر المخيمات استلاماً
+    // أكثر المخيمات استلاماً — حسب مخيم الجولة وليس مخيم الأسرة
     const campCount = {}
-    batches.forEach(b => campCount[b.camp_id] = (campCount[b.camp_id]||0) + dists.filter(d=>d.distribution_id===b.id).length)
-    const topCamps = Object.entries(campCount).sort((a,b)=>b[1]-a[1]).slice(0,3)
+    // ربط كل دفعة بجولتها لمعرفة مخيم الجولة
+    const roundMap = {}; rounds.forEach(r => roundMap[r.id] = r)
+    batches.forEach(b => {
+      // مخيم الدفعة أو مخيم الجولة أو "عام"
+      const campId = b.camp_id || roundMap[b.round_id]?.camp_id || '__general__'
+      const recvCount = dists.filter(d => d.distribution_id === b.id).length
+      campCount[campId] = (campCount[campId]||0) + recvCount
+    })
+    // احذف التوزيعات العامة (بلا مخيم محدد) من الترتيب
+    delete campCount['__general__']
+    const topCamps = Object.entries(campCount).sort((a,b)=>b[1]-a[1]).slice(0,5)
 
     // جولات مكتملة / نشطة
     const active   = rounds.filter(r => r.status !== 'closed').length
     const closed   = rounds.filter(r => r.status === 'closed').length
 
-    container.innerHTML = `
+    container.innerHTML = offlineWarn + `
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;">
         ${[
           ['📋', 'إجمالي الجولات',   totalRounds,           'var(--accent)'],
