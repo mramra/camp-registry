@@ -10803,37 +10803,52 @@ async function loadDistPage() {
   const campSel = document.getElementById('distCampFilter')
   const campFilter = campSel?.value || ''
 
-  // جلب الجولات — محلي أولاً ثم سيرفر
+  // جلب الجولات — محلي أولاً، فإن فارغ انتظر السيرفر
   let rounds = []
   try {
     let all = await localDB.dist_rounds.where('org_id').equals(ORG_ID).toArray()
     rounds = campFilter ? all.filter(r => r.camp_id === campFilter || !r.camp_id) : all
   } catch(e) {}
 
-  // مزامنة خلفية — لا ننتظرها
-  ;(async () => {
+  if (!rounds.length) {
+    // localDB فارغ (أول فتح أو URL جديد) — انتظر السيرفر
     const _distOn = await checkRealConnection()
-    if (!_distOn) return
-    try {
-      let srvRounds = []
-      if (campFilter) {
-        const { data: d1 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).eq('camp_id', campFilter).order('created_at', { ascending: false })
-        const { data: d2 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).is('camp_id', null).order('created_at', { ascending: false })
-        const seen = new Set(); srvRounds = [...(d1||[]), ...(d2||[])].filter(r => { if(seen.has(r.id)) return false; seen.add(r.id); return true })
-      } else {
-        const { data } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).order('seq', { ascending: false })
-        srvRounds = data || []
-      }
-      if (srvRounds.length) {
-        await localDB.dist_rounds.bulkPut(srvRounds)
-        // تحديث العداد بصمت بدون إعادة رسم
-        srvRounds.forEach(r => {
-          const el = document.getElementById(`rc_${r.id}`)
-          // العداد سيتحدث من الاستعلام المنفصل
-        })
-      }
-    } catch(e) {}
-  })()
+    if (_distOn) {
+      try {
+        let srvRounds = []
+        if (campFilter) {
+          const { data: d1 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).eq('camp_id', campFilter).order('seq', { ascending: false })
+          const { data: d2 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).is('camp_id', null).order('seq', { ascending: false })
+          const seen = new Set(); srvRounds = [...(d1||[]), ...(d2||[])].filter(r => { if(seen.has(r.id)) return false; seen.add(r.id); return true })
+        } else {
+          const { data } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).order('seq', { ascending: false })
+          srvRounds = data || []
+        }
+        if (srvRounds.length) {
+          await localDB.dist_rounds.bulkPut(srvRounds)
+          rounds = srvRounds
+        }
+      } catch(e) {}
+    }
+  } else {
+    // localDB فيه بيانات — مزامنة خلفية صامتة
+    ;(async () => {
+      const _distOn = await checkRealConnection()
+      if (!_distOn) return
+      try {
+        let srvRounds = []
+        if (campFilter) {
+          const { data: d1 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).eq('camp_id', campFilter).order('seq', { ascending: false })
+          const { data: d2 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).is('camp_id', null).order('seq', { ascending: false })
+          const seen = new Set(); srvRounds = [...(d1||[]), ...(d2||[])].filter(r => { if(seen.has(r.id)) return false; seen.add(r.id); return true })
+        } else {
+          const { data } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).order('seq', { ascending: false })
+          srvRounds = data || []
+        }
+        if (srvRounds.length) await localDB.dist_rounds.bulkPut(srvRounds)
+      } catch(e) {}
+    })()
+  }
 
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
   const typeNames = { general:'📦 عام', food:'🍞 غذاء', medicine:'💊 دواء', clothes:'👕 ملابس', shelter:'⛺ مأوى' }
@@ -10845,7 +10860,13 @@ async function loadDistPage() {
     return
   }
 
-  rounds.sort((a,b) => (b.seq||0) - (a.seq||0) || new Date(b.created_at) - new Date(a.created_at))
+  rounds.sort((a,b) => {
+    // seq أولاً، فإن متساوي أو null → created_at
+    if (a.seq && b.seq) return b.seq - a.seq
+    if (a.seq && !b.seq) return -1  // a له seq → يجي أولاً
+    if (!a.seq && b.seq) return 1
+    return new Date(b.created_at) - new Date(a.created_at)
+  })
   out.innerHTML = rounds.map(r => {
     const date = r.created_at ? new Date(r.created_at).toLocaleDateString('ar-EG') : ''
     const prevName = r.prev_round_id ? (allRoundsMap[r.prev_round_id] || '') : ''
