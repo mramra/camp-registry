@@ -667,21 +667,30 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       </div>
       <div class="form-grid-2">
         <div class="form-group"><label>رقم الجوال * (كلمة المرور الأولى)</label><input type="tel" id="uPhone" placeholder="05xxxxxxxx" dir="ltr"></div>
-        <div class="form-group"><label>الدور *</label><select id="uRole" onchange="onRoleChange()"><option value="">اختر الدور</option><option value="super_admin">🔴 مدير الإيواء</option><option value="camp_delegate">🟠 مندوب المخيم</option><option value="assistant">🟡 مساعد</option></select></div>
+        <div class="form-group"><label>الدور *</label><select id="uRole" onchange="onRoleChange()"><option value="">اختر الدور</option></select></div>
       </div>
-      <!-- مخيم واحد للمساعد -->
-      <div id="uCampSection" style="display:none;" class="form-group">
-        <label>المخيم *</label>
-        <select id="uCamp" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
-          <option value="">اختر المخيم</option>
+      <!-- مخيم رئيسي للمندوب -->
+      <div id="uDelegateCampSection" style="display:none;" class="form-group">
+        <label>المخيم الرئيسي *</label>
+        <select id="uDelegateCamp"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
+          <option value="">اختر المخيم الرئيسي</option>
         </select>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">المندوب يدير هذا المخيم وفروعه تلقائياً</div>
       </div>
 
-      <!-- مخيمات متعددة للمندوب -->
-      <div id="uDelegateCampsSection" style="display:none;margin-bottom:14px;">
-        <label style="font-size:12px;font-weight:700;color:var(--text);display:block;margin-bottom:8px;">🏕️ المخيمات المُعيَّن عليها *</label>
-        <div id="uDelegateCampsList" style="display:flex;flex-direction:column;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;max-height:200px;overflow-y:auto;">
-          <div style="font-size:11px;color:var(--muted);">جارٍ تحميل المخيمات...</div>
+      <!-- مخيمات المساعد (checkboxes من مخيمات المندوب) -->
+      <div id="uAssistantCampsSection" style="display:none;margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:700;color:var(--text);display:block;margin-bottom:8px;">🏕️ المخيمات المصرح بها *</label>
+        <div id="uAssistantCampsList"
+          style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;max-height:220px;overflow-y:auto;">
+          <div style="font-size:11px;color:var(--muted);">جارٍ التحميل...</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button onclick="document.querySelectorAll('.asst-camp-cb').forEach(c=>c.checked=true)"
+            style="flex:1;background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:6px;padding:5px;font-size:11px;font-family:Cairo,sans-serif;cursor:pointer;">✅ تحديد الكل</button>
+          <button onclick="document.querySelectorAll('.asst-camp-cb').forEach(c=>c.checked=false)"
+            style="flex:1;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:5px;font-size:11px;font-family:Cairo,sans-serif;cursor:pointer;">❌ إلغاء الكل</button>
         </div>
       </div>
 
@@ -1772,7 +1781,7 @@ localDB.version(12).stores({
   family_history: 'id, family_id, org_id, created_at',
   children_registry: 'id, org_id, camp_id, child_id, guardian_id, created_at'
 }).upgrade(async tx => {
-  // هجرة البيانات المحلية: أضف round_id من camp_distributions
+  // هجرة v12
   try {
     const batches = await tx.table('camp_distributions').toArray()
     const batchMap = {}
@@ -1783,13 +1792,43 @@ localDB.version(12).stores({
         await tx.table('camp_dist_families').update(df.id, { round_id: batchMap[df.distribution_id] })
       }
     }
-    // إذا الـ localDB لا يحتوي camp_distributions — جلب من السيرفر لاحقاً
   } catch(e) { console.warn('v12 migration:', e) }
+})
+
+// v13 — نظام الأدوار الكامل: مخيمات فرعية + مخيمات المساعد
+localDB.version(13).stores({
+  families:         'id, camp_id, org_id, status, updated_at, economic_level',
+  family_members:   'id, family_id, national_id, orphan_status',
+  camps:            'id, org_id, parent_camp_id, camp_type, manager_id',
+  sync_queue:       '++id, status',
+  meta:             'key',
+  dist_rounds:      'id, camp_id, org_id, status',
+  camp_distributions: 'id, camp_id, org_id, status, round_id',
+  camp_dist_families: 'id, round_id, family_id, distribution_id',
+  org_members:      'id, org_id, role, camp_id, created_by, user_id',
+  family_movements: 'id, family_id, org_id, type, date',
+  family_history:   'id, family_id, org_id, created_at',
+  children_registry: 'id, org_id, camp_id, child_id, guardian_id, created_at',
+  assistant_camps:  'id, assistant_id, camp_id, org_id',
+  delegate_camps:   'id, delegate_id, camp_id, org_id',
 })
 
 let currentUser   = null
 let currentMember = null
 let allCamps      = []
+
+// ── دالة موحّدة: ترجع معرّفات المخيمات التي يديرها مدير الإيواء (الرئيسي + الفروع) ──
+function getMyCampIds() {
+  const mainCamps = allCamps.filter(x => x.manager_id === currentMember.id)
+  const mainIds   = mainCamps.map(x => x.id)
+  const subIds    = allCamps.filter(c => c.parent_camp_id && mainIds.includes(c.parent_camp_id)).map(c => c.id)
+  return [...mainIds, ...subIds]
+}
+// ترجع كائنات المخيمات كاملة (رئيسي + فروع)
+function getMyCamps() {
+  const ids = new Set(getMyCampIds())
+  return allCamps.filter(c => ids.has(c.id))
+}
 let allFamilies   = []
 let skipFamiliesServerFetch = false  // يمنع إعادة الجلب من السيرفر مباشرة بعد الحذف
 let formMembers   = []
@@ -2065,14 +2104,20 @@ async function init() {
         let q = db.from('families')
           .select('*')
           .eq('org_id', ORG_ID).limit(1000)
-        if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
+        if (currentMember.camp_id) {
+          const subs = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c=>c.id)
+          const ids = [currentMember.camp_id, ...subs]
+          q = ids.length === 1 ? q.eq('camp_id', ids[0]) : q.in('camp_id', ids)
+        }
         const { data: fams } = await q
         if (fams?.length) {
           await safeBulkPut(localDB.families, fams)
           const srvIds2 = new Set(fams.map(f => f.id))
           const locals2 = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+          const _delSubs = currentMember.camp_id ? allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c=>c.id) : []
+          const _delAllowed = currentMember.camp_id ? new Set([currentMember.camp_id, ..._delSubs]) : null
           const toDel2  = locals2.filter(f => {
-            if (currentMember.camp_id && f.camp_id !== currentMember.camp_id) return false
+            if (_delAllowed && !_delAllowed.has(f.camp_id)) return false
             return !srvIds2.has(f.id)
           }).map(f => f.id)
           if (toDel2.length) await localDB.families.bulkDelete(toDel2)
@@ -2143,7 +2188,11 @@ async function loadMember() {
       let q = db.from('families')
         .select('*')
         .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
-      if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
+      if (currentMember.camp_id) {
+        const subs = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c=>c.id)
+        const ids = [currentMember.camp_id, ...subs]
+        q = ids.length === 1 ? q.eq('camp_id', ids[0]) : q.in('camp_id', ids)
+      }
       const { data: fams } = await q
       if (fams?.length) {
         await safeBulkPut(localDB.families, fams)
@@ -2162,6 +2211,90 @@ async function loadMember() {
   await loadDashboard() // بعد المزامنة — البيانات جاهزة في localDB
   syncDistFamiliesRoundId()  // مزامنة round_id في التوزيعات (مرة واحدة)
 }
+
+// ══════════════════════════════════════════════════════
+// ── دخول ملك المنصة كمستخدم ──
+// ══════════════════════════════════════════════════════
+
+let _impersonating = null  // { original: currentMember, impersonated: member }
+
+async function impersonateUser(memberId) {
+  if (currentMember?.role !== 'platform_owner') {
+    showToast('❌ هذه الميزة لملك المنصة فقط', true); return
+  }
+
+  let member = await localDB.org_members.get(memberId)
+  if (!member) {
+    const _on = await checkRealConnection()
+    if (_on) {
+      const { data } = await db.from('org_members').select('*').eq('id', memberId).single()
+      member = data
+    }
+  }
+  if (!member) { showToast('❌ لم يتم العثور على المستخدم', true); return }
+
+  _impersonating = { original: currentMember }
+  currentMember = member
+  _userCampIds = null  // مسح cache
+  window._superAdminCampIds = undefined  // مسح cache المخيمات
+
+  // إعادة تحميل المخيمات بفلتر دور المستخدم الجديد
+  _campsCache = { data: null, time: 0, role: null, campId: null }
+  await loadCampsFromServer(true)
+
+  // إظهار شريط التنبيه
+  showImpersonateBanner(member.full_name)
+  buildSidebar()
+  showPage('page-dashboard')
+  showToast(`✅ أنت الآن تتصفح كـ ${member.full_name}`)
+}
+
+function showImpersonateBanner(name) {
+  let bar = document.getElementById('impersonateBar')
+  if (!bar) {
+    bar = document.createElement('div')
+    bar.id = 'impersonateBar'
+    bar.style.cssText = `
+      position:fixed;top:0;left:0;right:0;z-index:9999;
+      background:var(--red);color:#fff;
+      display:flex;align-items:center;justify-content:space-between;
+      padding:8px 14px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;
+      box-shadow:0 2px 8px rgba(0,0,0,.4);
+    `
+    document.body.appendChild(bar)
+    // إضافة margin-top للمحتوى
+    document.getElementById('app')?.style.setProperty('padding-top','40px')
+  }
+  bar.innerHTML = `
+    <span>👁️ أنت تتصفح كـ: <b>${esc(name)}</b></span>
+    <button onclick="stopImpersonating()"
+      style="background:#fff;color:var(--red);border:none;border-radius:6px;padding:4px 12px;
+             font-family:Cairo,sans-serif;font-size:11px;font-weight:900;cursor:pointer;">
+      ↩️ رجوع لحسابي
+    </button>
+  `
+}
+
+async function stopImpersonating() {
+  if (!_impersonating) return
+  currentMember = _impersonating.original
+  _impersonating = null
+  _userCampIds = null
+  window._superAdminCampIds = undefined
+
+  // إعادة تحميل كل المخيمات (ملك المنصة يرى الكل)
+  _campsCache = { data: null, time: 0, role: null, campId: null }
+  await loadCampsFromServer(true)
+
+  const bar = document.getElementById('impersonateBar')
+  if (bar) bar.remove()
+  document.getElementById('app')?.style.setProperty('padding-top','0')
+
+  buildSidebar()
+  showPage('page-users')
+  showToast('✅ عدت لحسابك كملك المنصة')
+}
+
 
 // ══ LOGIN (AUTH) ══
 // ┌────────────────────────────────────────────────┐
@@ -2488,6 +2621,98 @@ function hasPermission(action) {
   }
 }
 // دوال الاختصار (للتوافق مع الكود الحالي)
+// ══════════════════════════════════════════════════════
+// ── نظام الأدوار والصلاحيات الكامل ──
+// ══════════════════════════════════════════════════════
+
+// cache لمخيمات المستخدم الحالي
+let _userCampIds = null
+
+async function getUserCampIds() {
+  if (_userCampIds) return _userCampIds
+  if (!currentMember) return []
+
+  const role = currentMember.role
+  if (role === 'platform_owner' || role === 'super_admin') {
+    // يرى كل المخيمات
+    _userCampIds = allCamps.map(c => c.id)
+    return _userCampIds
+  }
+
+  if (role === 'camp_delegate') {
+    // مخيمه الرئيسي + الفروع
+    const mainId = currentMember.camp_id
+    if (!mainId) { _userCampIds = []; return [] }
+    const branches = allCamps.filter(c => c.parent_camp_id === mainId).map(c => c.id)
+    _userCampIds = [mainId, ...branches]
+    return _userCampIds
+  }
+
+  if (role === 'assistant') {
+    // مخيمات محددة من assistant_camps
+    try {
+      const local = await localDB.assistant_camps.where('assistant_id').equals(currentMember.id).toArray()
+      if (local.length) { _userCampIds = local.map(r => r.camp_id); return _userCampIds }
+      const _on = await checkRealConnection()
+      if (_on) {
+        const { data } = await db.from('assistant_camps').select('camp_id').eq('assistant_id', currentMember.id)
+        _userCampIds = (data||[]).map(r => r.camp_id)
+        if (!_userCampIds.length && currentMember.camp_id) _userCampIds = [currentMember.camp_id]
+      } else {
+        _userCampIds = currentMember.camp_id ? [currentMember.camp_id] : []
+      }
+    } catch(e) { _userCampIds = currentMember.camp_id ? [currentMember.camp_id] : [] }
+    return _userCampIds
+  }
+
+  _userCampIds = []
+  return _userCampIds
+}
+
+// فحص صلاحية صفحة محددة
+function canPageAdd(page) {
+  if (!currentMember) return false
+  if (['platform_owner','super_admin','camp_delegate'].includes(currentMember.role)) return true
+  const perms = currentMember.page_permissions || {}
+  return perms[page]?.add === true
+}
+function canPageEdit(page) {
+  if (!currentMember) return false
+  if (['platform_owner','super_admin','camp_delegate'].includes(currentMember.role)) return true
+  const perms = currentMember.page_permissions || {}
+  return perms[page]?.edit === true
+}
+function canPageDel(page) {
+  if (!currentMember) return false
+  if (['platform_owner','super_admin'].includes(currentMember.role)) return true
+  if (currentMember.role === 'camp_delegate') return currentMember.can_delete === true
+  const perms = currentMember.page_permissions || {}
+  return perms[page]?.del === true
+}
+
+// مخيمات المستخدم المرئية في الـ dropdowns
+async function getVisibleCamps() {
+  const ids = await getUserCampIds()
+  if (!ids.length && ['platform_owner','super_admin'].includes(currentMember?.role)) return allCamps
+  return allCamps.filter(c => ids.includes(c.id))
+}
+
+// مخيمات يمكن للمندوب إنشاء فروع تحتها
+function getDelegatePrimaryCamps() {
+  if (!currentMember) return []
+  if (currentMember.role === 'camp_delegate') {
+    return allCamps.filter(c => c.id === currentMember.camp_id)
+  }
+  if (['platform_owner','super_admin'].includes(currentMember.role)) {
+    return allCamps.filter(c => !c.parent_camp_id)  // الرئيسية فقط
+  }
+  return []
+}
+
+// عند تسجيل الدخول — مسح cache المخيمات
+function clearUserCampCache() { _userCampIds = null }
+
+
 function canWrite()       { return hasPermission('write') }
 function canEdit()        { return hasPermission('edit') }
 function canViewReports() { return hasPermission('reports') }
@@ -2621,12 +2846,7 @@ const IMPORT_TEMPLATE_B64 = 'UEsDBBQAAAAIAFZFjlxGx01IlQAAAM0AAAAQAAAAZG9jUHJvcHM
 // ══ safeLoad — يحمي كل دالة تحميل من التجميد أوف لاين ══
 // الاستخدام: await safeLoad(loadFn, 'container-id', 'رسالة أوف لاين')
 async function safeLoad(fn, containerId, offlineMsg = '📴 هذه الصفحة تحتاج اتصالاً بالإنترنت') {
-  // إذا أوف لاين — اعرض رسالة فوراً ولا تنتظر
-  if (!navigator.onLine) {
-    const el = containerId ? document.getElementById(containerId) : null
-    if (el) el.innerHTML = `<div class="empty"><div class="empty-icon">📴</div><div style="font-size:13px;color:var(--muted);">${offlineMsg}</div></div>`
-    return
-  }
+  // يحاول دائماً — الصفحات تدعم أوف لاين عبر localDB
   // timeout 12 ثانية — يمنع التجميد مع الشبكة الضعيفة
   const timeoutId = setTimeout(() => {
     const el = containerId ? document.getElementById(containerId) : null
@@ -2724,24 +2944,51 @@ async function loadCampsFromServer(force = false) {
   }
 
   if (navigator.onLine) {
-    // جلب المخيمات حسب الدور من البداية
-    let q = db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
+    // ملك المنصة يجلب الكل — مدير الإيواء والمندوب يجلبان مخيمهم + الفروع
+    let camps = null, campsErr = null
     if (currentMember?.role === 'super_admin') {
-      q = q.eq('manager_id', currentMember.id)
+      // جلب المخيمات الرئيسية فقط (بدون فروع parent_camp_id=null)
+      const { data: mainCamps } = await db.from('camps').select('*')
+        .eq('org_id', ORG_ID).eq('manager_id', currentMember.id).is('parent_camp_id', null)
+      const mainIds = (mainCamps||[]).map(c => c.id)
+      // الفروع التابعة للمخيمات الرئيسية
+      let subCamps = []
+      if (mainIds.length) {
+        const { data: subs } = await db.from('camps').select('*').eq('org_id', ORG_ID).in('parent_camp_id', mainIds)
+        subCamps = subs || []
+      }
+      // دمج بدون تكرار
+      const seen = new Set()
+      camps = [...(mainCamps||[]), ...(subCamps||[])].filter(c => {
+        if (seen.has(c.id)) return false; seen.add(c.id); return true
+      })
+      // إذا لم يُعيَّن على أي مخيم → اجلب الكل
+      if (!camps.length) {
+        const { data: allC } = await db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
+        camps = allC || []
+      }
     } else if (currentMember?.role === 'camp_delegate' && currentMember.camp_id) {
-      q = q.eq('id', currentMember.camp_id)
+      // مخيم المندوب + فروعه (بدون تكرار)
+      const { data: myCamp } = await db.from('camps').select('*').eq('org_id', ORG_ID).eq('id', currentMember.camp_id)
+      const { data: subs }   = await db.from('camps').select('*').eq('org_id', ORG_ID).eq('parent_camp_id', currentMember.camp_id)
+      const seenD = new Set()
+      camps = [...(myCamp||[]), ...(subs||[])].filter(c => {
+        if (seenD.has(c.id)) return false; seenD.add(c.id); return true
+      })
+    } else {
+      // ملك المنصة أو غيره — الكل
+      const { data: allC, error } = await db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
+      camps = allC; campsErr = error
     }
-    const { data: camps, error: campsErr } = await q
+
     if (camps?.length) {
       allCamps = camps
       _campsCache = { data: camps, time: now, role: currentMember?.role, campId: currentMember?.camp_id }
       await localDB.camps.clear()
       await localDB.camps.bulkPut(camps)
     } else {
-      // fallback من localDB إذا فشل السيرفر أو رجع فارغاً
       const local = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
       if (local.length) allCamps = local
-      if (campsErr) console.warn('camps error:', campsErr.message)
     }
   } else {
     allCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
@@ -2763,10 +3010,13 @@ function fillCampSelect(selectId, addAll = false) {
   // فلترة المخيمات حسب الدور
   let visibleCamps
   if (currentMember?.role === 'super_admin') {
-    visibleCamps = allCamps.filter(x => x.manager_id === currentMember.id)
+    const myc = getMyCamps()
+    visibleCamps = myc.length ? myc : allCamps
   } else if (currentMember?.role === 'camp_delegate') {
-    // المندوب يرى مخيمه الرئيسي فقط (allCamps مفلتر بالفعل من loadCampsFromServer)
-    visibleCamps = allCamps
+    // المندوب يرى مخيمه الرئيسي + فروعه
+    const subs = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id)
+    visibleCamps = [...allCamps.filter(c => c.id === currentMember.camp_id), ...subs]
+    if (!visibleCamps.length) visibleCamps = allCamps
   } else if (currentMember?.role === 'assistant') {
     visibleCamps = allCamps.filter(x => x.id === currentMember.camp_id)
   } else {
@@ -2788,9 +3038,9 @@ async function fillFilterCampWithCount() {
 
   // فلترة المخيمات حسب الدور
   const visibleCamps = currentMember?.role === 'super_admin'
-    ? allCamps.filter(x => x.manager_id === currentMember.id)
+    ? (getMyCamps().length ? getMyCamps() : allCamps)
     : currentMember?.role === 'camp_delegate'
-    ? allCamps.filter(x => x.id === currentMember.camp_id)
+    ? [...allCamps.filter(x => x.id === currentMember.camp_id), ...allCamps.filter(c => c.parent_camp_id === currentMember.camp_id)]
     : allCamps
 
   const total = visibleCamps.reduce((s, x) => s + (cCount[x.id]||0), 0)
@@ -3240,7 +3490,7 @@ async function loadDashboard() {
 
     // فلتر الأسر حسب الدور
     if (currentMember.role === 'super_admin') {
-      const myCampIds = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
+      const myCampIds = getMyCampIds()
       fams = fams.filter(f => myCampIds.includes(f.camp_id))
       members = members.filter(m => fams.some(f => f.id === m.family_id))
     } else if (currentMember.camp_id) {
@@ -3259,13 +3509,18 @@ async function loadDashboard() {
         let q = db.from('families')
           .select('*')
           .eq('org_id', ORG_ID).limit(1000)
+        let _syncIds = null
         if (currentMember.role === 'super_admin') {
-          const { data: mc } = await db.from('camps').select('id').eq('org_id',ORG_ID).eq('manager_id',currentMember.id)
-          const ids = mc?.map(x=>x.id)||[]
+          const ids = getMyCampIds()
+          _syncIds = ids
           if (ids.length===1) q=q.eq('camp_id',ids[0])
           else if (ids.length>1) q=q.in('camp_id',ids)
         } else if (currentMember.camp_id) {
-          q = q.eq('camp_id', currentMember.camp_id)
+          const subs = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c=>c.id)
+          const ids = [currentMember.camp_id, ...subs]
+          _syncIds = ids
+          if (ids.length===1) q=q.eq('camp_id',ids[0])
+          else q=q.in('camp_id',ids)
         }
         const { data: srv } = await q
         if (srv) {
@@ -3273,8 +3528,9 @@ async function loadDashboard() {
           await safeBulkPut(localDB.families, srv)
           const srvIds = new Set(srv.map(f => f.id))
           const allLocal = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+          const allowedSet = _syncIds ? new Set(_syncIds) : null
           const toDel = allLocal.filter(f => {
-            if (currentMember.camp_id && f.camp_id !== currentMember.camp_id) return false
+            if (allowedSet && !allowedSet.has(f.camp_id)) return false
             return !srvIds.has(f.id)
           }).map(f => f.id)
           if (toDel.length) await localDB.families.bulkDelete(toDel)
@@ -3296,7 +3552,11 @@ async function loadDashboard() {
     document.getElementById('statFamilies').textContent   = fams.length >= 0 ? fams.length : '—'
     document.getElementById('statUrgent').textContent     = urgent || 0
     document.getElementById('statIncomplete').textContent = incompleteCount || 0
-    document.getElementById('statCamps').textContent      = allCamps.length
+    document.getElementById('statCamps').textContent      = (function(){
+      if (currentMember.role === 'super_admin') { const m = getMyCamps(); return m.length || allCamps.length }
+      if (currentMember.camp_id) return allCamps.filter(c => c.id===currentMember.camp_id || c.parent_camp_id===currentMember.camp_id).length
+      return allCamps.length
+    })()
     document.getElementById('statMembers').textContent    = (fams.length + members.length) || 0
 
     // إذا لا توجد بيانات محلية → اعرض دعوة للجلب
@@ -3327,10 +3587,18 @@ async function loadDashboard() {
     })
     const total = fams.length + members.length || 1
 
-    // ── عدد حسب المخيم ──
-    const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
+    // ── عدد حسب المخيم (مفلتر حسب الدور) ──
+    let visibleCampsForChart = allCamps
+    if (currentMember.role === 'super_admin') {
+      const myc = getMyCamps()
+      if (myc.length) visibleCampsForChart = myc
+    } else if (currentMember.camp_id) {
+      const subs = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id)
+      visibleCampsForChart = [...allCamps.filter(c => c.id === currentMember.camp_id), ...subs]
+    }
+    const campMap = {}; visibleCampsForChart.forEach(c => campMap[c.id] = c.name)
     const cCount  = {}; fams.forEach(f => cCount[f.camp_id] = (cCount[f.camp_id]||0)+1)
-    const campBars = allCamps.map(c => {
+    const campBars = visibleCampsForChart.map(c => {
       const n = cCount[c.id]||0
       const pct = Math.round(n/fams.length*100)||0
       return `<div style="margin-bottom:8px;">
@@ -3433,7 +3701,14 @@ async function loadFamilies() {
   async function render(families) {
     const missing = document.getElementById('filterMissing')?.value || ''
     let list = [...families]
-    if (currentMember.camp_id) list = list.filter(f => f.camp_id === currentMember.camp_id)
+    if (currentMember.role === 'super_admin' || currentMember.role === 'camp_delegate') {
+      // السيرفر جلب البيانات الصحيحة (مخيم + فروع) — لا نُعيد الفلترة محلياً
+    } else if (currentMember.camp_id) {
+      // أدوار أخرى لها camp_id — فلترة بسيطة
+      const subCampIds = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)
+      const myIds = new Set([currentMember.camp_id, ...subCampIds])
+      list = list.filter(f => myIds.has(f.camp_id))
+    }
     if (status) list = list.filter(f => f.status === status)
     if (camp)   list = list.filter(f => f.camp_id === camp)
     if (tag)    list = list.filter(f => Array.isArray(f.tags) ? f.tags.includes(tag) : (f.tags||'').includes(tag))
@@ -3630,19 +3905,17 @@ async function loadFamilies() {
       .select('*')
       .eq('org_id', ORG_ID).order('updated_at', { ascending: false }).limit(1000)
     if (currentMember.role === 'super_admin') {
-      const { data: myCampsData } = await db.from('camps')
-        .select('id').eq('org_id', ORG_ID).eq('manager_id', currentMember.id)
-      const myCamps = myCampsData?.map(c => c.id) || []
-      if (myCamps.length === 0) {
-        // super_admin بدون مخيمات — اعرض المحلي إن وجد
-        const localAll = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-        if (localAll.length) { await render(localAll); return }
-        tbody.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-icon">⚠️</div>لا توجد مخيمات مُعيَّنة لحسابك — تحقق من إعدادات المخيمات</div></td></tr>'; return
+      const myCamps = getMyCampIds()
+      if (myCamps.length > 0) {
+        if (myCamps.length === 1) q = q.eq('camp_id', myCamps[0])
+        else q = q.in('camp_id', myCamps)
       }
-      else if (myCamps.length === 1) q = q.eq('camp_id', myCamps[0])
-      else q = q.in('camp_id', myCamps)
+      // لا مخيمات → يرى الكل
     } else if (currentMember.camp_id) {
-      q = q.eq('camp_id', currentMember.camp_id)
+      const subCamps = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)
+      const delegateCampIds = [currentMember.camp_id, ...subCamps]
+      if (delegateCampIds.length === 1) q = q.eq('camp_id', currentMember.camp_id)
+      else q = q.in('camp_id', delegateCampIds)
     }
     const { data: srv, error: srvErr } = await q
     if (srvErr) {
@@ -5814,17 +6087,41 @@ function showAddUserForm() {
   const roleSelect = document.getElementById('uRole')
   roleSelect.innerHTML = '<option value="">اختر الدور</option>'
   if (currentMember.role === 'platform_owner') {
-    // مالك المنصة ينشئ الكل
-    roleSelect.innerHTML += '<option value="super_admin">🔴 مدير الإيواء</option>'
-    roleSelect.innerHTML += '<option value="camp_delegate">🟠 مندوب المخيم</option>'
+    // ملك المنصة ينشئ الكل
+    roleSelect.innerHTML += '<option value="super_admin">🔴 مدير إيواء</option>'
+    roleSelect.innerHTML += '<option value="camp_delegate">🟠 مندوب مخيم</option>'
     roleSelect.innerHTML += '<option value="assistant">🟡 مساعد</option>'
+    setTimeout(() => onRoleChange(), 50)
   } else if (currentMember.role === 'super_admin') {
-    // مدير الإيواء ينشئ مناديب ومساعدين فقط
-    roleSelect.innerHTML += '<option value="camp_delegate">🟠 مندوب المخيم</option>'
+    // مدير الإيواء ينشئ مناديب ومساعدين
+    roleSelect.innerHTML += '<option value="camp_delegate">🟠 مندوب مخيم</option>'
     roleSelect.innerHTML += '<option value="assistant">🟡 مساعد</option>'
+    roleSelect.value = 'camp_delegate'
+    setTimeout(() => onRoleChange(), 50)
   } else if (currentMember.role === 'camp_delegate') {
     // المندوب ينشئ مساعدين فقط
     roleSelect.innerHTML += '<option value="assistant">🟡 مساعد</option>'
+    roleSelect.value = 'assistant'
+    setTimeout(() => onRoleChange(), 50)
+  }
+
+
+
+  // عند إنشاء مساعد من camp_delegate — عرض مخيماته (الرئيسي + الفروع)
+  if (currentMember.role === 'camp_delegate') {
+    const myMainCamp = currentMember.camp_id
+    const myCamps = allCamps.filter(c => c.id === myMainCamp || c.parent_camp_id === myMainCamp)
+    // ملء قائمة مخيمات المساعد
+    const dcList = document.getElementById('uDelegateCampsList')
+    if (dcList) {
+      dcList.innerHTML = myCamps.map(c => `
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:12px;">
+          <input type="checkbox" value="${c.id}" class="delegate-camp-cb"
+            style="width:16px;height:16px;accent-color:var(--accent);">
+          <span>${c.parent_camp_id ? '🏕️' : '⛺'} ${esc(c.name)}</span>
+        </label>`).join('')
+    }
+    onRoleChange()
   }
 }
 
@@ -5837,36 +6134,115 @@ function hideAddUserForm() {
 
 function onRoleChange() {
   const role = document.getElementById('uRole').value
-  // مخيم واحد للمساعد
-  document.getElementById('uCampSection').style.display = role === 'assistant' ? 'block' : 'none'
-  // مخيمات متعددة للمندوب
-  const delegateSection = document.getElementById('uDelegateCampsSection')
-  if (delegateSection) {
-    delegateSection.style.display = role === 'camp_delegate' ? 'block' : 'none'
-    if (role === 'camp_delegate') buildDelegateCampsList('uDelegateCampsList')
+  const myRole = currentMember?.role
+
+  // مخيم رئيسي للمندوب
+  const delegateCampSec = document.getElementById('uDelegateCampSection')
+  if (delegateCampSec) {
+    delegateCampSec.style.display = role === 'camp_delegate' ? 'block' : 'none'
+    if (role === 'camp_delegate') buildPrimaryCampSelect('uDelegateCamp')
   }
+
+  // اختيار مدير الإيواء (ملك المنصة ينشئ مندوب — يحدد أي مدير)
+  let managerSec = document.getElementById('uManagerSection')
+  if (!managerSec && role === 'camp_delegate' && myRole === 'platform_owner') {
+    managerSec = document.createElement('div')
+    managerSec.id = 'uManagerSection'
+    managerSec.className = 'form-group'
+    managerSec.innerHTML = `<label>مدير الإيواء التابع له</label>
+      <select id="uManagerId" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
+        <option value="">اختر مدير الإيواء *</option>
+      </select>`
+    const campSec = document.getElementById('uDelegateCampSection')
+    if (campSec) campSec.after(managerSec)
+    // ملء المديرين
+    localDB.org_members.where('org_id').equals(ORG_ID).toArray().then(members => {
+      const admins = members.filter(m => m.role === 'super_admin' && m.is_active !== false)
+      const sel = document.getElementById('uManagerId')
+      if (sel) admins.forEach(a => sel.innerHTML += `<option value="${a.id}">${esc(a.full_name)}</option>`)
+    })
+  }
+  if (managerSec) managerSec.style.display = (role === 'camp_delegate' && myRole === 'platform_owner') ? 'block' : 'none'
+
+  // اختيار المندوب للمساعد (ملك المنصة أو مدير يختار المندوب)
+  let delegateSec = document.getElementById('uDelegateBelongSection')
+  if (!delegateSec && role === 'assistant' && ['platform_owner','super_admin'].includes(myRole)) {
+    delegateSec = document.createElement('div')
+    delegateSec.id = 'uDelegateBelongSection'
+    delegateSec.className = 'form-group'
+    delegateSec.innerHTML = `<label>المندوب التابع له</label>
+      <select id="uDelegateBelongId" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;">
+        <option value="">اختر المندوب التابع له *</option>
+      </select>`
+    const permSec2 = document.getElementById('uPermissionsSection')
+    if (permSec2) permSec2.before(delegateSec)
+    else document.getElementById('uAssistantCampsSection')?.after(delegateSec)
+    // ملء المناديب
+    localDB.org_members.where('org_id').equals(ORG_ID).toArray().then(members => {
+      const dels = members.filter(m => m.role === 'camp_delegate' && m.is_active !== false)
+      const sel = document.getElementById('uDelegateBelongId')
+      if (sel) dels.forEach(d => {
+        const camp = allCamps.find(c => c.id === d.camp_id)
+        sel.innerHTML += `<option value="${d.id}">${esc(d.full_name)}${camp?' — '+esc(camp.name):''}</option>`
+      })
+    })
+  }
+  if (delegateSec) delegateSec.style.display = (role === 'assistant' && ['platform_owner','super_admin'].includes(myRole)) ? 'block' : 'none'
+
+  // مخيمات المساعد — checkboxes
+  const assistantCampSec = document.getElementById('uAssistantCampsSection')
+  if (assistantCampSec) {
+    assistantCampSec.style.display = role === 'assistant' ? 'block' : 'none'
+    if (role === 'assistant') buildAssistantCampsList('uAssistantCampsList')
+  }
+
   // صلاحيات الصفحات للمساعد
-  document.getElementById('uPermissionsSection').style.display = role === 'assistant' ? 'block' : 'none'
+  const permSec = document.getElementById('uPermissionsSection')
+  if (permSec) permSec.style.display = role === 'assistant' ? 'block' : 'none'
 }
 
-// بناء قائمة checkboxes للمخيمات
-function buildDelegateCampsList(containerId, selectedIds = []) {
+// بناء قائمة المخيمات الرئيسية للمندوب
+function buildPrimaryCampSelect(selId) {
+  const sel = document.getElementById(selId)
+  if (!sel) return
+  // مدير الإيواء يرى كل الرئيسية — المندوب يرى مخيمه فقط
+  const primaries = allCamps.filter(c => !c.parent_camp_id)
+  sel.innerHTML = '<option value="">اختر المخيم الرئيسي *</option>' +
+    primaries.map(c => `<option value="${c.id}">⛺ ${esc(c.name)}</option>`).join('')
+}
+
+// بناء checkboxes مخيمات المساعد (من مخيمات المندوب الحالي)
+async function buildAssistantCampsList(containerId, selectedIds = []) {
   const el = document.getElementById(containerId)
   if (!el) return
-  if (!allCamps.length) { el.innerHTML = '<div style="font-size:11px;color:var(--muted);">لا توجد مخيمات</div>'; return }
-  el.innerHTML = allCamps.map(c => `
-    <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:12px;">
+  const campIds = await getUserCampIds()
+  const myCamps = allCamps.filter(c => campIds.includes(c.id))
+  if (!myCamps.length) { el.innerHTML = '<div style="font-size:11px;color:var(--muted);">لا توجد مخيمات</div>'; return }
+
+  el.innerHTML = myCamps.map(c => {
+    const isMain = !c.parent_camp_id
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:12px;
+      border-bottom:1px solid var(--border);">
       <input type="checkbox" value="${c.id}" ${selectedIds.includes(c.id)?'checked':''}
-        style="width:16px;height:16px;accent-color:var(--accent);" class="delegate-camp-cb">
-      <span>⛺ ${esc(c.name)}</span>
-    </label>`).join('')
+        style="width:16px;height:16px;accent-color:var(--accent);" class="asst-camp-cb">
+      <span>${isMain?'⛺':'🏕️'} ${esc(c.name)}</span>
+      ${isMain?'<span style="font-size:9px;color:var(--accent);margin-right:auto;">رئيسي</span>':''}
+    </label>`
+  }).join('')
 }
 
-// الحصول على IDs المخيمات المحددة
+function getSelectedAssistantCamps() {
+  return [...document.querySelectorAll('.asst-camp-cb:checked')].map(cb => cb.value)
+}
+
+// للتوافق مع الكود القديم
+function buildDelegateCampsList(containerId, selectedIds = []) {
+  buildAssistantCampsList(containerId, selectedIds)
+}
 function getSelectedDelegateCamps(containerId) {
   const el = document.getElementById(containerId)
   if (!el) return []
-  return [...el.querySelectorAll('.delegate-camp-cb:checked')].map(cb => cb.value)
+  return [...el.querySelectorAll('.asst-camp-cb:checked, .delegate-camp-cb:checked')].map(cb => cb.value)
 }
 
 // تحديد/إلغاء كل الصلاحيات
@@ -5896,93 +6272,140 @@ function getPagePermissions() {
 // يستدعي Edge Function الآمنة بدل Admin API مباشرة
 async function callAdminFn(action, payload) {
   const { data: { session } } = await db.auth.getSession()
-  if (!session) throw new Error('لا توجد جلسة')
-  const res = await fetch(ADMIN_FN_URL, {
-    method:  'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${session.access_token}`
-    },
-    body: JSON.stringify({ action, ...payload }),
-  })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'فشلت العملية')
-  return data
+  if (!session) throw new Error('لا توجد جلسة — يرجى تسجيل الدخول مجدداً')
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(ADMIN_FN_URL, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({ action, ...payload }),
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    const rawText = await res.text()
+    let data = {}
+    try { data = JSON.parse(rawText) } catch(e) { data = { raw: rawText } }
+    if (!res.ok) {
+      throw new Error(`[${res.status}] ${data.error || data.message || data.raw || rawText.slice(0,150) || 'فشل'}`)
+    }
+    return data
+  } catch(e) {
+    clearTimeout(timer)
+    if (e.name === 'AbortError') throw new Error('انتهى وقت الانتظار (15 ثانية) — تحقق من Edge Function')
+    throw e
+  }
 }
 
 async function createUser() {
+  showToast('🔄 جارٍ معالجة الطلب...')
   const fullName   = document.getElementById('uFullName').value.trim()
   const nationalId = document.getElementById('uNationalId').value.trim()
   const phone      = document.getElementById('uPhone').value.trim()
   const role       = document.getElementById('uRole').value
-  const campId     = document.getElementById('uCamp').value
+  const campId     = document.getElementById('uCamp')?.value || ''
   const errEl      = document.getElementById('createUserError')
   const btn        = document.getElementById('btnCreateUser')
 
   errEl.style.display = 'none'
-  if (!navigator.onLine) {
-    errEl.innerHTML = '📴 إضافة المستخدمين تحتاج اتصالاً بالإنترنت<br><small style="color:var(--muted)">السبب: إنشاء الحساب يتطلب Admin API</small>'
-    errEl.style.display = 'block'; return
-  }
-  if (!fullName)   { errEl.textContent='يرجى إدخال الاسم'; errEl.style.display='block'; return }
-  if (!nationalId||nationalId.length<9) { errEl.textContent='رقم الهوية 9 أرقام'; errEl.style.display='block'; return }
-  if (!phone)      { errEl.textContent='يرجى إدخال رقم الجوال'; errEl.style.display='block'; return }
-  if (!role)       { errEl.textContent='يرجى اختيار الدور'; errEl.style.display='block'; return }
-  // للمندوب: تحقق من مخيم واحد على الأقل
-  let delegateCampIds = []
+  // سيتم التحقق من الاتصال قبل الإرسال
+  if (!fullName)   { const e='يرجى إدخال الاسم'; errEl.textContent=e; errEl.style.display='block'; showToast(e,true); return }
+  if (!nationalId||nationalId.length<9) { const e='رقم الهوية 9 أرقام'; errEl.textContent=e; errEl.style.display='block'; showToast(e,true); return }
+  if (!phone)      { const e='يرجى إدخال رقم الجوال'; errEl.textContent=e; errEl.style.display='block'; showToast(e,true); return }
+  if (!role)       { const e='يرجى اختيار الدور'; errEl.textContent=e; errEl.style.display='block'; showToast(e,true); return }
+  let delegatePrimaryCampId = null
   if (role === 'camp_delegate') {
-    delegateCampIds = getSelectedDelegateCamps('uDelegateCampsList')
-    if (!delegateCampIds.length) { errEl.textContent='يرجى اختيار مخيم واحد على الأقل'; errEl.style.display='block'; return }
+    delegatePrimaryCampId = document.getElementById('uDelegateCamp')?.value
+    if (!delegatePrimaryCampId) { const e='يرجى اختيار المخيم الرئيسي'; errEl.textContent=e; errEl.style.display='block'; showToast(e,true); return }
+    // مدير الإيواء إجباري عند إنشاء مندوب من ملك المنصة أو مدير إيواء
+    const managerId = document.getElementById('uManagerId')?.value
+    if (!managerId && document.getElementById('uManagerSection')?.style.display !== 'none') {
+      const e='يرجى اختيار مدير الإيواء'; errEl.textContent=e; errEl.style.display='block'; showToast(e,true); return
+    }
   }
-  // للمساعد: تحقق من مخيم
-  if (role === 'assistant' && !campId) { errEl.textContent='يرجى اختيار المخيم'; errEl.style.display='block'; return }
-
-  if (!navigator.onLine) {
-    errEl.innerHTML='📴 إضافة المستخدمين تحتاج اتصالاً بالإنترنت<br><span style="font-size:11px;color:var(--muted);">السبب: يجب إنشاء حساب في نظام المصادقة</span>'
-    errEl.style.display='block'
-    return
+  // المندوب إجباري للمساعد
+  if (role === 'assistant') {
+    const delegateBelongSec = document.getElementById('uDelegateBelongSection')
+    if (delegateBelongSec && delegateBelongSec.style.display !== 'none') {
+      const delegateBelongId = document.getElementById('uDelegateBelongId')?.value
+      if (!delegateBelongId) { const e='يرجى اختيار المندوب التابع له'; errEl.textContent=e; errEl.style.display='block'; showToast(e,true); return }
+    }
   }
 
-  btn.disabled=true; btn.textContent='جارٍ الإنشاء...'
+  // للمساعد: مخيمات محددة
+  let assistantCampIds = []
+  if (role === 'assistant') {
+    assistantCampIds = getSelectedAssistantCamps()
+    if (!assistantCampIds.length) { errEl.textContent='يرجى اختيار مخيم واحد على الأقل'; errEl.style.display='block'; return }
+  }
+
+  const _createOn = await checkRealConnection()
+  if (!_createOn) {
+    const m3 = '📴 لا اتصال — يتطلب إنترنت لإنشاء الحساب'
+    errEl.innerHTML=m3; errEl.style.display='block'; showToast(m3,true); return
+  }
+
   try {
+    if (btn) { btn.disabled=true; btn.textContent='جارٍ الإنشاء...' }
     const resData = await callAdminFn('create', { nationalId, phone, fullName, role })
-    const userId  = resData.id
-    if (!userId) throw new Error('فشل إنشاء الحساب')
+    showToast('⏳ تم إنشاء الحساب، جارٍ الحفظ...')
+    const userId  = resData.id || resData.user?.id || resData.user_id || resData.data?.id
+    if (!userId) {
+      // عرض الرد الكامل للتشخيص
+      const respStr = JSON.stringify(resData).slice(0, 200)
+      throw new Error('لم يُرجع معرّف المستخدم. الرد: ' + respStr)
+    }
 
     // تحديد camp_id الرئيسي (أول مخيم للمندوب أو مخيم المساعد)
-    const mainCampId = role === 'camp_delegate' ? (delegateCampIds[0] || null) : (campId || null)
+    const mainCampId = role === 'camp_delegate' ? delegatePrimaryCampId : null
     const pagePerms  = role === 'assistant' ? getPagePermissions() : {}
 
     const { data: newMember, error: mErr } = await db.from('org_members').insert({
-      org_id: ORG_ID, user_id: userId, camp_id: mainCampId, role,
+      org_id: ORG_ID, user_id: userId,
+      camp_id: mainCampId,
+      role,
       full_name: fullName, phone, national_id: nationalId,
       must_change_pass: true,
-      can_add:    role === 'assistant' ? Object.values(pagePerms).some(p=>p.add)    : true,
-      can_edit:   role === 'assistant' ? Object.values(pagePerms).some(p=>p.edit)   : true,
-      can_delete: role === 'assistant' ? Object.values(pagePerms).some(p=>p.del)    : false,
+      can_add:    role === 'assistant' ? Object.values(pagePerms).some(p=>p.add)  : true,
+      can_edit:   role === 'assistant' ? Object.values(pagePerms).some(p=>p.edit) : true,
+      can_delete: role === 'assistant' ? Object.values(pagePerms).some(p=>p.del)  : false,
       can_export: true,
       can_import: role === 'camp_delegate',
       is_active:  true,
       page_permissions: pagePerms,
-      created_by: await getCreatedBy(role, mainCampId),
+      created_by: currentMember?.user_id || currentUser?.id || null,
     }).select('id').single()
     if (mErr) throw mErr
 
-    // للمندوب: إضافة كل المخيمات في delegate_camps
-    if (role === 'camp_delegate' && newMember?.id && delegateCampIds.length > 0) {
-      const dcRows = delegateCampIds.map(cid => ({
-        delegate_id: newMember.id,
+    // للمساعد: حفظ مخيماته في assistant_camps
+    if (role === 'assistant' && newMember?.id && assistantCampIds.length) {
+      const rows = assistantCampIds.map(cid => ({
+        assistant_id: newMember.id,
         camp_id: cid,
         org_id: ORG_ID,
       }))
-      const { error: dcErr } = await db.from('delegate_camps').insert(dcRows)
-      if (dcErr) console.warn('delegate_camps insert:', dcErr.message)
+      const { error: acErr } = await db.from('assistant_camps').insert(rows)
+      if (acErr) console.warn('assistant_camps:', acErr.message)
+      // حفظ محلي
+      try { await localDB.assistant_camps.bulkPut(rows.map((r,i) => ({ ...r, id: `${newMember.id}_${i}` }))) } catch(e) {}
     }
 
     logAction('إضافة مستخدم', null, fullName, { role })
     showToast(`✅ تم إنشاء حساب ${fullName}`)
     hideAddUserForm(); loadUsers()
-  } catch(err) { errEl.textContent='خطأ: '+err.message; errEl.style.display='block' }
+  } catch(err) {
+    let msg = err.message || 'فشل الإنشاء'
+    // رسالة واضحة للحساب المكرر
+    if (msg.includes('422') || msg.includes('already') || msg.includes('مسجل') || msg.includes('exists')) {
+      msg = '⚠️ رقم الهوية مسجّل مسبقاً في النظام. استخدم هوية مختلفة أو احذف الحساب القديم أولاً.'
+    }
+    errEl.textContent = 'خطأ: ' + msg
+    errEl.style.display = 'block'
+    showToast(msg, true)
+  }
   finally { btn.disabled=false; btn.textContent='💾 إنشاء المستخدم' }
 }
 
@@ -5999,9 +6422,10 @@ async function loadUsers() {
   const showLocal = async () => {
     try {
       const local = await localDB.org_members.where('org_id').equals(ORG_ID).toArray()
+      const myUid = currentMember.user_id || currentUser?.id
       const filtered = currentMember.role === 'platform_owner'
         ? local.filter(u => u.role !== 'platform_owner')
-        : local.filter(u => u.created_by === currentMember.id)
+        : local.filter(u => u.created_by === myUid || u.created_by === currentMember.id)
       if (filtered.length) { renderUsersList(filtered, container); return true }
     } catch(e) {}
     return false
@@ -6017,7 +6441,8 @@ async function loadUsers() {
 
   let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
   if (!['platform_owner'].includes(currentMember.role)) {
-    usersQ = usersQ.eq('created_by', currentMember.id)
+    const myUid = currentMember.user_id || currentUser?.id
+    usersQ = usersQ.or(`created_by.eq.${myUid},created_by.eq.${currentMember.id}`)
   }
   const { data: users, error: ue } = await usersQ.order('created_at', { ascending: false })
   if (ue || !users?.length) {
@@ -6032,8 +6457,54 @@ async function loadUsers() {
 function renderUsersList(users, container) {
   if (!users?.length) return
   const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
-  container.innerHTML = users.map(u => `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;">
+
+  // بناء هيكل هرمي حقيقي
+  // مدير الإيواء → مناديبه (بناءً على المخيم) → مساعديهم
+  const adminCampMap = {}  // camp_id → admin
+  users.filter(u => u.role==='super_admin').forEach(a => {
+    allCamps.filter(c => c.manager_id === a.id).forEach(c => adminCampMap[c.id] = a.id)
+  })
+
+  const sorted = []
+  // 1. مديرو الإيواء
+  const admins = users.filter(u => u.role==='super_admin')
+  admins.forEach(admin => {
+    sorted.push({ ...admin, _indent: 0 })
+    // 2. مناديب هذا المدير (حسب مخيمهم)
+    const myDelegates = users.filter(u => u.role==='camp_delegate' && adminCampMap[u.camp_id] === admin.id)
+    myDelegates.forEach(del => {
+      sorted.push({ ...del, _indent: 1 })
+      // 3. مساعدو هذا المندوب
+      users.filter(u => u.role==='assistant' && u.created_by === del.user_id).forEach(asst => {
+        sorted.push({ ...asst, _indent: 2 })
+      })
+    })
+  })
+  // مناديب بدون مدير معروف
+  users.filter(u => u.role==='camp_delegate' && !adminCampMap[u.camp_id]).forEach(del => {
+    sorted.push({ ...del, _indent: 1 })
+    users.filter(u => u.role==='assistant' && u.created_by === del.user_id).forEach(asst => {
+      sorted.push({ ...asst, _indent: 2 })
+    })
+  })
+  // مساعدون بدون مندوب معروف
+  const addedIds = new Set(sorted.map(u => u.id))
+  users.filter(u => u.role==='assistant' && !addedIds.has(u.id)).forEach(u => sorted.push({...u, _indent: 2}))
+  // ملك المنصة وغيره
+  users.filter(u => !['super_admin','camp_delegate','assistant'].includes(u.role) && !addedIds.has(u.id)).forEach(u => sorted.push({...u, _indent: 0}))
+
+  // تمييز بصري حسب الدور
+  const roleStyle = {
+    super_admin:   { border: 'var(--accent)',  bg: 'rgba(245,158,11,0.04)', indent: '0px',  badge: 'rgba(245,158,11,0.15)', badgeColor: 'var(--accent)' },
+    camp_delegate: { border: 'var(--blue)',    bg: 'rgba(59,130,246,0.04)', indent: '14px', badge: 'rgba(59,130,246,0.15)', badgeColor: 'var(--blue)' },
+    assistant:     { border: 'var(--muted)',   bg: 'rgba(100,116,139,0.04)', indent: '28px', badge: 'rgba(100,116,139,0.15)', badgeColor: 'var(--muted)' },
+  }
+
+  container.innerHTML = sorted.map(u => {
+    const rs = roleStyle[u.role] || { border:'var(--border)', bg:'var(--surface)', badge:'rgba(245,158,11,0.15)', badgeColor:'var(--accent)' }
+    const indentPx = (u._indent || 0) * 16 + 'px'
+    return `
+    <div style="background:${rs.bg};border:1px solid var(--border);border-right:4px solid ${rs.border};border-radius:12px;padding:14px;margin-bottom:8px;margin-right:${indentPx};">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
         <div>
           <div style="font-size:14px;font-weight:700;">${esc(u.full_name)}</div>
@@ -6042,7 +6513,7 @@ function renderUsersList(users, container) {
           ${u.role==='assistant'?`<div style="font-size:10px;color:var(--muted);margin-top:4px;">${u.can_add?'✅':'❌'} إضافة • ${u.can_edit?'✅':'❌'} تعديل • ${u.can_delete?'✅':'❌'} حذف • ${u.can_export?'✅':'❌'} تصدير • ${u.can_import?'✅':'❌'} استيراد</div>`:''}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-          <span style="background:rgba(245,158,11,0.15);color:var(--accent);border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:2px 10px;font-size:10px;font-weight:700;">${esc(roleNames[u.role]||u.role)}</span>
+          <span style="background:${rs.badge};color:${rs.badgeColor};border:1px solid ${rs.badgeColor}40;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:700;">${esc(roleNames[u.role]||u.role)}</span>
           <span style="font-size:10px;color:${u.is_active?'var(--green)':'var(--red)'};">${u.is_active?'● نشط':'● موقوف'}</span>
           ${u.must_change_pass?'<span style="font-size:10px;color:var(--accent);">⚠️ لم يغيّر كلمة المرور</span>':''}
         </div>
@@ -6052,18 +6523,37 @@ function renderUsersList(users, container) {
         <button onclick="toggleUserStatus('${u.id}',${u.is_active})" style="background:transparent;border:1px solid ${u.is_active?'var(--red)':'var(--green)'};color:${u.is_active?'var(--red)':'var(--green)'};border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">${u.is_active?'🚫 إيقاف':'✅ تفعيل'}</button>
         <button onclick="resetUserPassword('${u.id}','${(u.full_name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🔑 إعادة كلمة المرور</button>
         <button onclick="deleteUser('${u.id}','${(u.full_name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>
+        ${currentMember?.role==='platform_owner'&&u.role!=='platform_owner'?`<button onclick="impersonateUser('${u.id}')" style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">👁️ دخول كهذا المستخدم</button>`:''}
       </div>`:`<div style="margin-top:10px;">
         <button onclick="showPage('page-settings')" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🔑 تغيير كلمة المرور</button>
       </div>`}
-    </div>`).join('')
+    </div>`
+  }).join('')
 }
 
 
 async function editUser(id) {
-  const { data: u } = await db.from('org_members').select('*').eq('id', id).single()
-  if (!u) return
+  // محلي أولاً
+  let u = await localDB.org_members.get(id)
+  if (!u) {
+    const _on = await checkRealConnection()
+    if (_on) {
+      const { data } = await db.from('org_members').select('*').eq('id', id).single()
+      u = data
+    }
+  }
+  if (!u) { showToast('❌ لم يتم العثور على المستخدم', true); return }
   const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
-  const campOpts = allCamps.map(c=>`<option value="${c.id}" ${u.camp_id===c.id?'selected':''}>${c.name}</option>`).join('')
+  // رتّب المخيمات: رئيسي ثم فروعه
+  const mainCampsE = allCamps.filter(c => !c.parent_camp_id)
+  let campOptsArr = []
+  mainCampsE.forEach(c => {
+    campOptsArr.push(`<option value="${c.id}" ${u.camp_id===c.id?'selected':''}>⛺ ${esc(c.name)}</option>`)
+    allCamps.filter(s=>s.parent_camp_id===c.id).forEach(s => {
+      campOptsArr.push(`<option value="${s.id}" ${u.camp_id===s.id?'selected':''}>　🏕️ ${esc(s.name)}</option>`)
+    })
+  })
+  const campOpts = campOptsArr.join('')
 
   // modal تعديل المستخدم
   const existing = document.getElementById('editUserModal')
@@ -6236,16 +6726,37 @@ async function resetUserPassword(id, name) {
 
 // ══ CAMPS ══
 function showAddCampForm() {
+  openAddCampForm(null, null)
+}
+
+function openAddCampForm(parentId = null, parentName = null) {
   editingCampId = null
-  document.getElementById('campFormTitle').textContent = '➕ مخيم جديد'
+  document.getElementById('campFormTitle').textContent = parentId ? `➕ فرع من: ${parentName}` : '➕ مخيم جديد'
   document.getElementById('btnSaveCamp').textContent   = '💾 إضافة'
-  // أظهر قسم المندوب لمدير الإيواء فقط عند الإنشاء
   const delSec = document.getElementById('delegateSection')
   if (delSec) delSec.style.display = currentMember.role==='super_admin' ? 'block' : 'none'
-  ;['campName','campAddress','campLat','campLng'].forEach(id => document.getElementById(id).value='')
-  document.getElementById('campCapacity').value=''; document.getElementById('campFacilities').value=''; document.getElementById('campStatus').value='active'
-  document.getElementById('campFormError').style.display='none'
+  ;['campName','campAddress','campLat','campLng'].forEach(id => { const el = document.getElementById(id); if(el) el.value='' })
+  const capEl = document.getElementById('campCapacity'); if (capEl) capEl.value=''
+  const facEl = document.getElementById('campFacilities'); if (facEl) facEl.value=''
+  const stEl  = document.getElementById('campStatus'); if (stEl) stEl.value='active'
+  const errEl = document.getElementById('campFormError'); if (errEl) errEl.style.display='none'
+  // تعيين المخيم الأب
+  const typeEl = document.getElementById('campType')
+  const parentEl = document.getElementById('parentCampId')
+  if (parentId) {
+    if (typeEl) typeEl.value = 'branch'
+    if (parentEl) {
+      const sel = parentEl
+      sel.innerHTML = `<option value="${parentId}">${esc(parentName)}</option>`
+      sel.value = parentId
+    }
+    toggleParentCampField()
+  } else {
+    if (typeEl) typeEl.value = 'main'
+    toggleParentCampField()
+  }
   document.getElementById('campForm').style.display='block'
+  window.scrollTo(0,0)
 }
 
 function editCamp(id) {
@@ -6463,73 +6974,280 @@ async function deleteCamp(id, name) {
 }
 
 async function loadCampsList() {
-  const container = document.getElementById('campsList'); if(!container) return
-  const isDelegate = currentMember.role==='camp_delegate'
-  const isOwner    = currentMember.role==='platform_owner'
-  const isAdmin    = currentMember.role==='super_admin'
-  const btnAdd     = document.getElementById('btnAddCamp')
-  if (btnAdd) btnAdd.style.display = isDelegate?'none':'inline-flex'
+  const container = document.getElementById('campsList'); if (!container) return
+  const role       = currentMember.role
+  const isOwner    = role === 'platform_owner'
+  const isAdmin    = role === 'super_admin'
+  const isDelegate = role === 'camp_delegate'
 
-  // ━━━ فلترة المخيمات حسب الدور ━━━
-  // platform_owner → كل المخيمات
-  // super_admin    → مخيماته فقط (manager_id = currentMember.id)
-  // camp_delegate  → مخيمه فقط (camp_id)
-  let camps = allCamps
-  if (isDelegate && currentMember.camp_id) {
-    camps = allCamps.filter(c => c.id === currentMember.camp_id)
-  } else if (isAdmin) {
-    // allCamps مفلتر مسبقاً من loadCampsFromServer
-    camps = allCamps.filter(x => x.manager_id === currentMember.id)
+  // زر إضافة مخيم
+  const btnAdd = document.getElementById('btnAddCamp')
+  if (btnAdd) btnAdd.style.display = (isOwner || isAdmin || isDelegate) ? 'inline-flex' : 'none'
+
+  // ── فلتر المخيمات حسب الدور ──
+  let visibleCamps = allCamps
+  if (isAdmin) {
+    const myMainCamps = allCamps.filter(c => c.manager_id === currentMember.id)
+    if (myMainCamps.length === 0) {
+      // لم يُعيَّن على مخيم بعد — يرى الكل
+      visibleCamps = allCamps
+    } else {
+      const myMainIds  = myMainCamps.map(c => c.id)
+      const mySubCamps = allCamps.filter(c => c.parent_camp_id && myMainIds.includes(c.parent_camp_id))
+      visibleCamps = [...myMainCamps, ...mySubCamps]
+    }
   }
-  if (!camps.length) { container.innerHTML='<div class="empty"><div class="empty-icon">⛺</div>لا توجد مخيمات</div>'; return }
+  if (isDelegate) visibleCamps = allCamps.filter(c =>
+    c.id === currentMember.camp_id || c.parent_camp_id === currentMember.camp_id)
 
-  // عدد الأسر من localDB أولاً (أسرع)
-  let cMap = {}
+  if (!visibleCamps.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">⛺</div>لا توجد مخيمات</div>'
+    return
+  }
+
+  // عدد الأسر
+  const cMap = {}
   try {
     const fcs = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-    fcs.forEach(f => cMap[f.camp_id]=(cMap[f.camp_id]||0)+1)
+    fcs.forEach(f => cMap[f.camp_id] = (cMap[f.camp_id]||0)+1)
   } catch(e) {}
-  // لو localDB فارغة جرب السيرفر
-  if (!Object.keys(cMap).length && navigator.onLine) {
-    const { data: fcs } = await db.from('families').select('camp_id').eq('org_id', ORG_ID)
-    fcs?.forEach(f => cMap[f.camp_id]=(cMap[f.camp_id]||0)+1)
-  }
 
-  // خريطة مديري الإيواء
+  // مديرو الإيواء + مناديب المخيمات
   const managerMap = {}
+  const delegateMap = {}
   if (navigator.onLine) {
     const { data: admins } = await db.from('org_members').select('id,full_name').eq('org_id', ORG_ID).eq('role','super_admin')
     admins?.forEach(a => managerMap[a.id] = a.full_name)
-    // لا نجلب كل المخيمات هنا — allCamps مفلتر مسبقاً
+    const { data: dels } = await db.from('org_members').select('id,full_name,camp_id').eq('org_id', ORG_ID).eq('role','camp_delegate').eq('is_active', true)
+    dels?.forEach(d => { if (d.camp_id) delegateMap[d.camp_id] = d.full_name })
+  } else {
+    try {
+      const mems = await localDB.org_members.where('org_id').equals(ORG_ID).toArray()
+      mems.filter(m=>m.role==='super_admin').forEach(a => managerMap[a.id]=a.full_name)
+      mems.filter(m=>m.role==='camp_delegate'&&m.camp_id).forEach(d => delegateMap[d.camp_id]=d.full_name)
+    } catch(e) {}
   }
+
+  // ── بناء الهيكل الهرمي ──
+  const parents  = visibleCamps.filter(c => !c.parent_camp_id)
+  const children = visibleCamps.filter(c =>  c.parent_camp_id)
 
   const sLabel = { active:'✅ نشط', suspended:'⏸️ موقوف', closed:'🔴 مغلق' }
   const sColor = { active:'var(--green)', suspended:'var(--accent)', closed:'var(--red)' }
 
-  container.innerHTML = camps.map(c => {
-    const fc = cMap[c.id]||0
-    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
-        <div>
-          <div style="font-size:15px;font-weight:700;">⛺ ${c.name}</div>
-          ${c.manager_id?`<div style="font-size:11px;color:var(--purple);margin-top:2px;">👤 ${managerMap[c.manager_id]||''}</div>`:''}
-          ${c.address?`<div style="font-size:11px;color:var(--muted);margin-top:4px;">📍 ${c.address}</div>`:''}
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;">👥 ${fc} أسرة ${c.capacity?`من ${c.capacity}`:''} ${c.facilities?`| 🏗️ ${c.facilities} مرافق`:''}</div>
+  function campCard(c, isChild = false) {
+    const fc = cMap[c.id] || 0
+    const myChildren = children.filter(ch => ch.parent_camp_id === c.id)
+    return `
+      <div style="background:var(--surface);border:1px solid var(--border);
+        border-right:3px solid ${isChild ? 'var(--blue)' : 'var(--accent)'};
+        border-radius:12px;padding:14px;margin-bottom:8px;
+        ${isChild ? 'margin-right:16px;' : ''}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+          <div style="flex:1;">
+            <div style="font-size:${isChild?'13':'15'}px;font-weight:700;">
+              ${isChild ? '🏕️' : '⛺'} ${esc(c.name)}
+              ${c.camp_type ? `<span style="font-size:10px;color:var(--muted);margin-right:6px;">(${esc(c.camp_type)})</span>` : ''}
+            </div>
+            ${c.manager_id && managerMap[c.manager_id] ? `<div style="font-size:11px;color:var(--purple);margin-top:2px;">👤 مدير: ${esc(managerMap[c.manager_id])}</div>` : ''}
+            ${delegateMap[c.id] ? `<div style="font-size:11px;color:var(--accent);margin-top:1px;">🟠 مندوب: ${esc(delegateMap[c.id])}</div>` : ''}
+            ${c.address ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">📍 ${esc(c.address)}</div>` : ''}
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+              👥 ${fc} أسرة ${c.capacity ? `من ${c.capacity}` : ''}
+              ${myChildren.length ? `• 🏕️ ${myChildren.length} فرع` : ''}
+            </div>
+          </div>
+          <span style="color:${sColor[c.status]||'var(--muted)'};font-size:11px;font-weight:700;">
+            ${sLabel[c.status]||c.status||''}
+          </span>
         </div>
-        <span style="color:${sColor[c.status]||'var(--muted)'};font-size:11px;font-weight:700;">${sLabel[c.status]||c.status}</span>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-        ${c.latitude&&c.longitude?`<button onclick="window.open('https://maps.google.com/?q=${c.latitude},${c.longitude}')" style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗺️ الخريطة</button>`:''}
-        ${isOwner?`<button onclick="assignCampManager('${c.id}','${(c.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="background:rgba(139,92,246,0.1);border:1px solid var(--purple);color:var(--purple);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">👤 مدير</button>`:''}
-        ${!isDelegate?`<button onclick="editCamp('${c.id}')" style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✏️ تعديل</button>`:''}
-        ${isOwner&&fc===0&&navigator.onLine?`<button onclick="deleteCamp('${c.id}','${(c.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>`:''}
-        <button onclick="togglePortal('${c.id}',${!!c.portal_open})" style="background:${c.portal_open?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.1)'};border:1px solid ${c.portal_open?'var(--green)':'var(--border)'};color:${c.portal_open?'var(--green)':'var(--muted)'};border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">${c.portal_open?'🔓 بوابة مفتوحة':'🔒 بوابة مغلقة'}</button>
-      </div>
-    </div>`
-  }).join('')
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+          ${c.latitude&&c.longitude ? `<button onclick="window.open('https://maps.google.com/?q=${c.latitude},${c.longitude}')"
+            style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">🗺️ خريطة</button>` : ''}
+          ${isOwner && !isChild ? `<button onclick="assignCampSuperAdmin('${c.id}','${esc(c.name)}')"
+            style="background:rgba(139,92,246,0.1);border:1px solid var(--purple);color:var(--purple);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">👤 مدير إيواء</button>` : ''}
+          ${isAdmin && !isChild ? `<button onclick="assignCampDelegate('${c.id}','${esc(c.name)}')"
+            style="background:rgba(245,158,11,0.1);border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">🟠 مندوب</button>` : ''}
+          ${(isOwner||isAdmin||isDelegate) ? `<button onclick="editCamp('${c.id}')"
+            style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">✏️ تعديل</button>` : ''}
+          ${(isOwner||isAdmin||isDelegate) && !isChild ? `<button onclick="addSubCamp('${c.id}','${esc(c.name)}')"
+            style="background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">➕ فرع</button>` : ''}
+          ${isOwner&&fc===0&&navigator.onLine ? `<button onclick="deleteCamp('${c.id}','${esc(c.name)}')"
+            style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>` : ''}
+        </div>
+        ${myChildren.map(ch => campCard(ch, true)).join('')}
+      </div>`
+  }
+
+  container.innerHTML = parents.map(p => campCard(p, false)).join('')
+
+  // مخيمات فرعية بلا رئيسي (في حالة نادرة)
+  const orphans = children.filter(c => !parents.find(p => p.id === c.parent_camp_id))
+  if (orphans.length) container.innerHTML += orphans.map(c => campCard(c, true)).join('')
 }
 
-// ══ DEVICE REGISTRATION ══
+// فتح نموذج إضافة فرع
+function addSubCamp(parentId, parentName) {
+  openAddCampForm(parentId, parentName)
+}
+
+
+async function saveCamp() {
+  const name  = document.getElementById('campName').value.trim()
+  const errEl = document.getElementById('campFormError')
+  const btn   = document.getElementById('btnSaveCamp')
+  if (!name) { errEl.textContent='يرجى إدخال اسم المخيم'; errEl.style.display='block'; return }
+
+  btn.disabled=true; btn.textContent='جارٍ الحفظ...'; errEl.style.display='none'
+  const _campType     = document.getElementById('campType')?.value || 'main'
+  const _parentCampId = _campType === 'branch'
+    ? (document.getElementById('parentCampId')?.value || null)
+    : null
+
+  const campData = {
+    org_id:    ORG_ID, name,
+    address:   document.getElementById('campAddress').value.trim()||null,
+    capacity:    parseInt(document.getElementById('campCapacity').value)||0,
+    facilities:  parseInt(document.getElementById('campFacilities').value)||0,
+    status:    document.getElementById('campStatus').value,
+    latitude:  parseFloat(document.getElementById('campLat').value)||null,
+    longitude: parseFloat(document.getElementById('campLng').value)||null,
+    camp_type:      _campType,
+    parent_camp_id: _parentCampId,
+    manager_id: currentMember.role === 'super_admin' ? currentMember.id : null,
+  }
+
+  try {
+    const _campOnline = await checkRealConnection()
+    if (!_campOnline) {
+      // حفظ محلي
+      if (editingCampId) {
+        campData.id = editingCampId
+        const idx = allCamps.findIndex(c => c.id === editingCampId)
+        if (idx >= 0) allCamps[idx] = { ...allCamps[idx], ...campData }
+        await localDB.camps.put({ ...campData })
+        await localDB.sync_queue.add({ action:'update_camp', record_id:editingCampId, data: JSON.stringify(campData), status:'pending', created_at: new Date().toISOString() })
+        showToast('✅ تم تعديل المخيم محلياً — سيُزامن عند الاتصال')
+      } else {
+        campData.id = 'local_camp_' + Date.now()
+        allCamps.push(campData)
+        await localDB.camps.put(campData)
+        await localDB.sync_queue.add({ action:'insert_camp', data: JSON.stringify(campData), status:'pending', created_at: new Date().toISOString() })
+        showToast('✅ تم إضافة المخيم محلياً — سيُزامن عند الاتصال')
+      }
+      fillCampSelect('filterCamp', true)
+      fillCampSelect('familyCamp')
+      fillCampSelect('smsFilterCamp', false)
+      fillCampSelect('uCamp')
+      await fillFilterCampWithCount()
+      hideCampForm(); loadCampsList()
+      return
+    }
+    if (editingCampId) {
+      const { error } = await db.from('camps').update(campData).eq('id', editingCampId)
+      if (error) throw error
+      logAction('تعديل مخيم', editingCampId, campData.name)
+    showToast('✅ تم تعديل المخيم')
+    } else {
+      const { data: camp, error } = await db.from('camps').insert(campData).select('*').single()
+      if (error) throw error
+      allCamps.push(camp)
+      await localDB.camps.put(camp)
+      logAction('إضافة مخيم', null, campData.name)
+    showToast('✅ تم إضافة المخيم')
+
+      // إنشاء المندوب إن وُجد
+      const delName  = document.getElementById('delegateName')?.value.trim()
+      const delNatId = document.getElementById('delegateId')?.value.trim()
+      const delPhone = document.getElementById('delegatePhone')?.value.trim()
+      if (delName && delNatId?.length >= 9 && delPhone?.length >= 10) {
+        try {
+          const json = await callAdminFn('create', {
+            nationalId: delNatId, phone: delPhone, fullName: delName, role: 'camp_delegate'
+          })
+          if (json.id) {
+            await db.from('org_members').insert({
+              org_id: ORG_ID, user_id: json.id, camp_id: camp.id, role: 'camp_delegate',
+              full_name: delName, phone: delPhone, national_id: delNatId,
+              must_change_pass: true, can_add: true, can_edit: true, can_delete: true,
+              can_export: true, can_import: true, is_active: true,
+              created_by: currentUser.id,
+            })
+            showToast(`✅ تم إنشاء المندوب ${delName}`)
+          }
+        } catch(e) { showToast('⚠️ المخيم أُنشئ لكن فشل إنشاء المندوب: ' + e.message, true) }
+      }
+    }
+    invalidateCampsCache()
+    await loadCampsFromServer(true); hideCampForm(); loadCampsList()
+    fillCampSelect('smsFilterCamp', false)
+  } catch(err) { errEl.textContent='خطأ: '+err.message; errEl.style.display='block' }
+  finally { btn.disabled=false; btn.textContent=editingCampId?'💾 حفظ التعديل':'💾 إضافة' }
+}
+
+async function deleteCamp(id, name) {
+  // تحقق من عدد الأسر محلياً أولاً
+  let count = 0
+  if (navigator.onLine) {
+    const res = await db.from('families').select('*',{count:'exact',head:true}).eq('camp_id',id)
+    count = res.count || 0
+  } else {
+    const local = await localDB.families.where('camp_id').equals(id).count()
+    count = local
+  }
+  if (count > 0) { showToast(`لا يمكن حذف المخيم — يحتوي ${count} أسرة`, true); return }
+  if (!confirm(`حذف مخيم "${name}"؟`)) return
+
+  if (_netOk) {
+    // 1. تنظيف كل الجداول المرتبطة بالمخيم (FK constraints)
+    // org_members.camp_id
+    await db.from('org_members').update({ camp_id: null }).eq('camp_id', id)
+    await localDB.org_members.where('camp_id').equals(id).modify({ camp_id: null })
+
+    // camp_distributions.camp_id
+    await db.from('camp_distributions').delete().eq('camp_id', id)
+    try { await localDB.camp_distributions.where('camp_id').equals(id).delete() } catch(e) {}
+
+    // dist_rounds.camp_id
+    await db.from('dist_rounds').delete().eq('camp_id', id)
+    try { await localDB.dist_rounds.where('camp_id').equals(id).delete() } catch(e) {}
+
+    // families.camp_id — تحويلها لـ null إذا كانت موجودة
+    const { count: famCount } = await db.from('families').select('id', { count:'exact', head:true }).eq('camp_id', id)
+    if (famCount > 0) {
+      showToast(`⚠️ المخيم يحتوي على ${famCount} أسرة — أزلها أولاً`, true)
+      return
+    }
+
+    // 2. حذف المخيم من Supabase مع التحقق من نجاح العملية
+    const { error: delErr } = await db.from('camps').delete().eq('id', id)
+    if (delErr) {
+      showToast(`❌ فشل الحذف: ${delErr.message}`, true)
+      return
+    }
+    logAction('حذف مخيم', id, name)
+  } else {
+    await localDB.sync_queue.add({
+      action: 'delete_camp', record_id: id,
+      data: JSON.stringify({id}), status: 'pending',
+      created_at: new Date().toISOString()
+    })
+  }
+
+  // 3. الحذف المحلي — فقط بعد نجاح الخادم (أو أوف لاين)
+  allCamps = allCamps.filter(c => c.id !== id)
+  await localDB.camps.delete(id)
+  invalidateCampsCache()
+
+  fillCampSelect('filterCamp', true)
+  fillCampSelect('familyCamp')
+  fillCampSelect('smsFilterCamp', false)
+  fillCampSelect('uCamp')
+  await fillFilterCampWithCount()
+  showToast(_netOk ? '✅ تم حذف المخيم نهائياً' : '✅ تم الحذف محلياً — سيُزامن عند الاتصال')
+  loadCampsList()
+}
+
 async function registerDevice() {
   try {
     // بصمة بسيطة بدون مكتبة خارجية
@@ -6816,7 +7534,7 @@ async function loadSmsPage() {
   let allSmsFams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
   if (currentMember.role === 'super_admin') {
     // مدير الإيواء يرى أسر مخيماته فقط
-    const myCampIds = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
+    const myCampIds = getMyCampIds()
     allSmsFams = allSmsFams.filter(f => myCampIds.includes(f.camp_id))
   } else if (currentMember.camp_id) {
     allSmsFams = allSmsFams.filter(f => f.camp_id === currentMember.camp_id)
@@ -7028,8 +7746,10 @@ async function processSyncQueue() {
           await db.from('camps').delete().eq('id', item.record_id)
         } else if (item.action === 'update_camp') {
           const data = JSON.parse(item.data)
-          const { id, ...updateFields } = data
-          await db.from('camps').update(updateFields).eq('id', item.record_id)
+          const recordId = item.record_id || data.id
+          const { id, org_id, created_at, ...updateFields } = data
+          const { error: uce } = await db.from('camps').update(updateFields).eq('id', recordId).eq('org_id', ORG_ID)
+          if (uce) throw uce
         } else if (item.action === 'insert_round') {
           const data = JSON.parse(item.data)
           const localId = data.id; delete data.id
@@ -8754,28 +9474,59 @@ async function pushPendingChanges() {
         const isLocal = (data.id||'').startsWith('local_')
         const localId = data.id
         if (isLocal) delete data.id
-        const { data: srv, error } = await db.from('dist_rounds').insert(data).select('id').single()
+        // upsert بدل insert لتجنب التكرار
+        const { data: srv, error } = await db.from('dist_rounds')
+          .upsert(data, { onConflict: 'id', ignoreDuplicates: false })
+          .select('id').single()
         if (error) throw error
         if (isLocal && srv?.id) {
-          // تحديث localDB
+          // 1. تحديث localDB
           const local = await localDB.dist_rounds.get(localId)
-          if (local) { await localDB.dist_rounds.delete(localId); await localDB.dist_rounds.put({ ...local, id: srv.id }) }
-          // تحديث الدفعات المحلية التي تشير لـ localId
-          const localBatches = await localDB.camp_distributions.where('round_id').equals(localId).toArray()
-          for (const b of localBatches) {
-            await localDB.camp_distributions.update(b.id, { round_id: srv.id })
+          if (local) {
+            await localDB.dist_rounds.delete(localId)
+            await localDB.dist_rounds.put({ ...local, id: srv.id })
           }
-          // تحديث الطابور المعلق
+          // 2. تحديث camp_dist_families المحلية
+          const localDFs = await localDB.camp_dist_families.where('round_id').equals(localId).toArray()
+          for (const df of localDFs) {
+            const newId = srv.id + '_' + df.family_id
+            await localDB.camp_dist_families.delete(df.id)
+            await localDB.camp_dist_families.put({ ...df, id: newId, round_id: srv.id })
+          }
+          // 3. تحديث الطابور المعلق
           const pending = await localDB.sync_queue.where('status').equals('pending').toArray()
           for (const q of pending) {
             try {
               const qd = JSON.parse(q.data)
-              if (qd.round_id === localId) {
-                qd.round_id = srv.id
-                await localDB.sync_queue.update(q.id, { data: JSON.stringify(qd) })
+              let changed = false
+              if (Array.isArray(qd)) {
+                qd.forEach(r => { if (r.round_id === localId) { r.round_id = srv.id; changed = true } })
+              } else if (qd.round_id === localId) {
+                qd.round_id = srv.id; changed = true
               }
+              if (changed) await localDB.sync_queue.update(q.id, { data: JSON.stringify(qd) })
             } catch(e) {}
           }
+          // 4. نقل الفلاتر المحفوظة
+          try {
+            const oldKey = 'roundFilters_' + localId
+            const newKey = 'roundFilters_' + srv.id
+            const saved = localStorage.getItem(oldKey)
+            if (saved) {
+              localStorage.setItem(newKey, saved)
+              localStorage.removeItem(oldKey)
+              // نقل في DB أيضاً
+              if (currentUser?.id) {
+                await db.from('user_preferences').upsert({
+                  org_id: ORG_ID, user_id: currentUser.id,
+                  key: newKey, value: saved,
+                  updated_at: new Date().toISOString()
+                }, { onConflict: 'org_id,user_id,key' })
+                await db.from('user_preferences').delete()
+                  .eq('org_id', ORG_ID).eq('user_id', currentUser.id).eq('key', oldKey)
+              }
+            }
+          } catch(e) {}
         }
 
       } else if (item.action === 'insert_batch') {
@@ -8828,7 +9579,9 @@ async function pushPendingChanges() {
 
       } else if (item.action === 'insert_round_recv') {
         const records = Array.isArray(data) ? data : [data]
-        const { error } = await db.from('camp_dist_families').insert(records)
+        // upsert لتجنب تكرار أو خطأ عند إعادة الرفع
+        const { error } = await db.from('camp_dist_families')
+          .upsert(records, { onConflict: 'round_id,family_id', ignoreDuplicates: true })
         if (error) throw error
 
       } else if (item.action === 'delete_round_recv') {
@@ -10057,8 +10810,10 @@ async function loadDistPage() {
     rounds = campFilter ? all.filter(r => r.camp_id === campFilter || !r.camp_id) : all
   } catch(e) {}
 
-  const _distOn = await checkRealConnection()
-  if (_distOn) {
+  // مزامنة خلفية — لا ننتظرها
+  ;(async () => {
+    const _distOn = await checkRealConnection()
+    if (!_distOn) return
     try {
       let srvRounds = []
       if (campFilter) {
@@ -10071,13 +10826,19 @@ async function loadDistPage() {
       }
       if (srvRounds.length) {
         await localDB.dist_rounds.bulkPut(srvRounds)
-        rounds = srvRounds
+        // تحديث العداد بصمت بدون إعادة رسم
+        srvRounds.forEach(r => {
+          const el = document.getElementById(`rc_${r.id}`)
+          // العداد سيتحدث من الاستعلام المنفصل
+        })
       }
-    } catch(e) { console.warn('dist rounds fetch:', e.message) }
-  }
+    } catch(e) {}
+  })()
 
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
   const typeNames = { general:'📦 عام', food:'🍞 غذاء', medicine:'💊 دواء', clothes:'👕 ملابس', shelter:'⛺ مأوى' }
+  // خريطة الجولات لعرض اسم الجولة السابقة
+  const allRoundsMap = {}; rounds.forEach(r => allRoundsMap[r.id] = r.name)
 
   if (!rounds.length) {
     out.innerHTML = '<div class="empty"><div class="empty-icon">📦</div>لا توجد جولات بعد<br><span style="font-size:11px;color:var(--muted)">اضغط "+ توزيع جديد" لإنشاء جولة</span></div>'
@@ -10087,6 +10848,7 @@ async function loadDistPage() {
   rounds.sort((a,b) => (b.seq||0) - (a.seq||0) || new Date(b.created_at) - new Date(a.created_at))
   out.innerHTML = rounds.map(r => {
     const date = r.created_at ? new Date(r.created_at).toLocaleDateString('ar-EG') : ''
+    const prevName = r.prev_round_id ? (allRoundsMap[r.prev_round_id] || '') : ''
     return `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
@@ -10095,6 +10857,7 @@ async function loadDistPage() {
           <div style="font-size:11px;color:var(--muted);margin-top:3px;">
             ${typeNames[r.type]||r.type} • ⛺ ${r.camp_id?campMap[r.camp_id]||'—':'كل المخيمات'} • 📅 ${date}
           </div>
+          ${prevName ? `<div style="font-size:10px;color:var(--blue);margin-top:2px;">🔄 مرجع: ${esc(prevName)}</div>` : ''}
           <div style="font-size:11px;margin-top:4px;">
             👥 استلم: <strong id="rc_${r.id}">...</strong> أسرة
           </div>
@@ -10233,14 +10996,57 @@ async function saveNewRound() {
     roundData.id = data.id
   } else {
     if (!roundData.id.startsWith('local_')) roundData.id = 'local_r_' + Date.now()
+    // حفظ محلي أولاً ثم أضف للطابور
+    await localDB.dist_rounds.put(roundData)
     await localDB.sync_queue.add({ action:'insert_round', data:JSON.stringify(roundData), status:'pending', created_at:new Date().toISOString() })
+    updatePendingBadge()
   }
 
-  await localDB.dist_rounds.put(roundData)
+  if (_on) await localDB.dist_rounds.put(roundData)
   document.getElementById('newDistModal')?.remove()
   showToast(`✅ تم إنشاء: ${name}`)
   logAction('إنشاء توزيع', roundData.id, name)
   await openRound(roundData.id)
+}
+
+
+// ══ مزامنة شاملة لبيانات الجولة (محلي + قاعدة بيانات) ══
+async function syncRoundData(roundId) {
+  const _on = await checkRealConnection()
+
+  if (_on) {
+    try {
+      // 1. بيانات الجولة (اسم، نوع، تاريخ)
+      const { data: round } = await db.from('dist_rounds')
+        .select('*').eq('id', roundId).single()
+      if (round) await localDB.dist_rounds.put(round)
+
+      // 2. قائمة المستلمين
+      const { data: recv } = await db.from('camp_dist_families')
+        .select('*').eq('round_id', roundId)
+      if (recv) {
+        // أضف فقط ما ليس موجوداً محلياً — لا حذف أبداً
+        const localRec = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
+        const localIds = new Set(localRec.map(r => r.family_id))
+        const toAdd = recv.filter(r => !localIds.has(r.family_id))
+        if (toAdd.length) {
+          await localDB.camp_dist_families.bulkPut(
+            toAdd.map(r => ({ ...r, id: roundId + '_' + r.family_id }))
+          )
+        }
+      }
+
+      // 3. الأسر المرتبطة بالجولة (غير المستلمين محتملين)
+      const campId = round?.camp_id
+      let famQ = db.from('families').select('*').eq('org_id', ORG_ID)
+      if (campId) famQ = famQ.eq('camp_id', campId)
+      const { data: fams } = await famQ.limit(1000)
+      if (fams?.length) {
+        await localDB.families.bulkPut(fams)
+      }
+
+    } catch(e) { /* صامت — نستخدم البيانات المحلية */ }
+  }
 }
 
 
@@ -10249,25 +11055,40 @@ async function openRound(roundId) {
   if (!out) return
   out.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
 
-  // جلب بيانات الجولة
+  // مزامنة خلفية لبيانات الجولة (لا ننتظر)
+  syncRoundData(roundId)
+
+  // جلب بيانات الجولة من localDB فوراً
   let round = await localDB.dist_rounds.get(roundId)
-  const _on = await checkRealConnection()
-  if (!round && _on) {
-    const { data } = await db.from('dist_rounds').select('*').eq('id', roundId).single()
-    if (data) { round = data; await localDB.dist_rounds.put(data) }
+  if (!round) {
+    // لا توجد محلياً — جلب من السيرفر مرة واحدة
+    const _onR = await checkRealConnection()
+    if (_onR) {
+      const { data } = await db.from('dist_rounds').select('*').eq('id', roundId).single()
+      if (data) { round = data; await localDB.dist_rounds.put(data) }
+    }
   }
   if (!round) { out.innerHTML='<div style="color:var(--red);padding:12px;">❌ لم يتم العثور على التوزيع</div>'; return }
 
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
   const typeNames = { food:'🍞 غذاء', clothes:'👕 ملابس', blankets:'🧣 بطاطين', medicine:'💊 دواء', hygiene:'🧴 نظافة', general:'📦 عام' }
 
-  // جلب المستلمين (محلي + سيرفر)
-  const localRec = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
-  const receivedIds = new Set(localRec.map(r => r.family_id))
-  if (_on) {
-    const { data: srvRec } = await db.from('camp_dist_families').select('family_id').eq('round_id', roundId)
-    if (srvRec) srvRec.forEach(r => receivedIds.add(r.family_id))
-  }
+  // جلب المستلمين من localDB فوراً
+  const receivedIds = new Set()
+  const _localRec = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
+  _localRec.forEach(r => receivedIds.add(r.family_id))
+  // مزامنة خلفية صامتة مع السيرفر
+  ;(async () => {
+    if (!_on) return
+    const { data: srvRec } = await db.from('camp_dist_families').select('family_id,received_at,notes,org_id').eq('round_id', roundId)
+    if (srvRec?.length) {
+      const localIds = new Set(_localRec.map(r => r.family_id))
+      const toAdd = srvRec.filter(r => !localIds.has(r.family_id))
+      if (toAdd.length) {
+        try { await localDB.camp_dist_families.bulkPut(toAdd.map(r => ({...r, round_id: roundId, id: roundId+'_'+r.family_id}))) } catch(e) {}
+      }
+    }
+  })()
 
   const receivedCount = receivedIds.size
   const statusBadge = ''
@@ -10296,9 +11117,7 @@ async function openRound(roundId) {
       </div>
       <div style="display:flex;gap:8px;">
         <button onclick="loadDistPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 14px;font-size:12px;font-family:Cairo,sans-serif;cursor:pointer;">← رجوع</button>
-        <button onclick="openEditRound('${roundId}')" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:8px 14px;font-size:12px;font-family:Cairo,sans-serif;cursor:pointer;">✏️ تعديل</button>
-        <button onclick="printRoundReport('${roundId}')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 14px;font-size:12px;font-family:Cairo,sans-serif;cursor:pointer;">🖨️ طباعة</button>
-        <button onclick="exportRoundExcel('${roundId}')" style="background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:8px;font-size:12px;font-family:Cairo,sans-serif;cursor:pointer;">📥 Excel</button>
+        <button onclick="exportRoundExcel('${roundId}')" style="background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:8px 14px;font-size:12px;font-family:Cairo,sans-serif;cursor:pointer;">📥 Excel</button>
       </div>
     </div>
 
@@ -10318,21 +11137,21 @@ async function openRound(roundId) {
     <div id="roundSortRow" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">
 
       <!-- فلتر المخيم -->
-      <select id="roundFilterCamp" onchange="applyRoundFilter('${roundId}')"
+      <select id="roundFilterCamp" onchange="saveRoundFilters('${roundId}');applyRoundFilter('${roundId}')"
         style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
         <option value="">⛺ كل المخيمات</option>
         ${allCamps.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
       </select>
 
       <!-- فلتر الجولة السابقة -->
-      <select id="roundFilterPrev" onchange="applyRoundFilter('${roundId}')"
+      <select id="roundFilterPrev" onchange="saveRoundFilters('${roundId}');applyRoundFilter('${roundId}')"
         style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
         <option value="">🔄 بدون فلتر جولة سابقة</option>
         <option value="__loading__" disabled>جارٍ تحميل الجولات...</option>
       </select>
 
       <!-- فلتر الترتيب -->
-      <select id="roundFilterSort" onchange="applyRoundFilter('${roundId}')"
+      <select id="roundFilterSort" onchange="saveRoundFilters('${roundId}');applyRoundFilter('${roundId}')"
         style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:Cairo,sans-serif;font-size:12px;outline:none;">
         <option value="priority">🔴 الأولوية أولاً</option>
         <option value="alpha">🔤 أبجدي</option>
@@ -10465,6 +11284,86 @@ async function unmarkRoundReceived(roundId, famId, famName) {
 
 
 // ── ملء قائمة الجولات السابقة من نفس النوع ──
+// ── حفظ واستعادة فلاتر الجولة ──
+function saveRoundFilters(roundId) {
+  try {
+    const camp = document.getElementById('roundFilterCamp')?.value || ''
+    const prev = document.getElementById('roundFilterPrev')?.value || ''
+    const sort = document.getElementById('roundFilterSort')?.value || 'priority'
+    const val  = JSON.stringify({ camp, prev, sort })
+
+    // حفظ محلي دائماً
+    localStorage.setItem('roundFilters_' + roundId, val)
+
+    // تحديث dist_rounds في DB (camp_id + prev_round_id)
+    checkRealConnection().then(async on => {
+      if (!on) return
+      // تحديث الجولة نفسها
+      // تحديث camp_id و prev_round_id في dist_rounds
+      const roundUpdates = {
+        camp_id:       camp || null,
+        prev_round_id: prev || null
+      }
+      // تحديث localDB فوراً
+      await localDB.dist_rounds.update(roundId, roundUpdates).catch(() => {})
+      // تحديث السيرفر في الخلفية
+      db.from('dist_rounds').update(roundUpdates)
+        .eq('id', roundId).eq('org_id', ORG_ID).then(() => {})
+
+      // حفظ الفلاتر في user_preferences
+      const uid = currentUser?.id; if (!uid) return
+      db.from('user_preferences').upsert({
+        org_id: ORG_ID, user_id: uid,
+        key: 'roundFilters_' + roundId,
+        value: val, updated_at: new Date().toISOString()
+      }, { onConflict: 'org_id,user_id,key' }).then(() => {})
+    })
+  } catch(e) {}
+}
+
+async function restoreRoundFilters(roundId) {
+  try {
+    // أولاً: جلب camp_id و prev_round_id من dist_rounds نفسها
+    const round = await localDB.dist_rounds.get(roundId)
+
+    // ثانياً: فلاتر user_preferences
+    let saved = null
+    const _on = await checkRealConnection()
+    if (_on && currentUser?.id) {
+      const { data } = await db.from('user_preferences')
+        .select('value').eq('org_id', ORG_ID)
+        .eq('user_id', currentUser.id)
+        .eq('key', 'roundFilters_' + roundId)
+        .single()
+      if (data?.value) {
+        saved = data.value
+        localStorage.setItem('roundFilters_' + roundId, saved)
+      }
+    }
+    if (!saved) saved = localStorage.getItem('roundFilters_' + roundId)
+
+    const campEl = document.getElementById('roundFilterCamp')
+    const prevEl = document.getElementById('roundFilterPrev')
+    const sortEl = document.getElementById('roundFilterSort')
+
+    // أولوية: camp_id من الجولة نفسها، ثم من المحفوظ
+    if (campEl) {
+      const campVal = round?.camp_id || (saved ? JSON.parse(saved).camp : '')
+      if (campVal) campEl.value = campVal
+    }
+    if (sortEl && saved) {
+      const { sort } = JSON.parse(saved)
+      if (sort) sortEl.value = sort
+    }
+    // prev_round_id من الجولة نفسها
+    if (prevEl) {
+      const prevVal = round?.prev_round_id || (saved ? JSON.parse(saved).prev : '')
+      if (prevVal) prevEl.dataset.restore = prevVal
+    }
+  } catch(e) {}
+}
+
+
 async function loadPrevRoundsFilter(roundId, roundType) {
   const sel = document.getElementById('roundFilterPrev')
   if (!sel) return
@@ -10473,13 +11372,14 @@ async function loadPrevRoundsFilter(roundId, roundType) {
   prevRounds = prevRounds
     .filter(r => r.id !== roundId && r.type === roundType)
     .sort((a,b) => (b.seq||0) - (a.seq||0) || new Date(b.created_at) - new Date(a.created_at))
-  const prevVal = sel.value
+  const prevVal = sel.value || sel.dataset.restore || ''
   sel.innerHTML = '<option value="">🔄 بدون فلتر جولة سابقة</option>' +
     prevRounds.map(r => {
       const d = new Date(r.created_at).toLocaleDateString('ar-EG')
       return `<option value="${r.id}">📋 ${esc(r.name)} — ${d}</option>`
     }).join('')
   if (prevVal && prevRounds.find(r => r.id === prevVal)) sel.value = prevVal
+  sel.dataset.restore = ''
 }
 
 // ── بحث في أسر الجولة ──
@@ -10527,6 +11427,13 @@ async function applyRoundFilter(roundId) {
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
 
   // ملء قائمة الجولات السابقة (مرة واحدة)
+  // استعادة الفلاتر المحفوظة (أول مرة فقط)
+  if (!document.getElementById('roundFilterCamp')?.dataset?.restored) {
+    await restoreRoundFilters(roundId)
+    const campEl = document.getElementById('roundFilterCamp')
+    if (campEl) campEl.dataset.restored = '1'
+  }
+
   await loadPrevRoundsFilter(roundId, round?.type)
 
   // فلتر المخيم
@@ -10538,10 +11445,13 @@ async function applyRoundFilter(roundId) {
   // تطبيق فلتر المخيم
   if (campFilter) families = families.filter(f => f.camp_id === campFilter)
 
-  // المستلمون في الجولة الحالية (محلياً + سيرفر)
-  const localRec = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
-  const receivedIds = new Set(localRec.map(r => r.family_id))
+  // المستلمون في الجولة الحالية — السيرفر مصدر رئيسي
   const _on = await checkRealConnection()
+  const receivedIds = new Set()
+  // محلي أولاً دائماً
+  const _localRecF = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
+  _localRecF.forEach(r => receivedIds.add(r.family_id))
+  // ثم دمج السيرفر
   if (_on) {
     const { data: srvRec } = await db.from('camp_dist_families').select('family_id').eq('round_id', roundId)
     if (srvRec) srvRec.forEach(r => receivedIds.add(r.family_id))
@@ -10689,7 +11599,8 @@ async function markRoundReceived(roundId) {
 
   const _on = await checkRealConnection()
   if (_on) {
-    const { error } = await db.from('camp_dist_families').insert(records)
+    const { error } = await db.from('camp_dist_families')
+      .upsert(records, { onConflict: 'round_id,family_id', ignoreDuplicates: false })
     if (error) {
       showToast('⚠️ حُفظ محلياً — سيُزامن لاحقاً')
       await localDB.sync_queue.add({ action:'insert_round_recv', data:JSON.stringify(records), status:'pending', created_at:now })
@@ -10926,62 +11837,6 @@ async function saveEditDist(distId) {
   openDist(distId)
 }
 
-async function editRound(roundId) {
-  let round = await localDB.dist_rounds.get(roundId)
-  if (!round && navigator.onLine) {
-    const { data } = await db.from('dist_rounds').select('*').eq('id', roundId).single()
-    round = data
-  }
-  if (!round) return
-
-  const existing = document.getElementById('editRoundModal')
-  if (existing) existing.remove()
-
-  const campOpts = allCamps.map(c => `<option value="${c.id}" ${round.camp_id===c.id?'selected':''}>${c.name}</option>`).join('')
-  const modal = document.createElement('div')
-  modal.id = 'editRoundModal'
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;'
-  modal.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:420px;">
-      <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:16px;">✏️ تعديل الجولة</div>
-      <div class="form-group"><label>الاسم *</label>
-        <input type="text" id="eRoundName" value="${round.name||''}"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;outline:none;"></div>
-      <div class="form-grid-2">
-        <div class="form-group"><label>المخيم</label>
-          <select id="eRoundCamp" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;outline:none;">
-            <option value="">كل المخيمات</option>${campOpts}</select></div>
-        <div class="form-group"><label>النوع</label>
-          <select id="eRoundType" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;outline:none;">
-            <option value="general" ${round.type==='general'?'selected':''}>📦 عام</option>
-            <option value="food" ${round.type==='food'?'selected':''}>🍞 غذاء</option>
-            <option value="medicine" ${round.type==='medicine'?'selected':''}>💊 دواء</option>
-            <option value="clothes" ${round.type==='clothes'?'selected':''}>👕 ملابس</option>
-            <option value="shelter" ${round.type==='shelter'?'selected':''}>⛺ مأوى</option>
-          </select></div>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:4px;">
-        <button onclick="saveEditRound('${roundId}')" class="btn btn-primary" style="flex:1;">💾 حفظ</button>
-        <button onclick="document.getElementById('editRoundModal').remove()"
-          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 14px;font-family:Cairo,sans-serif;font-size:13px;cursor:pointer;">إلغاء</button>
-      </div>
-    </div>`
-  document.body.appendChild(modal)
-}
-
-async function saveEditRound(roundId) {
-  const name = document.getElementById('eRoundName').value.trim()
-  const camp = document.getElementById('eRoundCamp').value || null
-  const type = document.getElementById('eRoundType').value
-  if (!name) { showToast('يرجى إدخال الاسم', true); return }
-  const upd = { name, camp_id: camp, type }
-  if (navigator.onLine) await db.from('dist_rounds').update(upd).eq('id', roundId)
-  await localDB.dist_rounds.update(roundId, upd)
-  document.getElementById('editRoundModal').remove()
-  showToast('✅ تم التعديل')
-  loadDistPage()
-}
-
 async function deleteRound(roundId, name) {
   if (!confirm(`حذف جولة "${name}"؟ سيُحذف كل سجل الاستلام.`)) return
   if (navigator.onLine) {
@@ -11003,65 +11858,6 @@ async function closeRound(roundId) {
   await localDB.dist_rounds.update(roundId, { status: 'completed' })
   showToast('✅ الجولة مكتملة')
   loadDistPage()
-}
-
-async function printRoundReport(roundId) {
-  let round = await localDB.dist_rounds.get(roundId)
-  const { data: batches } = navigator.onLine
-    ? await db.from('camp_distributions').select('*').eq('round_id', roundId)
-    : { data: await localDB.camp_distributions.where('round_id').equals(roundId).toArray() }
-
-  if (!batches?.length) { showToast('لا توجد دفعات', true); return }
-
-  const famMap = {}
-  const allFams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  allFams.forEach(f => famMap[f.id] = f)
-  const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
-
-  let allRec = []
-  for (const b of batches) {
-    let rec
-    if (navigator.onLine) {
-      const { data } = await db.from('camp_dist_families').select('family_id,received_at,notes').eq('distribution_id', b.id)
-      rec = data || []
-    } else {
-      rec = await localDB.camp_dist_families.where('distribution_id').equals(b.id).toArray()
-    }
-    rec.forEach(r => { if (!allRec.find(x=>x.family_id===r.family_id)) allRec.push({ ...r, batch: b.description }) })
-  }
-
-  allRec.sort((a,b) => (famMap[a.family_id]?.head_name||'').localeCompare(famMap[b.family_id]?.head_name||''))
-
-  const rows = allRec.map((r,i) => {
-    const f = famMap[r.family_id] || {}
-    return `<tr>
-      <td>${i+1}</td>
-      <td>${f.head_name||'—'}</td>
-      <td dir="ltr">${f.head_id||'—'}</td>
-      <td>${campMap[f.camp_id]||'—'}</td>
-      <td>${f.tent||'—'}</td>
-      <td>${r.batch||'—'}</td>
-      <td>${r.received_at?new Date(r.received_at).toLocaleDateString('ar-EG'):'—'}</td>
-      <td>${r.notes||''}</td>
-    </tr>`
-  }).join('')
-
-  const win = window.open('','_blank')
-  win.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-    <title>${round?.name||'كشف الجولة'}</title>
-    <style>body{font-family:Arial;padding:20px;direction:rtl;font-size:12px;}
-    h2,h3{text-align:center;margin:4px 0;}
-    table{width:100%;border-collapse:collapse;margin-top:12px;}
-    th,td{border:1px solid #ddd;padding:5px 7px;text-align:right;}
-    th{background:#f5f5f5;font-weight:bold;}</style></head><body>
-    <h2>${round?.name||'كشف الجولة'}</h2>
-    <p style="text-align:center;font-size:11px;color:#666;">
-      إجمالي المستلمين: ${allRec.length} • تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG')}
-    </p>
-    <table><thead><tr><th>#</th><th>الاسم</th><th>الهوية</th><th>المخيم</th><th>الخيمة</th><th>الدفعة</th><th>تاريخ الاستلام</th><th>ملاحظات</th></tr></thead>
-    <tbody>${rows}</tbody></table>
-    <script>window.onload=()=>window.print()<\/script></body></html>`)
-  win.document.close()
 }
 
 async function exportRoundExcel(roundId) {
@@ -11120,8 +11916,34 @@ async function exportRoundExcel(roundId) {
     }
   })
 
-  // ── ورقة لم يستلموا ──
-  const notRecvFams = allFams.filter(f => !recvFamIds.has(f.id))
+  // ── ورقة لم يستلموا — نفس فلتر الجولة ──
+  // 1. فلتر المخيم من الجولة أو من الفلتر المحفوظ
+  const savedFilters = (() => {
+    try { return JSON.parse(localStorage.getItem('roundFilters_' + roundId) || '{}') } catch(e) { return {} }
+  })()
+  const activeCamp = round?.camp_id || savedFilters.camp || ''
+  const activePrev = round?.prev_round_id || savedFilters.prev || ''
+
+  // 2. تطبيق فلتر المخيم
+  let notRecvFams = activeCamp
+    ? allFams.filter(f => f.camp_id === activeCamp)
+    : allFams
+
+  // 3. إزالة المستلمين في هذه الجولة
+  notRecvFams = notRecvFams.filter(f => !recvFamIds.has(f.id))
+
+  // 4. تطبيق فلتر الجولة السابقة (إزالة من استلم فيها)
+  if (activePrev) {
+    const prevRecv = await localDB.camp_dist_families.where('round_id').equals(activePrev).toArray()
+    const prevIds = new Set(prevRecv.map(r => r.family_id))
+    if (_on && !prevRecv.length) {
+      const { data: sp } = await db.from('camp_dist_families').select('family_id').eq('round_id', activePrev)
+      if (sp) sp.forEach(r => prevIds.add(r.family_id))
+    }
+    notRecvFams = notRecvFams.filter(f => !prevIds.has(f.id))
+  }
+
+  // 5. ترتيب حسب رقم الخيمة
   notRecvFams.sort((a, b) => {
     const ta = (a.tent || '').trim(), tb = (b.tent || '').trim()
     if (!ta && !tb) return 0; if (!ta) return 1; if (!tb) return -1
@@ -11587,6 +12409,51 @@ async function getCreatedBy(role, campId) {
   // الباقي = auth.users.id للمستخدم الحالي دائماً
   return currentUser.id
 }
+async function assignCampSuperAdmin(campId, campName) {
+  const _on = await checkRealConnection()
+  if (!_on) { showToast('⚠️ يتطلب اتصالاً', true); return }
+  const { data: admins } = await db.from('org_members').select('id,full_name').eq('org_id',ORG_ID).eq('role','super_admin').eq('is_active',true)
+  if (!admins?.length) { showToast('⚠️ لا يوجد مديرو إيواء', true); return }
+  const camp = allCamps.find(c => c.id === campId)
+  const modal = document.createElement('div')
+  modal.id = 'assignAdminModal'
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px;'
+  modal.innerHTML = `<div style="background:var(--surface);border-radius:16px;padding:20px;width:100%;max-width:420px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="font-size:14px;font-weight:700;color:var(--purple);">👤 تعيين مدير إيواء — ${esc(campName)}</div>
+      <button onclick="document.getElementById('assignAdminModal').remove()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:4px 10px;cursor:pointer;color:var(--text);font-family:Cairo,sans-serif;">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${admins.map(a=>`<button onclick="confirmAssignAdmin('${campId}','${a.id}','${esc(a.full_name)}')"
+        style="padding:10px 14px;background:${a.id===camp?.manager_id?'rgba(139,92,246,0.1)':'var(--surface2)'};
+               border:1px solid ${a.id===camp?.manager_id?'var(--purple)':'var(--border)'};border-radius:8px;cursor:pointer;
+               font-family:Cairo,sans-serif;width:100%;text-align:right;font-size:13px;color:var(--text);">
+        ${esc(a.full_name)} ${a.id===camp?.manager_id?'<span style="color:var(--purple);font-size:10px;">● حالي</span>':''}
+      </button>`).join('')}
+    </div>
+    ${camp?.manager_id?`<button onclick="confirmAssignAdmin('${campId}',null,'')"
+      style="width:100%;margin-top:10px;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);
+             border-radius:8px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;cursor:pointer;">🗑️ إلغاء التعيين</button>`:''}
+  </div>`
+  document.body.appendChild(modal)
+}
+
+async function confirmAssignAdmin(campId, adminId, adminName) {
+  if (!confirm(adminId ? `تعيين "${adminName}" مديراً؟` : 'إلغاء تعيين المدير؟')) return
+  document.getElementById('assignAdminModal')?.remove()
+  const _on = await checkRealConnection()
+  if (_on) {
+    const { error } = await db.from('camps').update({ manager_id: adminId||null }).eq('id',campId).eq('org_id',ORG_ID)
+    if (error) { showToast('❌ خطأ: '+error.message, true); return }
+  }
+  const idx = allCamps.findIndex(c => c.id===campId)
+  if (idx !== -1) allCamps[idx].manager_id = adminId||null
+  await localDB.camps.update(campId, { manager_id: adminId||null })
+  showToast(adminId ? `✅ تم تعيين ${adminName} مديراً` : '✅ تم إلغاء التعيين')
+  await loadCampsList()
+}
+
+
 async function assignCampManager(campId, campName) {
   const { data: admins } = await db.from('org_members')
     .select('id,full_name').eq('org_id', ORG_ID).eq('role','super_admin').eq('is_active',true)
@@ -11626,7 +12493,7 @@ async function loadAnalysis2() {
 
   let fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
   if (currentMember.role === 'super_admin') {
-    const myCampIds = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
+    const myCampIds = getMyCampIds()
     fams = fams.filter(f => myCampIds.includes(f.camp_id))
   } else if (currentMember.camp_id) {
     fams = fams.filter(f => f.camp_id === currentMember.camp_id)
@@ -11798,7 +12665,7 @@ async function getReportData() {
 
   // فلتر الدور
   if (currentMember.role === 'super_admin') {
-    const myCampIds = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
+    const myCampIds = getMyCampIds()
     fams = fams.filter(f => myCampIds.includes(f.camp_id))
   } else if (currentMember.camp_id) {
     fams = fams.filter(f => f.camp_id === currentMember.camp_id)
@@ -11938,7 +12805,7 @@ async function renderDistReport(out, header) {
   // فلتر الدور
   let myRounds = rounds
   if (currentMember.role === 'super_admin') {
-    const myCampIds = allCamps.filter(x => x.manager_id === currentMember.id).map(x => x.id)
+    const myCampIds = getMyCampIds()
     myRounds = rounds.filter(r => !r.camp_id || myCampIds.includes(r.camp_id))
   } else if (currentMember.camp_id) {
     myRounds = rounds.filter(r => !r.camp_id || r.camp_id === currentMember.camp_id)
@@ -12053,18 +12920,33 @@ async function loadAuditLog() {
   if (!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
 
-  if (!navigator.onLine) { container.innerHTML='<div class="empty"><div class="empty-icon">📴</div>يحتاج اتصالاً</div>'; return }
-
   const action = document.getElementById('auditFilterAction')?.value || ''
   const userId = document.getElementById('auditFilterUser')?.value || ''
 
-  let q = db.from('audit_logs').select('*').eq('org_id', ORG_ID).order('created_at', { ascending: false }).limit(200)
-  if (action) q = q.eq('action', action)
-  if (userId) q = q.eq('user_id', userId)
-  // المندوب يرى نشاط مخيمه فقط
-  if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
-
-  const { data: logs, error } = await q
+  // محلي أولاً
+  let logs = []
+  const _auditOn = await checkRealConnection()
+  if (_auditOn) {
+    let q = db.from('audit_logs').select('*').eq('org_id', ORG_ID).order('created_at', { ascending: false }).limit(200)
+    if (action) q = q.eq('action', action)
+    if (userId) q = q.eq('user_id', userId)
+    if (currentMember.camp_id) q = q.eq('camp_id', currentMember.camp_id)
+    const { data, error } = await q
+    if (error) { container.innerHTML=`<div style="color:var(--red);padding:12px;">${esc(error.message)}</div>`; return }
+    logs = data || []
+    // حفظ محلي
+    if (logs.length) try { await localDB.audit_logs.bulkPut(logs) } catch(e) {}
+  } else {
+    // أوف لاين: من localDB
+    logs = await localDB.audit_logs.where('org_id').equals(ORG_ID).toArray()
+    logs.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+    logs = logs.slice(0, 200)
+    if (!logs.length) {
+      container.innerHTML = '<div class="empty"><div class="empty-icon">📴</div><div style="font-size:12px;color:var(--muted);">لا توجد بيانات محلية — يتطلب اتصالاً للتحميل الأول</div></div>'
+      return
+    }
+  }
+  const error = null
   if (error) { container.innerHTML=`<div style="color:var(--red);padding:12px;">${esc(error.message)}</div>`; return }
   if (!logs?.length) { container.innerHTML=`<div class="empty"><div class="empty-icon">📋</div>لا توجد سجلات<br><small style="color:var(--muted)">تأكد من وجود RLS policy على جدول audit_logs</small></div>`; return }
 
@@ -12203,25 +13085,32 @@ async function loadHistoryPage() {
   if (!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحميل...</div></div>'
 
-  if (!navigator.onLine) {
-    container.innerHTML = '<div class="empty"><div class="empty-icon">📴</div>يحتاج اتصالاً</div>'
-    return
-  }
-
   const actionFilter = document.getElementById('historyFilterAction')?.value || ''
   const userFilter   = document.getElementById('historyFilterUser')?.value   || ''
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
 
-  try {
-    let q = db.from('family_history')
-      .select('*, families(head_name, head_id, camp_id)')
-      .eq('org_id', ORG_ID)
-      .order('created_at', { ascending: false })
-      .limit(100)
-    if (actionFilter) q = q.eq('action', actionFilter)
-    if (userFilter)   q = q.eq('changed_by', userFilter)
+  let history = []
+  const _histOn = await checkRealConnection()
+  if (_histOn) {
+    try {
+      let q = db.from('family_history')
+        .select('*, families(head_name, head_id, camp_id)')
+        .eq('org_id', ORG_ID)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (actionFilter) q = q.eq('action', actionFilter)
+      if (userFilter)   q = q.eq('changed_by', userFilter)
+      const { data } = await q
+      history = data || []
+      if (history.length) try { await localDB.family_history.bulkPut(history.map(h => ({...h, id: h.id||h.family_id+'_'+h.created_at}))) } catch(e) {}
+    } catch(e) {}
+  } else {
+    history = await localDB.family_history.where('org_id').equals(ORG_ID).toArray()
+    history.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+    history = history.slice(0, 100)
+  }
 
-    const { data: history } = await q
+  try {
     if (!history?.length) {
       container.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>لا يوجد سجل تغييرات</div>'
       return
@@ -13376,7 +14265,8 @@ async function loadMovementsPage() {
   const tLabel  = { entry:'🟢 دخول', exit:'🔴 خروج', transfer:'🔵 نقل' }
 
   let movements = []
-  if (navigator.onLine) {
+  const _mvOn = await checkRealConnection()
+  if (_mvOn) {
     let q = db.from('family_movements')
       .select('*, families(head_name,head_id)')
       .eq('org_id', ORG_ID)
