@@ -1861,7 +1861,7 @@ async function checkRealConnection() {
   if (!navigator.onLine) return false
   try {
     const ctrl = new AbortController()
-    setTimeout(() => ctrl.abort(), 3000)
+    setTimeout(() => ctrl.abort(), 8000)
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/camps?select=id&limit=1`,
       { signal: ctrl.signal, headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' } }
@@ -2210,6 +2210,8 @@ async function loadMember() {
   showPage('page-dashboard')
   await loadDashboard() // بعد المزامنة — البيانات جاهزة في localDB
   syncDistFamiliesRoundId()  // مزامنة round_id في التوزيعات (مرة واحدة)
+  // رفع أي بيانات معلقة من الجلسة السابقة
+  setTimeout(() => { processSyncQueue().catch(()=>{}) }, 3000)
 }
 
 // ══════════════════════════════════════════════════════
@@ -2774,6 +2776,8 @@ async function showPage(pageId) {
       if (prev) campSel.value = prev
     }
     loadDistPage().catch(e => console.warn('dist:', e.message))
+    // رفع أي طوابير معلقة (استلام توزيع) عند فتح الصفحة
+    processSyncQueue().catch(() => {})
   }
   if (pageId === 'page-analysis2')  loadAnalysisWithCharts().catch(e => console.warn('analysis2:', e.message))
   if (pageId === 'page-women') {
@@ -4793,8 +4797,16 @@ async function updatePendingBadge() {
     if (count > 0) {
       badge.style.display = 'inline'
       badge.textContent = `⏳ ${count}`
+      badge.onclick = async () => {
+        badge.textContent = '🔄 جارٍ الرفع...'
+        badge.style.background = 'var(--blue)'
+        await processSyncQueue()
+        await updatePendingBadge()
+        showToast('✅ تمت المزامنة')
+      }
     } else {
       badge.style.display = 'none'
+      badge.onclick = null
     }
   } catch(e) {}
 }
@@ -10897,43 +10909,41 @@ async function loadDistPage() {
   // عدد المستلمين — دفعة واحدة من localDB
   ;(async () => {
     try {
-      // جلب كل سجلات التوزيع دفعة واحدة
+      const roundIds = rounds.map(r => r.id)
+      // محلي أولاً
       const allRecv = await localDB.camp_dist_families.toArray()
       const cntMap = {}
-      allRecv.forEach(r => {
-        if (r.round_id) cntMap[r.round_id] = (cntMap[r.round_id]||0) + 1
-        // fallback للبيانات القديمة التي لها distribution_id بدون round_id
-      })
+      allRecv.forEach(r => { if (r.round_id) cntMap[r.round_id] = (cntMap[r.round_id]||0) + 1 })
       rounds.forEach(r => {
         const el = document.getElementById(`rc_${r.id}`)
         if (el) el.textContent = cntMap[r.id] || 0
       })
 
-      // تحديث من السيرفر إذا متصل
+      // دائماً تحقق من السيرفر (لا اعتماد على localDB فقط)
       const _rcOn = await checkRealConnection()
       if (_rcOn) {
-        const roundIds = rounds.map(r => r.id)
         const { data: srvData } = await db.from('camp_dist_families')
-          .select('round_id, family_id')
+          .select('round_id, family_id, received_at, notes, org_id')
           .in('round_id', roundIds)
         if (srvData) {
           const srvMap = {}
           srvData.forEach(r => { srvMap[r.round_id] = (srvMap[r.round_id]||0) + 1 })
           rounds.forEach(r => {
             const el = document.getElementById(`rc_${r.id}`)
-            if (el && srvMap[r.id] !== undefined) el.textContent = srvMap[r.id]
+            if (el) el.textContent = srvMap[r.id] ?? (cntMap[r.id] || 0)
           })
-          // حفظ في localDB إذا فيه بيانات جديدة
-          if (srvData.length > allRecv.filter(r=>r.round_id).length) {
-            const withIds = srvData.map(r => ({ ...r, id: r.round_id + '_' + r.family_id }))
-            try { await localDB.camp_dist_families.bulkPut(withIds) } catch(e) {}
+          // حفظ في localDB
+          const localIds = new Set(allRecv.map(r => r.id))
+          const toAdd = srvData.filter(r => !localIds.has(r.round_id+'_'+r.family_id))
+          if (toAdd.length) {
+            try { await localDB.camp_dist_families.bulkPut(toAdd.map(r => ({...r, id: r.round_id+'_'+r.family_id}))) } catch(e) {}
           }
         }
       }
     } catch(e) {
       rounds.forEach(r => {
         const el = document.getElementById(`rc_${r.id}`)
-        if (el && el.textContent === '...') el.textContent = '—'
+        if (el && el.textContent === '...') el.textContent = '0'
       })
     }
   })()
@@ -11094,22 +11104,24 @@ async function openRound(roundId) {
   const campMap = {}; allCamps.forEach(c => campMap[c.id] = c.name)
   const typeNames = { food:'🍞 غذاء', clothes:'👕 ملابس', blankets:'🧣 بطاطين', medicine:'💊 دواء', hygiene:'🧴 نظافة', general:'📦 عام' }
 
-  // جلب المستلمين من localDB فوراً
+  // جلب المستلمين — إذا localDB فارغ انتظر السيرفر
   const receivedIds = new Set()
   const _localRec = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
   _localRec.forEach(r => receivedIds.add(r.family_id))
-  // مزامنة خلفية صامتة مع السيرفر
-  ;(async () => {
-    if (!_on) return
+
+  const _on = await checkRealConnection()
+  if (_on) {
+    // دائماً تحقق من السيرفر لضمان اكتمال البيانات
     const { data: srvRec } = await db.from('camp_dist_families').select('family_id,received_at,notes,org_id').eq('round_id', roundId)
     if (srvRec?.length) {
+      srvRec.forEach(r => receivedIds.add(r.family_id))
       const localIds = new Set(_localRec.map(r => r.family_id))
       const toAdd = srvRec.filter(r => !localIds.has(r.family_id))
       if (toAdd.length) {
         try { await localDB.camp_dist_families.bulkPut(toAdd.map(r => ({...r, round_id: roundId, id: roundId+'_'+r.family_id}))) } catch(e) {}
       }
     }
-  })()
+  }
 
   const receivedCount = receivedIds.size
   const statusBadge = ''
@@ -11469,13 +11481,18 @@ async function applyRoundFilter(roundId) {
   // المستلمون في الجولة الحالية — السيرفر مصدر رئيسي
   const _on = await checkRealConnection()
   const receivedIds = new Set()
-  // محلي أولاً دائماً
+  // محلي + سيرفر دائماً
   const _localRecF = await localDB.camp_dist_families.where('round_id').equals(roundId).toArray()
   _localRecF.forEach(r => receivedIds.add(r.family_id))
-  // ثم دمج السيرفر
   if (_on) {
     const { data: srvRec } = await db.from('camp_dist_families').select('family_id').eq('round_id', roundId)
     if (srvRec) srvRec.forEach(r => receivedIds.add(r.family_id))
+    // حفظ ما هو في السيرفر محلياً
+    if (srvRec?.length) {
+      const localIds = new Set(_localRecF.map(r => r.family_id))
+      const toAdd = srvRec.filter(r => !localIds.has(r.family_id))
+      if (toAdd.length) try { await localDB.camp_dist_families.bulkPut(toAdd.map(r => ({round_id:roundId, family_id:r.family_id, id:roundId+'_'+r.family_id}))) } catch(e) {}
+    }
   }
 
   // استثني من استلم في الجولة الحالية
@@ -11621,7 +11638,7 @@ async function markRoundReceived(roundId) {
   const _on = await checkRealConnection()
   if (_on) {
     const { error } = await db.from('camp_dist_families')
-      .upsert(records, { onConflict: 'round_id,family_id', ignoreDuplicates: false })
+      .upsert(records, { onConflict: 'round_id,family_id', ignoreDuplicates: true })
     if (error) {
       showToast('⚠️ حُفظ محلياً — سيُزامن لاحقاً')
       await localDB.sync_queue.add({ action:'insert_round_recv', data:JSON.stringify(records), status:'pending', created_at:now })
