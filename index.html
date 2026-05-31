@@ -419,6 +419,12 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       </div>
     </button>
 
+    <!-- زر إصلاح مؤقت -->
+    <button onclick="fixAndPushLocalRecords()" style="width:100%;background:rgba(59,130,246,0.12);border:1px solid var(--blue);color:var(--blue);border-radius:12px;padding:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;">🔧 إصلاح ورفع السجلات المحلية</button>
+
+    <!-- زر فحص مؤقت -->
+    <button onclick="debugLocalDB()" style="width:100%;background:rgba(239,68,68,0.12);border:1px solid var(--red);color:var(--red);border-radius:12px;padding:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px;">🔍 فحص التخزين المحلي</button>
+
     <!-- آخر مزامنة -->
     <div id="lastSyncInfo" style="text-align:center;font-size:11px;color:var(--muted);margin-top:8px;"></div>
 
@@ -7698,6 +7704,62 @@ function smsCopyNums() {
 // │ البيانات تُحفظ في localDB (Dexie) أثناء الانقطاع    │
 // └──────────────────────────────────────────────────────┘
 let _syncInProgress = false
+async function fixAndPushLocalRecords() {
+  try {
+    const all = await localDB.camp_dist_families.toArray()
+    if (!all.length) { alert('لا توجد سجلات محلية'); return }
+
+    // إصلاح org_id لأي سجل فارغ
+    for (const r of all.filter(r => !r.org_id)) {
+      await localDB.camp_dist_families.update(r.id, { org_id: ORG_ID })
+    }
+
+    // رفع الكل للسيرفر (بدون id المحلي المركّب)
+    // تجاهل السجلات ذات IDs مؤقتة
+    const noLocal = all.filter(r =>
+      r.round_id && !String(r.round_id).startsWith('local_') &&
+      (!r.family_id || !String(r.family_id).startsWith('local_')) &&
+      (!r.distribution_id || !String(r.distribution_id).startsWith('local_'))
+    )
+
+    // التحقق من وجود round_id على السيرفر
+    const roundIds = [...new Set(noLocal.map(r => r.round_id))]
+    const { data: srvRounds } = await db.from('dist_rounds').select('id').in('id', roundIds)
+    const validRoundIds = new Set((srvRounds||[]).map(r => r.id))
+
+    // التحقق من وجود family_id على السيرفر
+    const famIds = [...new Set(noLocal.map(r => r.family_id).filter(Boolean))]
+    const { data: srvFams } = await db.from('families').select('id').in('id', famIds)
+    const validFamIds = new Set((srvFams||[]).map(r => r.id))
+
+    const valid = noLocal.filter(r => validRoundIds.has(r.round_id) && (!r.family_id || validFamIds.has(r.family_id)))
+    const skipped = all.length - valid.length
+    const fixed = valid.map(r => { const {id, ...rest} = r; return { ...rest, org_id: rest.org_id || ORG_ID } })
+    const batchSize = 100
+    let success = 0, failed = 0, lastErr = ''
+    for (let i = 0; i < fixed.length; i += batchSize) {
+      const batch = fixed.slice(i, i + batchSize)
+      const { error } = await db.from("camp_dist_families")
+        .upsert(batch, { onConflict: "round_id,family_id", ignoreDuplicates: true })
+      if (error) { failed += batch.length; lastErr = error.message } else { success += batch.length }
+    }
+    alert("تم: " + success + " رُفع | فشل: " + failed + " | تجاوز: " + skipped + (lastErr ? " | " + lastErr.slice(0,60) : ""))
+    updatePendingBadge()
+  } catch(e) {
+    alert("خطأ: " + e.message)
+  }
+}
+
+async function debugLocalDB() {
+  try {
+    const all = await localDB.camp_dist_families.toArray()
+    const sample = all.slice(0,2).map(r => JSON.stringify(r)).join(', ')
+    alert('camp_dist_families | العدد: ' + all.length + ' | ' + sample)
+  } catch(e) {
+    alert('خطأ: ' + e.message)
+  }
+}
+
 async function processSyncQueue() {
   if (_syncInProgress) {
     console.log('⏳ مزامنة جارية بالفعل — تم تجاهل الاستدعاء المكرر')
