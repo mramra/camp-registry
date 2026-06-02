@@ -1391,6 +1391,21 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
   <!-- ════════════════ نهاية صفحة الحالات الصحية ════════════════ -->
 
 
+  <!-- ════════════════ صفحة التعديلات المعلقة ════════════════ -->
+  <div class="page" id="page-pending-queue">
+    <div class="card">
+      <div class="card-title" style="color:var(--accent);">📋 التعديلات المعلّقة</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:12px;">العمليات المحفوظة محلياً في انتظار الرفع للسيرفر</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button onclick="loadPendingQueue()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">🔄 تحديث</button>
+        <button onclick="pushPendingChanges()" style="flex:1;background:rgba(16,185,129,0.12);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:9px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">⬆️ رفع الكل</button>
+      </div>
+      <div id="pendingQueueStats" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;"></div>
+    </div>
+    <div id="pendingQueueList" style="margin-top:8px;"></div>
+  </div>
+
+
   <!-- ════════════════ صفحة مقارنة البيانات ════════════════ -->
   <div class="page" id="page-sync-compare">
     <div class="card">
@@ -2495,6 +2510,7 @@ function buildSidebar() {
       sec4 += navItem('📋', 'سجل النشاط', 'page-audit')
     if (['platform_owner','super_admin'].includes(currentMember.role))
       sec4 += navItem('🔄', 'مقارنة البيانات', 'page-sync-compare')
+      sec4 += navItem('📋', 'التعديلات المعلّقة', 'page-pending-queue')
     if (currentMember.role === 'platform_owner') {
       sec4 += `<button class="nav-item" onclick="showPage('page-devices');closeSidebar()"><span style="width:20px;text-align:center;">📱</span> الأجهزة<span id="devicesBadge" style="display:none;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:900;align-items:center;justify-content:center;margin-right:auto;"></span></button>`
       sec4 += navItem('💳', 'الاشتراكات', 'page-subscription')
@@ -2751,6 +2767,7 @@ async function showPage(pageId) {
     'page-member-needs': ['🩺 الحالات الصحية', 'الإعاقات والإصابات والأمراض'],
     'page-needs-report':  ['📋 تقارير الاحتياجات', 'فلترة وتصدير حسب الفئة'],
     'page-sync-compare':  ['🔄 مقارنة البيانات', 'مقارنة المحلي بالسيرفر'],
+    'page-pending-queue': ['📋 التعديلات المعلّقة', 'عمليات في انتظار الرفع'],
     'page-health-report': ['⚕️ الحالات الصحية', 'إعاقات وإصابات وأمراض مزمنة'],
   }
 
@@ -2789,6 +2806,7 @@ async function showPage(pageId) {
   }
   if (pageId === 'page-needs-report') loadNeedsReport().catch(e => console.warn('needs-report:', e.message))
   if (pageId === 'page-sync-compare') initSyncComparePage()
+  if (pageId === 'page-pending-queue') loadPendingQueue()
   if (pageId === 'page-health-report') initHealthReport()
   if (pageId === 'page-data')        loadDataPage().catch(e => console.warn('data:', e.message))
   if (pageId === 'page-audit')       safeLoad(loadAuditLog, 'auditContent', '📴 سجل النشاط يحتاج اتصالاً')
@@ -3296,7 +3314,26 @@ function setAgeRange(from, to) {
   document.getElementById('ageTo').value = to
 }
 
+
+function mobileDownloadXLSX(wb, filename) {
+  try {
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    const blob  = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url   = URL.createObjectURL(blob)
+    const a     = document.createElement('a')
+    a.href      = url
+    a.download  = filename
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+    setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a) }, 2000)
+  } catch(e) {
+    showToast('❌ فشل التنزيل: ' + e.message, true)
+  }
+}
+
 async function doCustomExport() {
+  try {
   if (typeof XLSX === 'undefined') { showToast('⚠️ مكتبة Excel غير محملة', true); return }
 
   const mode    = document.getElementById('exportMode').value
@@ -3377,7 +3414,7 @@ async function doCustomExport() {
     })
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(famRows), 'الأسر')
     await applyBannerToWorkbook(wb, activeCampId || allCamps[0]?.id)
-    XLSX.writeFile(wb, `كشف_الأسر_${campLabel}_${date}.xlsx`)
+    mobileDownloadXLSX(wb, `كشف_الأسر_${campLabel}_${date}.xlsx`)
     showToast(`✅ تم التصدير — ${families.length} أسرة`)
 
   } else {
@@ -3445,8 +3482,11 @@ async function doCustomExport() {
     })
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(memRows), 'الأفراد')
     await applyBannerToWorkbook(wb, activeCampId || allCamps[0]?.id)
-    XLSX.writeFile(wb, `كشف_الأفراد_${campLabel}_${date}.xlsx`)
+    mobileDownloadXLSX(wb, `كشف_الأفراد_${campLabel}_${date}.xlsx`)
     showToast(`✅ تم التصدير — ${memRows.length} فرد`)
+  }
+  } catch(e) {
+    showToast('❌ خطأ في التصدير: ' + e.message, true)
   }
 }
 
@@ -7698,6 +7738,80 @@ function smsCopyNums() {
 // │ البيانات تُحفظ في localDB (Dexie) أثناء الانقطاع    │
 // └──────────────────────────────────────────────────────┘
 let _syncInProgress = false
+
+
+async function loadPendingQueue() {
+  const list = document.getElementById('pendingQueueList')
+  const stats = document.getElementById('pendingQueueStats')
+  if (!list) return
+  list.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>'
+
+  const all = await localDB.sync_queue.orderBy('id').reverse().toArray()
+
+  // إحصائيات
+  const pending = all.filter(x => x.status === 'pending')
+  const errors  = all.filter(x => x.status === 'error')
+  const done    = all.filter(x => x.status === 'done')
+
+  stats.innerHTML = `
+    <div style="background:rgba(251,191,36,0.12);border:1px solid var(--yellow);border-radius:8px;padding:8px 14px;font-size:12px;color:var(--yellow);font-weight:700;">⏳ معلق: ${pending.length}</div>
+    <div style="background:rgba(239,68,68,0.12);border:1px solid var(--red);border-radius:8px;padding:8px 14px;font-size:12px;color:var(--red);font-weight:700;">❌ فشل: ${errors.length}</div>
+    <div style="background:rgba(16,185,129,0.12);border:1px solid var(--green);border-radius:8px;padding:8px 14px;font-size:12px;color:var(--green);font-weight:700;">✅ تم: ${done.length}</div>
+  `
+
+  if (!all.length) {
+    list.innerHTML = '<div class="card" style="text-align:center;color:var(--muted);padding:32px;">لا توجد عمليات مسجّلة</div>'
+    return
+  }
+
+  const actionLabel = {
+    insert_family:    '➕ إضافة أسرة',
+    update_family:    '✏️ تعديل أسرة',
+    delete_family:    '🗑️ حذف أسرة',
+    insert_member:    '➕ إضافة فرد',
+    update_member:    '✏️ تعديل فرد',
+    delete_member:    '🗑️ حذف فرد',
+    insert_round_recv:'✅ استلام توزيع',
+    delete_round_recv:'↩️ إلغاء استلام',
+    insert_round:     '📦 إضافة جولة',
+    insert_dist:      '📦 إضافة توزيع',
+    insert_batch:     '📋 إضافة دفعة',
+    insert_camp:      '⛺ إضافة مخيم',
+    update_camp:      '✏️ تعديل مخيم',
+    delete_camp:      '🗑️ حذف مخيم',
+    insert_movement:  '🔀 حركة أسرة',
+  }
+
+  const statusColor = { pending:'var(--yellow)', error:'var(--red)', done:'var(--green)' }
+  const statusIcon  = { pending:'⏳', error:'❌', done:'✅' }
+
+  // عرض آخر 100 فقط
+  const shown = all.slice(0, 100)
+  list.innerHTML = shown.map(item => {
+    let name = ''
+    try {
+      const d = typeof item.data === 'string' ? JSON.parse(item.data) : (item.data || {})
+      name = d.head_name || d.name || d.full_name || d.id?.slice(0,8) || item.record_id?.slice(0,8) || ''
+    } catch(e) {}
+    const label = actionLabel[item.action] || item.action
+    const color = statusColor[item.status] || 'var(--muted)'
+    const icon  = statusIcon[item.status]  || '•'
+    const date  = item.created_at ? new Date(item.created_at).toLocaleString('ar-SA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : ''
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:700;color:var(--text);">${label}</div>
+        ${name ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">${esc(name)}</div>` : ''}
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${date}</div>
+        ${item.status==='error' ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">⚠️ ${esc(item.error||'')}</div>` : ''}
+      </div>
+      <div style="font-size:12px;font-weight:700;color:${color};white-space:nowrap;">${icon} ${item.status==='pending'?'معلق':item.status==='error'?'فشل':'تم'}</div>
+    </div>`
+  }).join('')
+
+  if (all.length > 100) {
+    list.innerHTML += `<div style="text-align:center;color:var(--muted);font-size:12px;padding:12px;">يعرض أحدث 100 عملية من أصل ${all.length}</div>`
+  }
+}
 
 async function processSyncQueue() {
   if (_syncInProgress) {
