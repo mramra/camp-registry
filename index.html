@@ -2115,77 +2115,66 @@ async function init() {
     buildSidebar()
     checkOnlineStatus()
 
-    if (navigator.onLine ) {
-      // withTimeout: إذا تأخرت الشبكة أكثر من 8 ثوانٍ نتجاوز التحقق ونشغّل الأوفلاين
-      const sessionResult = await withTimeout(db.auth.getSession(), 8000)
-      const session = sessionResult?.data?.session
-      if (!session) {
-        // لو timeout أو لا جلسة — شغّل من الكاش بدل إظهار شاشة الدخول
-        const localCamps2 = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
-        if (localCamps2.length) { allCamps = localCamps2; fillCampSelect('filterCamp', true); fillCampSelect('familyCamp'); fillCampSelect('uCamp') }
-        await loadDashboard(); return
-      }
-      // تحقق من is_active من السيرفر مع timeout
-      const memberResult = await withTimeout(
-        db.from('org_members').select('*').eq('user_id', currentUser.id).eq('is_active', true).single(),
-        8000
-      )
-      const freshMember = memberResult?.data
-      if (!freshMember) {
-        // timeout أو غير نشط — استخدم الكاش
-        const localCamps2 = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
-        if (localCamps2.length) { allCamps = localCamps2; fillCampSelect('filterCamp', true); fillCampSelect('familyCamp'); fillCampSelect('uCamp') }
-        await loadDashboard(); return
-      }
-      currentMember = freshMember
-      localStorage.setItem('current_member', JSON.stringify(freshMember))
-      sessionStorage.setItem('current_member', JSON.stringify(freshMember))
-
-      await loadCampsFromServer()
-      try {
-        let q = db.from('families')
-          .select('*')
-          .eq('org_id', ORG_ID).limit(1000)
-        if (currentMember.camp_id) {
-          const subs = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c=>c.id)
-          const ids = [currentMember.camp_id, ...subs]
-          q = ids.length === 1 ? q.eq('camp_id', ids[0]) : q.in('camp_id', ids)
-        }
-        const { data: fams } = await q
-        if (fams?.length) {
-          await safeBulkPut(localDB.families, fams)
-          const srvIds2 = new Set(fams.map(f => f.id))
-          const locals2 = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-          const _delSubs = currentMember.camp_id ? allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c=>c.id) : []
-          const _delAllowed = currentMember.camp_id ? new Set([currentMember.camp_id, ..._delSubs]) : null
-          const toDel2  = locals2.filter(f => {
-            if (_delAllowed && !_delAllowed.has(f.camp_id)) return false
-            return !srvIds2.has(f.id)
-          }).map(f => f.id)
-          if (toDel2.length) await localDB.families.bulkDelete(toDel2)
-          const { data: mems } = await db.from('family_members')
-            .select('*')
-            .in('family_id', fams.map(f => f.id)).limit(2000)
-          if (mems?.length) { await safeReplaceAll(localDB.family_members, mems, r => fams.some(f => f.id === r.family_id)) }
-        } else {
-          if (currentMember.camp_id) {
-            const oldFams = await localDB.families.where('camp_id').equals(currentMember.camp_id).toArray()
-            if (oldFams.length) await localDB.families.bulkDelete(oldFams.map(f => f.id))
-          }
-        }
-      } catch(e) {}
-    } else {
-      // أوف لاين أو وضع محلي — اشتغل من الكاش فوراً
-      const localCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
-      if (localCamps.length) {
-        allCamps = localCamps
-        fillCampSelect('filterCamp', true)
-        fillCampSelect('familyCamp')
-        fillCampSelect('uCamp')
-      }
+    // ── تحميل من الكاش فوراً (بدون انتظار الشبكة) ──
+    const localCamps0 = await localDB.camps.where('org_id').equals(ORG_ID).toArray()
+    if (localCamps0.length) {
+      allCamps = localCamps0
+      fillCampSelect('filterCamp', true)
+      fillCampSelect('familyCamp')
+      fillCampSelect('uCamp')
     }
-
     await loadDashboard()
+
+    // ── مزامنة في الخلفية إذا متصل ──
+    if (navigator.onLine) {
+      setTimeout(async () => {
+        try {
+          const sessionResult = await withTimeout(db.auth.getSession(), 5000)
+          const session = sessionResult?.data?.session
+          if (!session) return
+
+          const memberResult = await withTimeout(
+            db.from('org_members').select('*').eq('user_id', currentUser.id).eq('is_active', true).single(),
+            5000
+          )
+          const freshMember = memberResult?.data
+          if (!freshMember) return
+
+          currentMember = freshMember
+          localStorage.setItem('current_member', JSON.stringify(freshMember))
+          sessionStorage.setItem('current_member', JSON.stringify(freshMember))
+
+          await loadCampsFromServer()
+          setSyncing()
+          try {
+            let q = db.from('families').select('*').eq('org_id', ORG_ID).limit(1000)
+            if (currentMember.camp_id) {
+              const subs = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c=>c.id)
+              const ids = [currentMember.camp_id, ...subs]
+              q = ids.length === 1 ? q.eq('camp_id', ids[0]) : q.in('camp_id', ids)
+            }
+            const { data: fams } = await q
+            if (fams?.length) {
+              await safeBulkPut(localDB.families, fams)
+              const srvIds2 = new Set(fams.map(f => f.id))
+              const locals2 = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+              const _delSubs = currentMember.camp_id ? allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c=>c.id) : []
+              const _delAllowed = currentMember.camp_id ? new Set([currentMember.camp_id, ..._delSubs]) : null
+              const toDel2 = locals2.filter(f => {
+                if (_delAllowed && !_delAllowed.has(f.camp_id)) return false
+                return !srvIds2.has(f.id)
+              }).map(f => f.id)
+              if (toDel2.length) await localDB.families.bulkDelete(toDel2)
+              const { data: mems } = await db.from('family_members')
+                .select('*').in('family_id', fams.map(f => f.id)).limit(2000)
+              if (mems?.length) await safeReplaceAll(localDB.family_members, mems, r => fams.some(f => f.id === r.family_id))
+            }
+          } catch(e) {}
+          clearSyncing()
+          updatePendingBadge()
+        } catch(e) {}
+      }, 500)
+    }
     return
   }
 
@@ -2285,6 +2274,33 @@ async function impersonateUser(memberId) {
   // إعادة تحميل المخيمات بفلتر دور المستخدم الجديد
   _campsCache = { data: null, time: 0, role: null, campId: null }
   await loadCampsFromServer(true)
+
+  // إعادة جلب الأسر بفلتر الدور الجديد
+  try {
+    let q = db.from('families').select('*').eq('org_id', ORG_ID).limit(1000)
+    const role = member.role
+    if (role === 'camp_delegate' && member.camp_id) {
+      const subIds = allCamps.filter(c => c.parent_camp_id === member.camp_id).map(c => c.id)
+      const ids = [member.camp_id, ...subIds]
+      q = ids.length === 1 ? q.eq('camp_id', ids[0]) : q.in('camp_id', ids)
+    } else if (role === 'assistant') {
+      const { data: asCamps } = await db.from('assistant_camps').select('camp_id').eq('assistant_id', member.id)
+      const ids = (asCamps||[]).map(a => a.camp_id)
+      if (ids.length) q = q.in('camp_id', ids)
+      else q = q.eq('id', 'no-match')
+    } else if (role === 'super_admin') {
+      const myMainIds = allCamps.filter(c => c.manager_id === member.id && !c.parent_camp_id).map(c => c.id)
+      const mySubIds  = allCamps.filter(c => myMainIds.includes(c.parent_camp_id)).map(c => c.id)
+      const ids = [...myMainIds, ...mySubIds]
+      if (ids.length) q = q.in('camp_id', ids)
+      else q = q.eq('id', 'no-match')
+    }
+    const { data: fams } = await q
+    if (fams) {
+      await localDB.families.clear()
+      if (fams.length) await localDB.families.bulkPut(fams)
+    }
+  } catch(e) {}
 
   // إظهار شريط التنبيه
   showImpersonateBanner(member.full_name)
@@ -3011,11 +3027,7 @@ async function loadCampsFromServer(force = false) {
       camps = [...(mainCamps||[]), ...(subCamps||[])].filter(c => {
         if (seen.has(c.id)) return false; seen.add(c.id); return true
       })
-      // إذا لم يُعيَّن على أي مخيم → اجلب الكل
-      if (!camps.length) {
-        const { data: allC } = await db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
-        camps = allC || []
-      }
+      // إذا لم يُعيَّن على أي مخيم → يرى فارغاً (لا يجلب الكل)
     } else if (currentMember?.role === 'camp_delegate' && currentMember.camp_id) {
       // مخيم المندوب + فروعه (بدون تكرار)
       const { data: myCamp } = await db.from('camps').select('*').eq('org_id', ORG_ID).eq('id', currentMember.camp_id)
@@ -3024,8 +3036,24 @@ async function loadCampsFromServer(force = false) {
       camps = [...(myCamp||[]), ...(subs||[])].filter(c => {
         if (seenD.has(c.id)) return false; seenD.add(c.id); return true
       })
+    } else if (currentMember?.role === 'assistant') {
+      // المساعد يجلب فقط مخيماته من assistant_camps
+      const { data: asCamps } = await db.from('assistant_camps').select('camp_id').eq('assistant_id', currentMember.id)
+      const campIds = (asCamps||[]).map(a => a.camp_id)
+      if (campIds.length) {
+        const { data: myCamps } = await db.from('camps').select('*').eq('org_id', ORG_ID).in('id', campIds)
+        const subCamps = []
+        for (const cid of campIds) {
+          const { data: subs } = await db.from('camps').select('*').eq('org_id', ORG_ID).eq('parent_camp_id', cid)
+          if (subs?.length) subCamps.push(...subs)
+        }
+        const seen = new Set()
+        camps = [...(myCamps||[]), ...subCamps].filter(c => { if(seen.has(c.id)) return false; seen.add(c.id); return true })
+      } else {
+        camps = []
+      }
     } else {
-      // ملك المنصة أو غيره — الكل
+      // ملك المنصة — الكل
       const { data: allC, error } = await db.from('camps').select('*').eq('org_id', ORG_ID).order('name')
       camps = allC; campsErr = error
     }
@@ -6457,8 +6485,13 @@ async function createUser() {
     }
 
     // تحديد camp_id الرئيسي (أول مخيم للمندوب أو مخيم المساعد)
-    const mainCampId = role === 'camp_delegate' ? delegatePrimaryCampId : null
-    const pagePerms  = role === 'assistant' ? getPagePermissions() : {}
+    const mainCampId   = role === 'camp_delegate' ? delegatePrimaryCampId : null
+    const pagePerms    = role === 'assistant' ? getPagePermissions() : {}
+    const supervisorId = role === 'camp_delegate'
+      ? (document.getElementById('uManagerId')?.value || null)
+      : role === 'assistant'
+        ? (document.getElementById('uDelegateBelongId')?.value || null)
+        : null
 
     const { data: newMember, error: mErr } = await db.from('org_members').insert({
       org_id: ORG_ID, user_id: userId,
@@ -6466,6 +6499,7 @@ async function createUser() {
       role,
       full_name: fullName, phone, national_id: nationalId,
       must_change_pass: true,
+      supervisor_id: supervisorId,
       can_add:    role === 'assistant' ? Object.values(pagePerms).some(p=>p.add)  : true,
       can_edit:   role === 'assistant' ? Object.values(pagePerms).some(p=>p.edit) : true,
       can_delete: role === 'assistant' ? Object.values(pagePerms).some(p=>p.del)  : false,
@@ -6522,7 +6556,7 @@ async function loadUsers() {
       const myUid = currentMember.user_id || currentUser?.id
       const filtered = currentMember.role === 'platform_owner'
         ? local.filter(u => u.role !== 'platform_owner')
-        : local.filter(u => u.created_by === myUid || u.created_by === currentMember.id)
+        : local.filter(u => u.created_by === myUid || u.created_by === currentMember.id || u.id === currentMember.id)
       if (filtered.length) { renderUsersList(filtered, container); return true }
     } catch(e) {}
     return false
@@ -6539,7 +6573,7 @@ async function loadUsers() {
   let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
   if (!['platform_owner'].includes(currentMember.role)) {
     const myUid = currentMember.user_id || currentUser?.id
-    usersQ = usersQ.or(`created_by.eq.${myUid},created_by.eq.${currentMember.id}`)
+    usersQ = usersQ.or(`created_by.eq.${myUid},created_by.eq.${currentMember.id},id.eq.${currentMember.id}`)
   }
   const { data: users, error: ue } = await usersQ.order('created_at', { ascending: false })
   if (ue || !users?.length) {
@@ -6601,7 +6635,7 @@ function renderUsersList(users, container) {
     const rs = roleStyle[u.role] || { border:'var(--border)', bg:'var(--surface)', badge:'rgba(245,158,11,0.15)', badgeColor:'var(--accent)' }
     const indentPx = (u._indent || 0) * 16 + 'px'
     return `
-    <div style="background:${rs.bg};border:1px solid var(--border);border-right:4px solid ${rs.border};border-radius:12px;padding:14px;margin-bottom:8px;margin-right:${indentPx};">
+    <div data-member-id="${u.id}" data-member-name="${esc(u.full_name)}" style="background:${rs.bg};border:1px solid var(--border);border-right:4px solid ${rs.border};border-radius:12px;padding:14px;margin-bottom:8px;margin-right:${indentPx};">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
         <div>
           <div style="font-size:14px;font-weight:700;">${esc(u.full_name)}</div>
@@ -6617,9 +6651,9 @@ function renderUsersList(users, container) {
       </div>
       ${u.role!=='platform_owner'?`<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <button onclick="editUser('${u.id}')" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">✏️ تعديل</button>
-        <button onclick="toggleUserStatus('${u.id}',${u.is_active})" style="background:transparent;border:1px solid ${u.is_active?'var(--red)':'var(--green)'};color:${u.is_active?'var(--red)':'var(--green)'};border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">${u.is_active?'🚫 إيقاف':'✅ تفعيل'}</button>
-        <button onclick="resetUserPassword('${u.id}','${(u.full_name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🔑 إعادة كلمة المرور</button>
-        <button onclick="deleteUser('${u.id}','${(u.full_name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>
+        ${u.id !== currentMember.id ? `<button onclick="toggleUserStatus('${u.id}',${u.is_active})" style="background:transparent;border:1px solid ${u.is_active?'var(--red)':'var(--green)'};color:${u.is_active?'var(--red)':'var(--green)'};border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">${u.is_active?'🚫 إيقاف':'✅ تفعيل'}</button>` : ''}
+        <button data-uid="${u.id}" onclick="resetUserPassword(this.dataset.uid,this.closest('[data-member-id]').dataset.memberName)" style="background:transparent;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🔑 ${u.id===currentMember.id?'تغيير كلمة المرور':'إعادة كلمة المرور'}</button>
+        ${u.id !== currentMember.id ? `<button data-uid="${u.id}" onclick="deleteUser(this.dataset.uid,this.closest('[data-member-id]').dataset.memberName)" style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>` : ''}
         ${currentMember?.role==='platform_owner'&&u.role!=='platform_owner'?`<button onclick="impersonateUser('${u.id}')" style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;color:#8b5cf6;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">👁️ دخول كهذا المستخدم</button>`:''}
       </div>`:`<div style="margin-top:10px;">
         <button onclick="showPage('page-settings')" style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">🔑 تغيير كلمة المرور</button>
@@ -6673,12 +6707,10 @@ async function editUser(id) {
         <input type="tel" id="euPhone" value="${esc(u.phone)}" dir="ltr" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;text-align:center;">
       </div>
 
-      <div class="form-group"><label>الدور</label>
-        <select id="euRole" onchange="euRoleChange()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
-          ${currentMember.role !== 'camp_delegate' ? `<option value="super_admin" ${u.role==='super_admin'?'selected':''}>🔴 مدير الإيواء</option>` : ''}
-          ${currentMember.role !== 'camp_delegate' ? `<option value="camp_delegate" ${u.role==='camp_delegate'?'selected':''}>🟠 مندوب المخيم</option>` : ''}
-          <option value="assistant" ${u.role==='assistant'?'selected':''}>🟡 مساعد</option>
-        </select>
+      <input type="hidden" id="euRole" value="${u.role}">
+      <div class="form-group">
+        <label>الدور</label>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--muted);font-size:13px;">${roleNames[u.role]||u.role}</div>
       </div>
 
       <div class="form-group" id="euCampSection" style="${['camp_delegate','assistant'].includes(u.role)?'':'display:none'}">
@@ -6823,7 +6855,13 @@ async function resetUserPassword(id, name) {
 
 // ══ CAMPS ══
 function showAddCampForm() {
-  openAddCampForm(null, null)
+  // المندوب ينشئ فروعاً فقط — يُعيَّن المخيم الرئيسي تلقائياً
+  if (currentMember?.role === 'camp_delegate' && currentMember.camp_id) {
+    const mainCamp = allCamps.find(c => c.id === currentMember.camp_id)
+    openAddCampForm(currentMember.camp_id, mainCamp?.name || 'مخيمي')
+  } else {
+    openAddCampForm(null, null)
+  }
 }
 
 function openAddCampForm(parentId = null, parentName = null) {
@@ -6840,6 +6878,9 @@ function openAddCampForm(parentId = null, parentName = null) {
   // تعيين المخيم الأب
   const typeEl = document.getElementById('campType')
   const parentEl = document.getElementById('parentCampId')
+  // إخفاء حقل النوع للمندوب (دائماً فرع)
+  const typeRow = typeEl?.closest('.form-group')
+  if (typeRow) typeRow.style.display = currentMember?.role === 'camp_delegate' ? 'none' : ''
   if (parentId) {
     if (typeEl) typeEl.value = 'branch'
     if (parentEl) {
@@ -6918,6 +6959,13 @@ async function saveCamp() {
   const name  = document.getElementById('campName').value.trim()
   const errEl = document.getElementById('campFormError')
   const btn   = document.getElementById('btnSaveCamp')
+  // المندوب يُنشئ فروعاً فقط
+  if (!editingCampId && currentMember?.role === 'camp_delegate') {
+    const parentVal = document.getElementById('parentCampId')?.value
+    if (!parentVal) {
+      errEl.textContent = 'المندوب يمكنه إنشاء فروع فقط'; errEl.style.display='block'; return
+    }
+  }
   if (!name) { errEl.textContent='يرجى إدخال اسم المخيم'; errEl.style.display='block'; return }
 
   btn.disabled=true; btn.textContent='جارٍ الحفظ...'; errEl.style.display='none'
@@ -7079,7 +7127,7 @@ async function loadCampsList() {
 
   // زر إضافة مخيم
   const btnAdd = document.getElementById('btnAddCamp')
-  if (btnAdd) btnAdd.style.display = (isOwner || isAdmin) ? 'inline-flex' : 'none'
+  if (btnAdd) btnAdd.style.display = (isOwner || isAdmin || isDelegate) ? 'inline-flex' : 'none'
 
   // ── فلتر المخيمات حسب الدور ──
   let visibleCamps = allCamps
@@ -7165,7 +7213,7 @@ async function loadCampsList() {
             style="background:rgba(139,92,246,0.1);border:1px solid var(--purple);color:var(--purple);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">👤 مدير إيواء</button>` : ''}
           ${isAdmin && !isChild ? `<button onclick="assignCampDelegate('${c.id}','${esc(c.name)}')"
             style="background:rgba(245,158,11,0.1);border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">🟠 مندوب</button>` : ''}
-          ${(isOwner||isAdmin) ? `<button onclick="editCamp('${c.id}')"
+          ${(isOwner||isAdmin||(isDelegate&&(c.id===currentMember.camp_id||c.parent_camp_id===currentMember.camp_id))) ? `<button onclick="editCamp('${c.id}')"
             style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">✏️ تعديل</button>` : ''}
           ${(isOwner||isAdmin) && !isChild ? `<button onclick="addSubCamp('${c.id}','${esc(c.name)}')"
             style="background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">➕ فرع</button>` : ''}
@@ -9428,25 +9476,36 @@ async function pullAllData() {
 
     _syncLog('بدء جلب البيانات من الخادم...')
 
-    // جلب المخيمات
-    const { data: camps, error: ce } = await db.from('camps').select('*').eq('org_id', ORG_ID)
-    if (ce) throw ce
-    await localDB.camps.clear()
-    if (camps?.length) await localDB.camps.bulkPut(camps)
-    allCamps = camps || []
-    fillCampSelect('filterCamp', true)
-    fillCampSelect('familyCamp')
-    fillCampSelect('cCamp', false)
-    fillCampSelect('uCamp')
-    _syncLog(`✅ المخيمات: ${camps?.length || 0}`, 'var(--green)')
+    // جلب المخيمات حسب الدور
+    _syncLog('جلب المخيمات...')
+    await loadCampsFromServer(true)
+    _syncLog(`✅ المخيمات: ${allCamps.length}`, 'var(--green)')
+
+    // بناء فلتر الأسر حسب الدور
+    const _role = currentMember?.role
+    let _campIds = null // null = الكل
+    if (_role === 'camp_delegate' && currentMember.camp_id) {
+      const subs = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)
+      _campIds = [currentMember.camp_id, ...subs]
+    } else if (_role === 'assistant') {
+      const { data: asCamps } = await db.from('assistant_camps').select('camp_id').eq('assistant_id', currentMember.id)
+      _campIds = (asCamps||[]).map(a => a.camp_id)
+    } else if (_role === 'super_admin') {
+      const myMainIds = allCamps.filter(c => c.manager_id === currentMember.id && !c.parent_camp_id).map(c => c.id)
+      const mySubIds  = allCamps.filter(c => myMainIds.includes(c.parent_camp_id)).map(c => c.id)
+      _campIds = myMainIds.length ? [...myMainIds, ...mySubIds] : []
+    }
 
     // جلب الأسر (دفعات)
     _syncLog('جلب الأسر...')
     let famPage = 0, famTotal = 0, allFams = []
     while (true) {
-      const { data: batch, error: fe } = await db.from('families')
-        .select('*').eq('org_id', ORG_ID)
-        .range(famPage * 1000, famPage * 1000 + 999)
+      let q = db.from('families').select('*').eq('org_id', ORG_ID).range(famPage * 1000, famPage * 1000 + 999)
+      if (_campIds !== null) {
+        if (!_campIds.length) break // لا مخيمات — لا أسر
+        q = _campIds.length === 1 ? q.eq('camp_id', _campIds[0]) : q.in('camp_id', _campIds)
+      }
+      const { data: batch, error: fe } = await q
       if (fe) throw fe
       if (!batch?.length) break
       allFams = allFams.concat(batch)
@@ -10974,6 +11033,34 @@ async function doOldImport() {
 // └──────────────────────────────────────────────────────┘
 let currentDist = null  // التوزيع المفتوح حالياً
 
+
+// مساعد: بناء استعلام جولات التوزيع حسب صلاحية المستخدم
+function buildDistRoundsQuery(campFilterId) {
+  const role = currentMember?.role
+  let q = db.from('dist_rounds').select('*').eq('org_id', ORG_ID)
+
+  if (role === 'platform_owner') {
+    // يرى الكل
+    if (campFilterId) q = q.eq('camp_id', campFilterId)
+  } else if (role === 'super_admin') {
+    const myMainIds = allCamps.filter(c => c.manager_id === currentMember.id && !c.parent_camp_id).map(c => c.id)
+    const mySubIds  = allCamps.filter(c => myMainIds.includes(c.parent_camp_id)).map(c => c.id)
+    const myIds = [...myMainIds, ...mySubIds]
+    if (!myIds.length) q = q.eq('id', 'no-match')
+    else if (campFilterId) q = q.eq('camp_id', campFilterId)
+    else q = q.in('camp_id', myIds)
+  } else {
+    // camp_delegate أو assistant — مخيماتهم فقط، بدون null
+    const mainId = currentMember.camp_id
+    const subIds = mainId ? allCamps.filter(c => c.parent_camp_id === mainId).map(c => c.id) : []
+    const myIds  = mainId ? [mainId, ...subIds] : []
+    if (!myIds.length) q = q.eq('id', 'no-match')
+    else if (campFilterId) q = q.eq('camp_id', campFilterId)
+    else q = q.in('camp_id', myIds)
+  }
+  return q.order('seq', { ascending: false })
+}
+
 async function loadDistPage() {
   const out = document.getElementById('distContent')
   if (!out) return
@@ -10983,9 +11070,42 @@ async function loadDistPage() {
   const campFilter = campSel?.value || ''
 
   // جلب الجولات — محلي أولاً، فإن فارغ انتظر السيرفر
+  // تحديد المخيمات المسموح بها للمستخدم
+  const _myDistCampIds = await (async () => {
+    const role = currentMember?.role
+    if (!role || role === 'platform_owner') return null // يرى الكل
+
+    if (role === 'super_admin') {
+      const myMainCamps = allCamps.filter(c => c.manager_id === currentMember.id && !c.parent_camp_id)
+      if (!myMainCamps.length) return new Set()
+      const myMainIds = myMainCamps.map(c => c.id)
+      const mySubs = allCamps.filter(c => myMainIds.includes(c.parent_camp_id)).map(c => c.id)
+      return new Set([...myMainIds, ...mySubs])
+    }
+
+    if (role === 'assistant') {
+      // المساعد يرى مخيماته من assistant_camps
+      try {
+        const asCamps = await localDB.assistant_camps.where('assistant_id').equals(currentMember.id).toArray()
+        const ids = asCamps.map(a => a.camp_id)
+        if (!ids.length) return new Set()
+        // أضف الفروع لكل مخيم رئيسي
+        const subs = allCamps.filter(c => ids.includes(c.parent_camp_id)).map(c => c.id)
+        return new Set([...ids, ...subs])
+      } catch(e) { return new Set() }
+    }
+
+    // camp_delegate
+    const mainId = currentMember.camp_id
+    if (!mainId) return new Set()
+    const subs = allCamps.filter(c => c.parent_camp_id === mainId).map(c => c.id)
+    return new Set([mainId, ...subs])
+  })()
+
   let rounds = []
   try {
     let all = await localDB.dist_rounds.where('org_id').equals(ORG_ID).toArray()
+    if (_myDistCampIds) all = all.filter(r => r.camp_id && _myDistCampIds.has(r.camp_id))
     rounds = campFilter ? all.filter(r => r.camp_id === campFilter || !r.camp_id) : all
   } catch(e) {}
 
@@ -10994,16 +11114,8 @@ async function loadDistPage() {
     const _distOn = await checkRealConnection()
     if (_distOn) {
       try {
-        let srvRounds = []
-        if (campFilter) {
-          const { data: d1 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).eq('camp_id', campFilter).order('seq', { ascending: false })
-          const { data: d2 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).is('camp_id', null).order('seq', { ascending: false })
-          const seen = new Set(); srvRounds = [...(d1||[]), ...(d2||[])].filter(r => { if(seen.has(r.id)) return false; seen.add(r.id); return true })
-        } else {
-          const { data } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).order('seq', { ascending: false })
-          srvRounds = data || []
-        }
-        if (srvRounds.length) {
+        const { data: srvRounds } = await buildDistRoundsQuery(campFilter)
+        if (srvRounds?.length) {
           await localDB.dist_rounds.bulkPut(srvRounds)
           rounds = srvRounds
         }
@@ -11015,16 +11127,8 @@ async function loadDistPage() {
       const _distOn = await checkRealConnection()
       if (!_distOn) return
       try {
-        let srvRounds = []
-        if (campFilter) {
-          const { data: d1 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).eq('camp_id', campFilter).order('seq', { ascending: false })
-          const { data: d2 } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).is('camp_id', null).order('seq', { ascending: false })
-          const seen = new Set(); srvRounds = [...(d1||[]), ...(d2||[])].filter(r => { if(seen.has(r.id)) return false; seen.add(r.id); return true })
-        } else {
-          const { data } = await db.from('dist_rounds').select('*').eq('org_id', ORG_ID).order('seq', { ascending: false })
-          srvRounds = data || []
-        }
-        if (srvRounds.length) await localDB.dist_rounds.bulkPut(srvRounds)
+        const { data: srvRounds } = await buildDistRoundsQuery(campFilter)
+        if (srvRounds?.length) await localDB.dist_rounds.bulkPut(srvRounds)
       } catch(e) {}
     })()
   }
