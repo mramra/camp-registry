@@ -702,21 +702,48 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
             <div style="text-align:right;">الصفحة</div>
             <div>➕</div><div>✏️</div><div>🗑️</div>
           </div>
-          ${[
-            ['families',    '👨‍👩‍👧 قائمة الأسر'],
-            ['add_family',  '➕ إضافة أسرة'],
-            ['dist',        '📦 التوزيع'],
-            ['women',       '👩 النساء'],
-            ['children',    '🧒 الأطفال'],
-            ['health',      '⚕️ الحالات الصحية'],
-            ['needs',       '📋 تقارير الاحتياجات'],
-          ].map(([key,label]) => `
           <div style="display:grid;grid-template-columns:1fr repeat(3,44px);padding:8px 12px;border-bottom:1px solid var(--border);align-items:center;">
-            <div style="font-size:12px;">${label}</div>
-            <div style="text-align:center;"><input type="checkbox" id="uperm_${key}_add"   style="accent-color:var(--accent);width:16px;height:16px;"></div>
-            <div style="text-align:center;"><input type="checkbox" id="uperm_${key}_edit"  style="accent-color:var(--blue);width:16px;height:16px;"></div>
-            <div style="text-align:center;"><input type="checkbox" id="uperm_${key}_del"   style="accent-color:var(--red);width:16px;height:16px;"></div>
-          </div>`).join('')}
+            <div style="font-size:12px;">👨‍👩‍👧 قائمة الأسر</div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_families_add"   style="accent-color:var(--accent);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_families_edit"  style="accent-color:var(--blue);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_families_del"   style="accent-color:var(--red);width:16px;height:16px;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr repeat(3,44px);padding:8px 12px;border-bottom:1px solid var(--border);align-items:center;">
+            <div style="font-size:12px;">➕ إضافة أسرة</div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_add_family_add"   style="accent-color:var(--accent);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_add_family_edit"  style="accent-color:var(--blue);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_add_family_del"   style="accent-color:var(--red);width:16px;height:16px;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr repeat(3,44px);padding:8px 12px;border-bottom:1px solid var(--border);align-items:center;">
+            <div style="font-size:12px;">📦 التوزيع</div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_dist_add"   style="accent-color:var(--accent);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_dist_edit"  style="accent-color:var(--blue);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_dist_del"   style="accent-color:var(--red);width:16px;height:16px;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr repeat(3,44px);padding:8px 12px;border-bottom:1px solid var(--border);align-items:center;">
+            <div style="font-size:12px;">👩 النساء</div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_women_add"   style="accent-color:var(--accent);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_women_edit"  style="accent-color:var(--blue);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_women_del"   style="accent-color:var(--red);width:16px;height:16px;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr repeat(3,44px);padding:8px 12px;border-bottom:1px solid var(--border);align-items:center;">
+            <div style="font-size:12px;">🧒 الأطفال</div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_children_add"   style="accent-color:var(--accent);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_children_edit"  style="accent-color:var(--blue);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_children_del"   style="accent-color:var(--red);width:16px;height:16px;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr repeat(3,44px);padding:8px 12px;border-bottom:1px solid var(--border);align-items:center;">
+            <div style="font-size:12px;">⚕️ الحالات الصحية</div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_health_add"   style="accent-color:var(--accent);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_health_edit"  style="accent-color:var(--blue);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_health_del"   style="accent-color:var(--red);width:16px;height:16px;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr repeat(3,44px);padding:8px 12px;border-bottom:1px solid var(--border);align-items:center;">
+            <div style="font-size:12px;">📋 تقارير الاحتياجات</div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_needs_add"   style="accent-color:var(--accent);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_needs_edit"  style="accent-color:var(--blue);width:16px;height:16px;"></div>
+            <div style="text-align:center;"><input type="checkbox" id="uperm_needs_del"   style="accent-color:var(--red);width:16px;height:16px;"></div>
+          </div>
         </div>
         <div style="display:flex;gap:8px;margin-top:8px;">
           <button onclick="setAllPerms(true)"  style="flex:1;background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:6px;padding:5px;font-size:11px;font-family:Cairo,sans-serif;cursor:pointer;">✅ تحديد الكل</button>
@@ -3745,8 +3772,12 @@ async function loadFamilies() {
   async function render(families) {
     const missing = document.getElementById('filterMissing')?.value || ''
     let list = [...families]
-    if (currentMember.role === 'super_admin' || currentMember.role === 'camp_delegate') {
-      // السيرفر جلب البيانات الصحيحة (مخيم + فروع) — لا نُعيد الفلترة محلياً
+    if (currentMember.role === 'camp_delegate') {
+      // فلترة محلية: مخيمه الرئيسي + فروعه
+      const delegateSubs = new Set([currentMember.camp_id, ...allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)])
+      list = list.filter(f => delegateSubs.has(f.camp_id))
+    } else if (currentMember.role === 'super_admin') {
+      // السيرفر جلب البيانات الصحيحة — لا نُعيد الفلترة محلياً
     } else if (currentMember.camp_id) {
       // أدوار أخرى لها camp_id — فلترة بسيطة
       const subCampIds = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)
@@ -3956,8 +3987,22 @@ async function loadFamilies() {
       }
       // لا مخيمات → يرى الكل
     } else if (currentMember.camp_id) {
-      const subCamps = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)
-      const delegateCampIds = [currentMember.camp_id, ...subCamps]
+      // جلب الفروع مباشرة من السيرفر لضمان اكتمالها
+      let subCampIds = allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)
+      if (!subCampIds.length) {
+        const { data: freshSubs } = await db.from('camps').select('id').eq('org_id', ORG_ID).eq('parent_camp_id', currentMember.camp_id)
+        subCampIds = (freshSubs||[]).map(c => c.id)
+        // تحديث allCamps إذا وجدنا فروعاً جديدة
+        if (subCampIds.length) {
+          const { data: freshSubsFull } = await db.from('camps').select('*').eq('org_id', ORG_ID).eq('parent_camp_id', currentMember.camp_id)
+          if (freshSubsFull?.length) {
+            const existingIds = new Set(allCamps.map(c => c.id))
+            freshSubsFull.forEach(c => { if (!existingIds.has(c.id)) allCamps.push(c) })
+            await localDB.camps.bulkPut(freshSubsFull)
+          }
+        }
+      }
+      const delegateCampIds = [currentMember.camp_id, ...subCampIds]
       if (delegateCampIds.length === 1) q = q.eq('camp_id', currentMember.camp_id)
       else q = q.in('camp_id', delegateCampIds)
     }
@@ -7034,7 +7079,7 @@ async function loadCampsList() {
 
   // زر إضافة مخيم
   const btnAdd = document.getElementById('btnAddCamp')
-  if (btnAdd) btnAdd.style.display = (isOwner || isAdmin || isDelegate) ? 'inline-flex' : 'none'
+  if (btnAdd) btnAdd.style.display = (isOwner || isAdmin) ? 'inline-flex' : 'none'
 
   // ── فلتر المخيمات حسب الدور ──
   let visibleCamps = allCamps
@@ -7120,9 +7165,9 @@ async function loadCampsList() {
             style="background:rgba(139,92,246,0.1);border:1px solid var(--purple);color:var(--purple);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">👤 مدير إيواء</button>` : ''}
           ${isAdmin && !isChild ? `<button onclick="assignCampDelegate('${c.id}','${esc(c.name)}')"
             style="background:rgba(245,158,11,0.1);border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">🟠 مندوب</button>` : ''}
-          ${(isOwner||isAdmin||isDelegate) ? `<button onclick="editCamp('${c.id}')"
+          ${(isOwner||isAdmin) ? `<button onclick="editCamp('${c.id}')"
             style="background:rgba(59,130,246,0.1);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">✏️ تعديل</button>` : ''}
-          ${(isOwner||isAdmin||isDelegate) && !isChild ? `<button onclick="addSubCamp('${c.id}','${esc(c.name)}')"
+          ${(isOwner||isAdmin) && !isChild ? `<button onclick="addSubCamp('${c.id}','${esc(c.name)}')"
             style="background:rgba(16,185,129,0.1);border:1px solid var(--green);color:var(--green);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">➕ فرع</button>` : ''}
           ${isOwner&&fc===0&&navigator.onLine ? `<button onclick="deleteCamp('${c.id}','${esc(c.name)}')"
             style="background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;font-family:Cairo,sans-serif;">🗑️ حذف</button>` : ''}
@@ -8318,9 +8363,13 @@ async function loadChildrenPage() {
   const maxAge  = isNaN(ageTo) ? 17 : ageTo
 
   // جلب الأسر حسب المخيم
-  const activeCamp = currentMember?.camp_id || campId
   let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  if (activeCamp) families = families.filter(f => f.camp_id === activeCamp)
+  if (campId) {
+    families = families.filter(f => f.camp_id === campId)
+  } else if (currentMember?.camp_id) {
+    const _subs = new Set([currentMember.camp_id, ...allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)])
+    families = families.filter(f => _subs.has(f.camp_id))
+  }
   const famIds = new Set(families.map(f => f.id))
   const famMap = {}; families.forEach(f => famMap[f.id] = f)
 
@@ -8871,11 +8920,14 @@ async function loadHealthReport() {
 
   const campId  = document.getElementById('hrCampFilter')?.value || ''
   const catFilter = document.getElementById('hrCatFilter')?.value || ''
-  const activeCamp = currentMember?.camp_id || campId
-
   // جلب الأسر
   let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  if (activeCamp) families = families.filter(f => f.camp_id === activeCamp)
+  if (campId) {
+    families = families.filter(f => f.camp_id === campId)
+  } else if (currentMember?.camp_id) {
+    const _subs = new Set([currentMember.camp_id, ...allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)])
+    families = families.filter(f => _subs.has(f.camp_id))
+  }
   const famMap = {}; families.forEach(f => famMap[f.id] = f)
   const famIds = new Set(Object.keys(famMap))
 
@@ -12649,7 +12701,8 @@ async function loadAnalysis2() {
     const myCampIds = getMyCampIds()
     fams = fams.filter(f => myCampIds.includes(f.camp_id))
   } else if (currentMember.camp_id) {
-    fams = fams.filter(f => f.camp_id === currentMember.camp_id)
+    const _mySubs = new Set([currentMember.camp_id, ...allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)])
+    fams = fams.filter(f => _mySubs.has(f.camp_id))
   }
 
   const famIds = new Set(fams.map(f => f.id))
@@ -12821,7 +12874,8 @@ async function getReportData() {
     const myCampIds = getMyCampIds()
     fams = fams.filter(f => myCampIds.includes(f.camp_id))
   } else if (currentMember.camp_id) {
-    fams = fams.filter(f => f.camp_id === currentMember.camp_id)
+    const _mySubs = new Set([currentMember.camp_id, ...allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)])
+    fams = fams.filter(f => _mySubs.has(f.camp_id))
   }
 
   // فلتر المخيم
@@ -13326,7 +13380,12 @@ async function loadAlertsPage() {
 
   try {
     // جلب البيانات
-    const fams    = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+    let fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+    // المندوب يرى فقط أسر مخيمه
+    if (currentMember.role === 'camp_delegate' && currentMember.camp_id) {
+      const _mySubs = new Set([currentMember.camp_id, ...allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)])
+      fams = fams.filter(f => _mySubs.has(f.camp_id))
+    }
     const members = await localDB.family_members.toArray()
     const mByFam  = {}; members.forEach(m => { if(!mByFam[m.family_id]) mByFam[m.family_id]=[]; mByFam[m.family_id].push(m) })
 
@@ -13363,7 +13422,10 @@ async function loadAlertsPage() {
     if (navigator.onLine) {
       const campCount = {}
       fams.forEach(f => { campCount[f.camp_id] = (campCount[f.camp_id]||0)+1 })
-      allCamps.forEach(c => {
+      const visibleCampsForAlerts = currentMember.role === 'camp_delegate' && currentMember.camp_id
+        ? allCamps.filter(c => c.id === currentMember.camp_id || c.parent_camp_id === currentMember.camp_id)
+        : allCamps
+      visibleCampsForAlerts.forEach(c => {
         if (!c.capacity) return
         const n = campCount[c.id]||0
         const pct = Math.round(n/c.capacity*100)
@@ -13402,8 +13464,8 @@ async function loadAlertsPage() {
       } catch(e) {}
     }
 
-    // ⑥ مستخدمون لم يغيّروا كلمة المرور
-    if (['platform_owner','super_admin','camp_delegate'].includes(currentMember.role)) {
+    // ⑥ مستخدمون لم يغيّروا كلمة المرور — للمالك والمدير فقط
+    if (['platform_owner','super_admin'].includes(currentMember.role)) {
       const { data: pending } = await db.from('org_members')
         .select('full_name').eq('org_id', ORG_ID).eq('must_change_pass', true)
       if (pending?.length) alerts.push({
@@ -14906,8 +14968,12 @@ async function loadWomenPage() {
   const ageTo   = parseInt(document.getElementById('womenAgeTo')?.value)   || 120
 
   let fams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  if (currentMember.camp_id) fams = fams.filter(f => f.camp_id === currentMember.camp_id)
-  else if (campId) fams = fams.filter(f => f.camp_id === campId)
+  if (campId) {
+    fams = fams.filter(f => f.camp_id === campId)
+  } else if (currentMember.camp_id) {
+    const mySubs = new Set([currentMember.camp_id, ...allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)])
+    fams = fams.filter(f => mySubs.has(f.camp_id))
+  }
 
   const famIds = new Set(fams.map(f => f.id))
   const allMems = await localDB.family_members.toArray()
@@ -14984,19 +15050,24 @@ async function loadWomenPage() {
 
   // ── الإحصاءات ──
   // ── الإحصاءات المُصحَّحة ──
-  const divorced = filtered.filter(w =>
-    ['مطلقة'].includes(w.marital) ||
-    ['مطلقة'].includes(w.relation)
-  )
-  const widows = filtered.filter(w =>
-    w.marital === 'أرملة' ||
-    w.relation === 'أرملة'
-  )
-  // متزوجة = رب أسرة حالتها متزوجة، أو فرد علاقتها زوجة
-  const married = filtered.filter(w =>
-    w.marital === 'متزوجة' ||
-    ['زوجة','wife'].includes((w.relation||'').trim())
-  )
+  // حالات الطلاق — ذكر + أنثى
+  const divorced = filtered.filter(w => {
+    const m = (w.marital||'').trim()
+    const r = (w.relation||'').trim()
+    return ['مطلقة','مطلق','divorced'].includes(m) || ['مطلقة','مطلق'].includes(r)
+  })
+  // حالات الترمّل
+  const widows = filtered.filter(w => {
+    const m = (w.marital||'').trim()
+    const r = (w.relation||'').trim()
+    return ['أرملة','أرمل','widow'].includes(m) || ['أرملة','أرمل'].includes(r)
+  })
+  // متزوجة = رب أسرة متزوج/ة أو فرد علاقتها زوجة
+  const married = filtered.filter(w => {
+    const m = (w.marital||'').trim()
+    const r = (w.relation||'').trim()
+    return ['متزوجة','متزوج','married'].includes(m) || ['زوجة','زوج','wife'].includes(r)
+  })
   // مرضعة = مسجّلة يدوياً أو تلقائياً (أنثى في سن الإنجاب + رضيع في الأسرة)
   const nursing = filtered.filter(w => {
     // حالة 1: مسجّلة صريحاً كمرضعة
@@ -15011,8 +15082,8 @@ async function loadWomenPage() {
   })
   const pregnant = filtered.filter(w => Array.isArray(w.female_status) && w.female_status.includes('حامل'))
   const injured  = filtered.filter(w => Array.isArray(w.injuries) && w.injuries.length)
-  const disabled = filtered.filter(w => (Array.isArray(w.disabilities) && w.disabilities.length) || w.health === 'معاق')
-  const chronic  = filtered.filter(w => (Array.isArray(w.chronic_diseases) && w.chronic_diseases.length) || w.health === 'مزمن')
+  const disabled = filtered.filter(w => (Array.isArray(w.disabilities) && w.disabilities.length) || (typeof w.disabilities === 'string' && w.disabilities.trim()) || w.health === 'معاق')
+  const chronic  = filtered.filter(w => (Array.isArray(w.chronic_diseases) && w.chronic_diseases.length) || (typeof w.chronic_diseases === 'string' && w.chronic_diseases.trim()) || w.health === 'مزمن')
 
   const statCard = (n, label, color, icon) =>
     `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
@@ -15138,8 +15209,12 @@ async function loadNeedsReport() {
 
   // جلب البيانات
   let families = await localDB.families.where('org_id').equals(ORG_ID).toArray()
-  if (currentMember.camp_id) families = families.filter(f => f.camp_id === currentMember.camp_id)
-  else if (camp) families = families.filter(f => f.camp_id === camp)
+  if (camp) {
+    families = families.filter(f => f.camp_id === camp)
+  } else if (currentMember.camp_id) {
+    const _subs = new Set([currentMember.camp_id, ...allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c => c.id)])
+    families = families.filter(f => _subs.has(f.camp_id))
+  }
 
   const members = await localDB.family_members.toArray()
   const mByFam = {}
