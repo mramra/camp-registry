@@ -6670,7 +6670,13 @@ async function loadUsers() {
   let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
   if (!['platform_owner'].includes(currentMember.role)) {
     const myUid = currentMember.user_id || currentUser?.id
-    usersQ = usersQ.or(`created_by.eq.${myUid},created_by.eq.${currentMember.id},id.eq.${currentMember.id}`)
+    // مناديب المخيمات التي يديرها هذا المدير (manager_id = currentMember.id)
+    const myCampIds = allCamps.filter(c => c.manager_id === currentMember.id).map(c => c.id)
+    let orFilter = `created_by.eq.${myUid},created_by.eq.${currentMember.id},id.eq.${currentMember.id}`
+    if (myCampIds.length) {
+      myCampIds.forEach(cid => { orFilter += `,camp_id.eq.${cid}` })
+    }
+    usersQ = usersQ.or(orFilter)
   }
   const { data: users, error: ue } = await usersQ.order('created_at', { ascending: false })
   if (ue || !users?.length) {
