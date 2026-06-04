@@ -889,6 +889,18 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
       <button id="cleanupDeleteBtn" onclick="cleanupDelete()" style="display:none;width:100%;padding:11px;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-top:8px;">🗑️ حذف المكررين</button>
     </div>
 
+    <!-- تنظيف سجلات التوزيع الأيتام — للمالك فقط -->
+    <div class="card" id="orphanDistCard" style="display:none;">
+      <div class="card-title" style="color:var(--red);">🗑️ سجلات التوزيع الأيتام</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.8;">
+        يكشف ويحذف سجلات في <code>camp_dist_families</code> ترتبط بجولات غير موجودة.<br>
+        <strong style="color:var(--red);">⚠️ لا يمكن التراجع — خذ نسخة احتياطية أولاً</strong>
+      </div>
+      <button onclick="scanOrphanDist()" class="btn btn-primary" style="margin-bottom:10px;">🔍 فحص السجلات الأيتام</button>
+      <div id="orphanDistResult"></div>
+      <button id="orphanDistDeleteBtn" onclick="deleteOrphanDist()" style="display:none;width:100%;padding:11px;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-top:8px;">🗑️ حذف السجلات الأيتام</button>
+    </div>
+
     <!-- النسخة الاحتياطية — للمالك والمدير -->
     <div class="card" id="backupCard" style="display:none;">
       <div class="card-title">💾 النسخة الاحتياطية</div>
@@ -2299,6 +2311,22 @@ async function impersonateUser(memberId) {
     }
   } catch(e) {}
 
+  // ── تسجيل في audit_logs ──
+  const _origMember = _impersonating.original
+  try {
+    await db.from('audit_logs').insert({
+      org_id:      ORG_ID,
+      user_id:     currentUser?.id || null,
+      user_name:   _origMember.full_name,
+      user_role:   _origMember.role,
+      action:      'دخول كمستخدم آخر',
+      target_id:   member.id,
+      target_name: member.full_name,
+      details:     { target_role: member.role, target_camp: allCamps.find(c=>c.id===member.camp_id)?.name || null },
+      created_at:  new Date().toISOString()
+    })
+  } catch(e) {}
+
   // إظهار شريط التنبيه
   showImpersonateBanner(member.full_name)
   buildSidebar()
@@ -2334,10 +2362,26 @@ function showImpersonateBanner(name) {
 
 async function stopImpersonating() {
   if (!_impersonating) return
+  const _prevMember = currentMember  // المستخدم الذي كنا نتصفح كـه
   currentMember = _impersonating.original
   _impersonating = null
   _userCampIds = null
   window._superAdminCampIds = undefined
+
+  // ── تسجيل الخروج من وضع التصفح ──
+  try {
+    await db.from('audit_logs').insert({
+      org_id:      ORG_ID,
+      user_id:     currentUser?.id || null,
+      user_name:   currentMember.full_name,
+      user_role:   currentMember.role,
+      action:      'إنهاء التصفح كمستخدم آخر',
+      target_id:   _prevMember.id,
+      target_name: _prevMember.full_name,
+      details:     { target_role: _prevMember.role },
+      created_at:  new Date().toISOString()
+    })
+  } catch(e) {}
 
   // إعادة تحميل كل المخيمات (ملك المنصة يرى الكل)
   _campsCache = { data: null, time: 0, role: null, campId: null }
@@ -2856,6 +2900,8 @@ async function showPage(pageId) {
   if (pageId === 'page-settings') {
     const cc = document.getElementById('cleanupCard')
     if (cc) cc.style.display = currentMember.role === 'platform_owner' ? 'block' : 'none'
+    const odc = document.getElementById('orphanDistCard')
+    if (odc) odc.style.display = currentMember.role === 'platform_owner' ? 'block' : 'none'
     const bc = document.getElementById('backupCard')
     if (bc) bc.style.display = ['platform_owner','super_admin'].includes(currentMember.role) ? 'block' : 'none'
     const sc = document.getElementById('securityCard')
@@ -5012,8 +5058,23 @@ async function recordFamilyHistory(action, familyId, oldData, newData) {
   } catch(e) { console.warn('history:', e.message) }
 }
 
+// ── فحص ملكية الأسرة: هل المخيم المسموح به للمستخدم؟ ──
+async function canAccessFamily(familyId) {
+  if (!currentMember) return false
+  const role = currentMember.role
+  // platform_owner و super_admin يملكان صلاحية على كل شيء
+  if (role === 'platform_owner' || role === 'super_admin') return true
+  // الباقون: تحقق أن المخيم ضمن مخيماتهم المسموحة
+  const fam = allFamilies.find(f => f.id === familyId)
+      || await localDB.families.get(familyId)
+  if (!fam) return false
+  const allowedIds = await getUserCampIds()
+  return allowedIds.includes(fam.camp_id)
+}
+
 async function deleteFamily(id) {
   if (!(await canDeleteSafe())) { showToast('⚠️ لا تملك صلاحية الحذف', true); return }
+  if (!(await canAccessFamily(id))) { showToast('⛔ لا يمكنك حذف أسرة خارج مخيمك', true); return }
   const fam  = allFamilies.find(f => f.id === id) || {}
   const name = fam.head_name || 'هذه الأسرة'
   if (!confirm(`هل تريد حذف أسرة ${name}؟`)) return
@@ -5696,6 +5757,7 @@ async function updateFamily(id) {
   }
 
   if (!(await canEditSafe())) { showErr('لا تملك صلاحية التعديل'); return }
+  if (!(await canAccessFamily(id))) { showErr('لا يمكنك تعديل أسرة خارج مخيمك'); return }
   const headName = document.getElementById('headName').value.trim()
   if (!headName) { showErr('يرجى إدخال اسم رب الأسرة'); return }
 
@@ -5724,6 +5786,10 @@ async function updateFamily(id) {
 }
 
 async function doUpdateFamily(id) {
+  // ── طبقة أمان ثانية: تحقق من الملكية قبل الحفظ ──
+  if (!(await canAccessFamily(id))) {
+    showToast('⛔ لا يمكنك تعديل أسرة خارج مخيمك', true); return
+  }
   const headName = document.getElementById('headName').value.trim()
   const btn      = document.getElementById('btnSaveFamily')
   btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'
@@ -8474,6 +8540,67 @@ async function cleanupDelete() {
   cleanupDupFamilies = []
   btn.style.display = 'none'
   await cleanupScan() // تحقق أخير
+}
+
+// ══ تنظيف سجلات التوزيع الأيتام ══
+let _orphanDistIds = []
+
+async function scanOrphanDist() {
+  if (currentMember?.role !== 'platform_owner') { showToast('⛔ للمالك فقط', true); return }
+  const resultEl = document.getElementById('orphanDistResult')
+  const btn = document.getElementById('orphanDistDeleteBtn')
+  resultEl.innerHTML = '<div style="color:var(--muted);font-size:12px;">⏳ جارٍ الفحص...</div>'
+  btn.style.display = 'none'
+  _orphanDistIds = []
+
+  try {
+    const _on = await checkRealConnection()
+    if (!_on) { resultEl.innerHTML = '<div style="color:var(--red);font-size:12px;">⚠️ يحتاج اتصالاً بالإنترنت</div>'; return }
+
+    // جلب كل round_ids الموجودة
+    const { data: rounds } = await db.from('dist_rounds').select('id').eq('org_id', ORG_ID)
+    const validRoundIds = new Set((rounds||[]).map(r => r.id))
+
+    // جلب كل سجلات camp_dist_families التي لها round_id
+    const { data: recs } = await db.from('camp_dist_families').select('id, round_id').not('round_id', 'is', null)
+    const orphans = (recs||[]).filter(r => !validRoundIds.has(r.round_id))
+    _orphanDistIds = orphans.map(r => r.id)
+
+    if (!orphans.length) {
+      resultEl.innerHTML = '<div style="color:var(--green);font-size:12px;">✅ لا توجد سجلات أيتام</div>'
+    } else {
+      resultEl.innerHTML = `<div style="color:var(--red);font-size:12px;padding:10px;background:rgba(239,68,68,0.1);border-radius:8px;margin-top:8px;">
+        ⚠️ وُجد <strong>${orphans.length}</strong> سجل يشير لجولات غير موجودة
+      </div>`
+      btn.style.display = 'block'
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:var(--red);font-size:12px;">❌ خطأ: ${esc(e.message)}</div>`
+  }
+}
+
+async function deleteOrphanDist() {
+  if (!_orphanDistIds.length) return
+  if (!confirm(`حذف ${_orphanDistIds.length} سجل أيتام نهائياً؟`)) return
+  const btn = document.getElementById('orphanDistDeleteBtn')
+  btn.disabled = true; btn.textContent = '⏳ جارٍ الحذف...'
+  try {
+    // حذف على دفعات من 100
+    for (let i = 0; i < _orphanDistIds.length; i += 100) {
+      const chunk = _orphanDistIds.slice(i, i + 100)
+      await db.from('camp_dist_families').delete().in('id', chunk)
+    }
+    // حذف من localDB أيضاً
+    await localDB.camp_dist_families.bulkDelete(_orphanDistIds)
+    showToast(`✅ تم حذف ${_orphanDistIds.length} سجل أيتام`)
+    logAction('تنظيف سجلات التوزيع الأيتام', null, null, { count: _orphanDistIds.length })
+    _orphanDistIds = []
+    await scanOrphanDist()
+  } catch(e) {
+    showToast('❌ خطأ: ' + e.message, true)
+  } finally {
+    btn.disabled = false; btn.textContent = '🗑️ حذف السجلات الأيتام'
+  }
 }
 
 // ══ PRINT FAMILY ══
@@ -12141,7 +12268,35 @@ async function saveEditDist(distId) {
   openDist(distId)
 }
 
+// ── فحص ملكية جولة التوزيع ──
+async function canAccessRound(roundId) {
+  if (!currentMember) return false
+  const role = currentMember.role
+  if (role === 'platform_owner' || role === 'super_admin') return true
+  const round = await localDB.dist_rounds.get(roundId)
+      || (navigator.onLine ? (await db.from('dist_rounds').select('camp_id').eq('id', roundId).single()).data : null)
+  if (!round) return false
+  // جولة camp_id = null تعني كل المخيمات (ملك المنصة فقط)
+  if (!round.camp_id) return false
+  const allowedIds = await getUserCampIds()
+  return allowedIds.includes(round.camp_id)
+}
+
+// ── فحص ملكية دفعة التوزيع ──
+async function canAccessDist(distId) {
+  if (!currentMember) return false
+  const role = currentMember.role
+  if (role === 'platform_owner' || role === 'super_admin') return true
+  const dist = await localDB.camp_distributions.get(distId)
+      || (navigator.onLine ? (await db.from('camp_distributions').select('camp_id').eq('id', distId).single()).data : null)
+  if (!dist) return false
+  const allowedIds = await getUserCampIds()
+  return allowedIds.includes(dist.camp_id)
+}
+
 async function deleteRound(roundId, name) {
+  if (!canAdmin()) { showToast('⛔ لا تملك صلاحية حذف الجولات', true); return }
+  if (!(await canAccessRound(roundId))) { showToast('⛔ لا يمكنك حذف جولة خارج مخيمك', true); return }
   if (!confirm(`حذف جولة "${name}"؟ سيُحذف كل سجل الاستلام.`)) return
   if (navigator.onLine) {
     const { data: dists } = await db.from('camp_distributions').select('id').eq('round_id', roundId)
@@ -12157,6 +12312,7 @@ async function deleteRound(roundId, name) {
 }
 
 async function closeRound(roundId) {
+  if (!(await canAccessRound(roundId))) { showToast('⛔ لا يمكنك إغلاق جولة خارج مخيمك', true); return }
   if (!confirm('إغلاق هذه الجولة؟')) return
   if (navigator.onLine) await db.from('dist_rounds').update({ status: 'completed' }).eq('id', roundId)
   await localDB.dist_rounds.update(roundId, { status: 'completed' })
@@ -12598,6 +12754,8 @@ async function confirmDistribution(distId) {
 }
 
 async function deleteDist(distId, name) {
+  if (!canAdmin()) { showToast('⛔ لا تملك صلاحية حذف التوزيعات', true); return }
+  if (!(await canAccessDist(distId))) { showToast('⛔ لا يمكنك حذف توزيع خارج مخيمك', true); return }
   if (!confirm(`حذف توزيع "${name}"؟ سيُحذف سجل الاستلام أيضاً.`)) return
   if (navigator.onLine) {
     await db.from('camp_dist_families').delete().eq('distribution_id', distId)
