@@ -638,6 +638,7 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--accent);">👥 إدارة المستخدمين</div>
       <button class="btn btn-primary" onclick="showAddUserForm()">➕ إضافة مستخدم</button>
+      <button class="btn" onclick="loadUsers()" style="background:var(--surface2);border:1px solid var(--border);font-size:12px;" title="تحديث القائمة">🔄 تحديث</button>
       <button class="btn" id="btnRepairUsers" style="display:none;background:var(--warning,#f59e0b);color:#000;font-size:12px;" onclick="repairOrphanedUsers()">🔧 إصلاح مستخدمين محليين</button>
     </div>
     <div id="repairUsersPanel" style="display:none;margin-bottom:14px;" class="card">
@@ -2871,7 +2872,7 @@ async function showPage(pageId) {
   if (pageId === 'page-families')   loadFamilies().catch(e => console.warn('families:', e.message))
   if (pageId === 'page-dashboard')  loadDashboard().catch(e => console.warn('dashboard:', e.message))
   if (pageId === 'page-children')   initChildrenPage()
-  if (pageId === 'page-users')      safeLoad(loadUsers, 'usersContent', '📴 إدارة المستخدمين تحتاج اتصالاً')
+  if (pageId === 'page-users')      safeLoad(loadUsers, 'usersList', '📴 إدارة المستخدمين تحتاج اتصالاً')
   if (pageId === 'page-camps')      loadCampsList().catch(e => console.warn('camps:', e.message))
   if (pageId === 'page-devices')    safeLoad(loadDevices, 'devicesContent', '📴 إدارة الأجهزة تحتاج اتصالاً')
   if (pageId === 'page-dist') {
@@ -6692,14 +6693,16 @@ async function loadUsers() {
   try { await localDB.org_members.bulkPut(users) } catch(e) {}
   // تأكد أن allCamps محمّل قبل العرض (لبناء الهيكل الهرمي صحيحاً)
   if (!allCamps.length) await loadCampsFromServer()
-  // تشخيص مؤقت للكشف عن مشاكل الظهور
-  if (currentMember?.role === 'platform_owner') {
-    const delegates = users.filter(u => u.role === 'camp_delegate')
-    const missing = delegates.filter(u => !allCamps.find(c => c.id === u.camp_id))
-    if (missing.length) {
-      showToast(`⚠️ ${missing.length} مندوب بمخيم غير موجود في القائمة: ${missing.map(u=>u.full_name).join(', ')}`, true)
-    }
+  // عداد يظهر كم مستخدم جُلب من Supabase
+  let badge = document.getElementById('usersCountBadge')
+  if (!badge) {
+    badge = document.createElement('span')
+    badge.id = 'usersCountBadge'
+    badge.style.cssText = 'background:var(--blue);color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;margin-right:8px;'
+    const hdr = document.querySelector('#page-users > div:first-child')
+    if (hdr) hdr.prepend(badge)
   }
+  badge.textContent = '📡 ' + users.length + ' مستخدم من السيرفر'
   renderUsersList(users, container)
 }
 
