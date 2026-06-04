@@ -638,7 +638,7 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--accent);">👥 إدارة المستخدمين</div>
       <button class="btn btn-primary" onclick="showAddUserForm()">➕ إضافة مستخدم</button>
-      <button class="btn" onclick="loadUsers()" style="background:var(--surface2);border:1px solid var(--border);font-size:12px;" title="تحديث القائمة">🔄 تحديث</button>
+      <button class="btn" onclick="forceLoadUsers()" style="background:var(--surface2);border:1px solid var(--border);font-size:12px;" title="تحديث من السيرفر مباشرة">🔄 تحديث</button>
       <button class="btn" id="btnRepairUsers" style="display:none;background:var(--warning,#f59e0b);color:#000;font-size:12px;" onclick="repairOrphanedUsers()">🔧 إصلاح مستخدمين محليين</button>
     </div>
     <div id="repairUsersPanel" style="display:none;margin-bottom:14px;" class="card">
@@ -6638,6 +6638,45 @@ async function createUser() {
     showToast(msg, true)
   }
   finally { btn.disabled=false; btn.textContent='💾 إنشاء المستخدم' }
+}
+
+async function forceLoadUsers() {
+  // يتجاوز checkRealConnection ويجلب مباشرة من Supabase
+  const container = document.getElementById('usersList')
+  if (!container) return
+  container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ الجلب من السيرفر...</div></div>'
+  try {
+    let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
+    if (!['platform_owner'].includes(currentMember.role)) {
+      const myUid = currentMember.user_id || currentUser?.id
+      usersQ = usersQ.or(`created_by.eq.${myUid},created_by.eq.${currentMember.id},id.eq.${currentMember.id}`)
+    }
+    const { data: users, error } = await usersQ.order('created_at', { ascending: false })
+    if (error) {
+      container.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div style="font-size:13px;">خطأ من السيرفر: ${esc(error.message)}</div></div>`
+      return
+    }
+    if (!users?.length) {
+      container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون في قاعدة البيانات</div>'
+      return
+    }
+    try { await localDB.org_members.bulkPut(users) } catch(e) {}
+    if (!allCamps.length) await loadCampsFromServer()
+    let badge = document.getElementById('usersCountBadge')
+    if (!badge) {
+      badge = document.createElement('span')
+      badge.id = 'usersCountBadge'
+      badge.style.cssText = 'background:var(--blue);color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;'
+      const hdr = document.querySelector('#page-users > div:first-child')
+      if (hdr) hdr.prepend(badge)
+    }
+    badge.textContent = '📡 ' + users.length + ' مستخدم من السيرفر'
+    renderUsersList(users, container)
+    showToast('✅ تم الجلب: ' + users.length + ' مستخدم')
+  } catch(e) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div style="font-size:13px;">فشل الاتصال: ${esc(e.message)}</div></div>`
+    showToast('❌ ' + e.message, true)
+  }
 }
 
 async function loadUsers() {
