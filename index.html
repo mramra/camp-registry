@@ -2169,7 +2169,9 @@ async function init() {
               const locals2 = await localDB.families.where('org_id').equals(ORG_ID).toArray()
               const _delSubs = currentMember.camp_id ? allCamps.filter(c => c.parent_camp_id === currentMember.camp_id).map(c=>c.id) : []
               const _delAllowed = currentMember.camp_id ? new Set([currentMember.camp_id, ..._delSubs]) : null
+              const _pendingIds2 = await getPendingRecordIds()
               const toDel2 = locals2.filter(f => {
+                if (_pendingIds2.has(f.id)) return false  // لا تحذف السجلات المعلقة للرفع
                 if (_delAllowed && !_delAllowed.has(f.camp_id)) return false
                 return !srvIds2.has(f.id)
               }).map(f => f.id)
@@ -3696,7 +3698,9 @@ async function loadDashboard() {
           const srvIds = new Set(srv.map(f => f.id))
           const allLocal = await localDB.families.where('org_id').equals(ORG_ID).toArray()
           const allowedSet = _syncIds ? new Set(_syncIds) : null
+          const _pendingIdsDash = await getPendingRecordIds()
           const toDel = allLocal.filter(f => {
+            if (_pendingIdsDash.has(f.id)) return false  // لا تحذف السجلات المعلقة للرفع
             if (allowedSet && !allowedSet.has(f.camp_id)) return false
             return !srvIds.has(f.id)
           }).map(f => f.id)
@@ -4123,7 +4127,9 @@ async function loadFamilies() {
     await safeBulkPut(localDB.families, srv)
     const srvIds    = new Set(srv.map(f => f.id))
     const localFams = await localDB.families.where('org_id').equals(ORG_ID).toArray()
+    const _pendingIdsLF = await getPendingRecordIds()
     const toDelete  = localFams.filter(f => {
+      if (_pendingIdsLF.has(f.id)) return false  // لا تحذف السجلات المعلقة للرفع
       if (currentMember.camp_id && f.camp_id !== currentMember.camp_id) return false
       return !srvIds.has(f.id)
     }).map(f => f.id)
