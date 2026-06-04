@@ -17,6 +17,7 @@
 //# sourceMappingURL=dexie.min.js.map
 </script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <script>
 // xlsx-js-style has full SheetJS API + cell styles — no polyfills needed
 </script>
@@ -3370,7 +3371,30 @@ function setAgeRange(from, to) {
 
 function mobileDownloadXLSX(wb, filename) {
   try {
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    let wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+
+    // حقن تجميد صف الرؤوس يدوياً (xlsx-js-style لا يدعم freeze panes في التصدير)
+    const freezeRow = wb._freezeRow || 0
+    if (freezeRow > 0 && typeof fflate !== 'undefined') {
+      try {
+        const files = fflate.unzipSync(new Uint8Array(wbout))
+        const dec = new TextDecoder(), enc = new TextEncoder()
+        const pane = `<pane ySplit="${freezeRow}" topLeftCell="A${freezeRow+1}" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A${freezeRow+1}" sqref="A${freezeRow+1}"/>`
+        Object.keys(files).forEach(name => {
+          if (/xl\/worksheets\/sheet\d+\.xml$/.test(name)) {
+            let xml = dec.decode(files[name])
+            if (/<sheetView[^>]*\/>/.test(xml)) {
+              xml = xml.replace(/(<sheetView[^>]*?)\/>/, `$1>${pane}</sheetView>`)
+            } else if (/<sheetView[^>]*>/.test(xml)) {
+              xml = xml.replace(/(<sheetView[^>]*?>)/, `$1${pane}`)
+            }
+            files[name] = enc.encode(xml)
+          }
+        })
+        wbout = fflate.zipSync(files)
+      } catch(fe) { /* لو فشل الحقن نكمل بالملف العادي */ }
+    }
+
     const blob  = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url   = URL.createObjectURL(blob)
     const a     = document.createElement('a')
@@ -9144,7 +9168,7 @@ function injectBannerToSheet(ws, info) {
       const ref = XLSX.utils.encode_cell({r, c})
       if (newWs[ref]) {
         newWs[ref].s = {
-          fill:      { patternType:'solid', fgColor:{rgb: isOdd ? 'EFF6FF' : 'FFFFFF'} },
+          fill:      { patternType:'solid', fgColor:{rgb: isOdd ? 'F2F4F7' : 'FFFFFF'} },
           font:      { sz:10, name:'Cairo', color:{rgb:'1e293b'} },
           alignment: { horizontal:'center', vertical:'center', readingOrder:2 },
           border:    {
@@ -9166,6 +9190,10 @@ function injectBannerToSheet(ws, info) {
   // ── 10. عرض الأعمدة ──
   newWs['!cols'] = ws['!cols'] || Array(maxCol).fill({wch:20})
 
+  // ── 11. تجميد صف الرؤوس: يُطبّق فعلياً عبر fflate في mobileDownloadXLSX ──
+  // البانر صفّان + صف رؤوس = أول 3 صفوف. التجميد بعدها.
+  newWs._freezeRow = BANNER_COUNT + 1   // = 3
+
   return newWs
 }
 
@@ -9177,7 +9205,7 @@ async function applyBannerToWorkbook(wb, campId) {
     const ws = wb.Sheets[sheetName]
     if (ws) {
       const newWs = injectBannerToSheet(ws, info)
-      if (newWs) wb.Sheets[sheetName] = newWs
+      if (newWs) { wb.Sheets[sheetName] = newWs; wb._freezeRow = newWs._freezeRow || 3 }
     }
   })
   return { wb, info }
