@@ -638,6 +638,11 @@ td{padding:10px 10px;font-size:12px;vertical-align:middle;}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--accent);">👥 إدارة المستخدمين</div>
       <button class="btn btn-primary" onclick="showAddUserForm()">➕ إضافة مستخدم</button>
+      <button class="btn" id="btnRepairUsers" style="display:none;background:var(--warning,#f59e0b);color:#000;font-size:12px;" onclick="repairOrphanedUsers()">🔧 إصلاح مستخدمين محليين</button>
+    </div>
+    <div id="repairUsersPanel" style="display:none;margin-bottom:14px;" class="card">
+      <div class="card-title">🔧 مستخدمون محليون غير موجودون في السيرفر</div>
+      <div id="repairUsersList" style="font-size:12px;"></div>
     </div>
     <div id="addUserForm" style="display:none;" class="card">
       <div class="card-title">➕ مستخدم جديد</div>
@@ -6687,6 +6692,14 @@ async function loadUsers() {
   try { await localDB.org_members.bulkPut(users) } catch(e) {}
   // تأكد أن allCamps محمّل قبل العرض (لبناء الهيكل الهرمي صحيحاً)
   if (!allCamps.length) await loadCampsFromServer()
+  // تشخيص مؤقت للكشف عن مشاكل الظهور
+  if (currentMember?.role === 'platform_owner') {
+    const delegates = users.filter(u => u.role === 'camp_delegate')
+    const missing = delegates.filter(u => !allCamps.find(c => c.id === u.camp_id))
+    if (missing.length) {
+      showToast(`⚠️ ${missing.length} مندوب بمخيم غير موجود في القائمة: ${missing.map(u=>u.full_name).join(', ')}`, true)
+    }
+  }
   renderUsersList(users, container)
 }
 
@@ -6716,8 +6729,10 @@ function renderUsersList(users, container) {
       })
     })
   })
-  // مناديب بدون مدير معروف
-  users.filter(u => u.role==='camp_delegate' && !adminCampMap[u.camp_id]).forEach(del => {
+  // مناديب بدون مدير معروف (أو مخيمهم غير موجود في allCamps)
+  const addedDelegateIds = new Set(sorted.filter(u => u.role==='camp_delegate').map(u => u.id))
+  users.filter(u => u.role==='camp_delegate' && (!adminCampMap[u.camp_id] || !addedDelegateIds.has(u.id))).forEach(del => {
+    if (addedDelegateIds.has(del.id)) return  // لا تكرار
     sorted.push({ ...del, _indent: 1 })
     users.filter(u => u.role==='assistant' && u.created_by === del.user_id).forEach(asst => {
       sorted.push({ ...asst, _indent: 2 })
