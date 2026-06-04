@@ -6641,11 +6641,23 @@ async function createUser() {
 }
 
 async function forceLoadUsers() {
-  // يتجاوز checkRealConnection ويجلب مباشرة من Supabase
   const container = document.getElementById('usersList')
   if (!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ الجلب من السيرفر...</div></div>'
   try {
+    // أولاً: تحقق من الـ session وجدّده إذا لزم
+    let { data: { session } } = await db.auth.getSession()
+    if (!session) {
+      // حاول التجديد
+      const { data: refreshed } = await db.auth.refreshSession()
+      session = refreshed?.session
+    }
+    if (!session) {
+      container.innerHTML = `<div class="empty"><div class="empty-icon">🔐</div><div style="font-size:13px;color:var(--red);">انتهت الجلسة — يرجى تسجيل الخروج والدخول مجدداً</div></div>`
+      showToast('⚠️ الجلسة منتهية — سجّل دخولك مجدداً', true)
+      return
+    }
+
     let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
     if (!['platform_owner'].includes(currentMember.role)) {
       const myUid = currentMember.user_id || currentUser?.id
@@ -6653,11 +6665,13 @@ async function forceLoadUsers() {
     }
     const { data: users, error } = await usersQ.order('created_at', { ascending: false })
     if (error) {
-      container.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div style="font-size:13px;">خطأ من السيرفر: ${esc(error.message)}</div></div>`
+      container.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div style="font-size:13px;">خطأ: ${esc(error.message)}</div></div>`
+      showToast('❌ ' + error.message, true)
       return
     }
     if (!users?.length) {
-      container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون في قاعدة البيانات</div>'
+      container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>الـ query نجح لكن لا يوجد بيانات — تحقق من org_id في السيرفر</div>'
+      showToast('⚠️ الـ query أعاد صفر نتائج', true)
       return
     }
     try { await localDB.org_members.bulkPut(users) } catch(e) {}
@@ -6674,7 +6688,7 @@ async function forceLoadUsers() {
     renderUsersList(users, container)
     showToast('✅ تم الجلب: ' + users.length + ' مستخدم')
   } catch(e) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div style="font-size:13px;">فشل الاتصال: ${esc(e.message)}</div></div>`
+    container.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div style="font-size:13px;">فشل: ${esc(e.message)}</div></div>`
     showToast('❌ ' + e.message, true)
   }
 }
@@ -6749,32 +6763,39 @@ function renderUsersList(users, container) {
   if (!users?.length) return
   const campMap = {}; allCamps.forEach(c => campMap[c.id]=c.name)
 
-  // بناء هيكل هرمي حقيقي
-  // مدير الإيواء → مناديبه (بناءً على المخيم) → مساعديهم
-  const adminCampMap = {}  // camp_id → admin
+  // بناء هيكل هرمي
+  // المصدر 1: camps.manager_id → يربط المخيم بمديره
+  const adminCampMap = {}
   users.filter(u => u.role==='super_admin').forEach(a => {
     allCamps.filter(c => c.manager_id === a.id).forEach(c => adminCampMap[c.id] = a.id)
   })
+  // المصدر 2: org_members.supervisor_id → يربط المندوب بمديره مباشرة
+  const delegateSupervisorMap = {}
+  users.filter(u => u.role==='camp_delegate' && u.supervisor_id).forEach(u => {
+    delegateSupervisorMap[u.id] = u.supervisor_id
+  })
 
   const sorted = []
-  // 1. مديرو الإيواء
   const admins = users.filter(u => u.role==='super_admin')
   admins.forEach(admin => {
     sorted.push({ ...admin, _indent: 0 })
-    // 2. مناديب هذا المدير (حسب مخيمهم)
-    const myDelegates = users.filter(u => u.role==='camp_delegate' && adminCampMap[u.camp_id] === admin.id)
+    // مناديب هذا المدير: عبر المخيم (adminCampMap) أو عبر supervisor_id مباشرة
+    const myDelegates = users.filter(u =>
+      u.role==='camp_delegate' && (
+        adminCampMap[u.camp_id] === admin.id ||
+        delegateSupervisorMap[u.id] === admin.id
+      )
+    )
     myDelegates.forEach(del => {
       sorted.push({ ...del, _indent: 1 })
-      // 3. مساعدو هذا المندوب
       users.filter(u => u.role==='assistant' && u.created_by === del.user_id).forEach(asst => {
         sorted.push({ ...asst, _indent: 2 })
       })
     })
   })
-  // مناديب بدون مدير معروف (أو مخيمهم غير موجود في allCamps)
+  // مناديب لم يُربطوا بأي مدير
   const addedDelegateIds = new Set(sorted.filter(u => u.role==='camp_delegate').map(u => u.id))
-  users.filter(u => u.role==='camp_delegate' && (!adminCampMap[u.camp_id] || !addedDelegateIds.has(u.id))).forEach(del => {
-    if (addedDelegateIds.has(del.id)) return  // لا تكرار
+  users.filter(u => u.role==='camp_delegate' && !addedDelegateIds.has(u.id)).forEach(del => {
     sorted.push({ ...del, _indent: 1 })
     users.filter(u => u.role==='assistant' && u.created_by === del.user_id).forEach(asst => {
       sorted.push({ ...asst, _indent: 2 })
@@ -6882,6 +6903,14 @@ async function editUser(id) {
         </select>
       </div>
 
+      <div class="form-group" id="euSupervisorSection" style="${u.role==='camp_delegate'?'':'display:none'}">
+        <label>مدير الإيواء (الهرم)</label>
+        <select id="euSupervisorId" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;width:100%;">
+          <option value="">-- بدون مدير --</option>
+          ${users.filter(x=>x.role==='super_admin').map(a=>`<option value="${a.id}" ${u.supervisor_id===a.id?'selected':''}>${esc(a.full_name)}</option>`).join('')}
+        </select>
+      </div>
+
       <div id="euPermSection" style="${u.role==='assistant'?'':'display:none'}">
         <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px;">صلاحيات المساعد</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;">
@@ -6929,7 +6958,8 @@ async function saveEditUser(id) {
     full_name:  fullName,
     phone:      phone || null,
     role,
-    camp_id:    ['camp_delegate','assistant'].includes(role) ? campId : null,
+    camp_id:     ['camp_delegate','assistant'].includes(role) ? campId : null,
+    supervisor_id: role==='camp_delegate' ? (document.getElementById('euSupervisorId')?.value || null) : undefined,
     can_add:    role==='assistant' ? canAdd  : true,
     can_edit:   role==='assistant' ? canEdit : true,
     can_delete: role==='assistant' ? canDel  : (role==='camp_delegate'),
