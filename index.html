@@ -7234,28 +7234,19 @@ async function saveEditUser(id) {
   if (['assistant','camp_delegate'].includes(role)) updateData.allowed_pages = allowedPages
 
   try {
-    // الحفظ عبر RPC function (SECURITY DEFINER — تتجاوز RLS)
+    // الحفظ المباشر — RLS policy تسمح بذلك الآن
     let err = null
-    const rpcResult = await db.rpc('admin_update_member', {
-      p_id:           id,
-      p_full_name:    updateData.full_name,
-      p_phone:        updateData.phone,
-      p_role:         updateData.role,
-      p_camp_id:      updateData.camp_id      || null,
-      p_supervisor_id:updateData.supervisor_id|| null,
-      p_allowed_pages:updateData.allowed_pages|| '{}',
-      p_can_add:      updateData.can_add,
-      p_can_edit:     updateData.can_edit,
-      p_can_delete:   updateData.can_delete,
-      p_can_export:   updateData.can_export,
-      p_can_import:   updateData.can_import,
-    })
-    err = rpcResult.error
+    const res1 = await db.from('org_members').update(updateData).eq('id', id)
+    err = res1.error
 
-    // fallback: إذا RPC غير موجودة — استخدم update مباشر
-    if (err && (err.message?.includes('update_org_member') || err.message?.includes('function') || err.code === 'PGRST202')) {
-      const res2 = await db.from('org_members').update(updateData).eq('id', id)
+    // إذا فشل بسبب عمود غير موجود — احذف الحقول الجديدة
+    if (err && (err.message?.includes('supervisor_id') || err.message?.includes('allowed_pages') || err.message?.includes('column'))) {
+      const slim = { ...updateData }
+      delete slim.supervisor_id
+      delete slim.allowed_pages
+      const res2 = await db.from('org_members').update(slim).eq('id', id)
       err = res2.error
+      if (!err) try { await localDB.org_members.update(id, { allowed_pages: updateData.allowed_pages }) } catch(e2) {}
     }
 
     if (err) { showToast('❌ ' + err.message, true); return }
