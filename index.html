@@ -7189,23 +7189,22 @@ function euPageViewToggle(cb) {
 }
 
 async function saveEditUser(id) {
-  const fullName = document.getElementById('euFullName')?.value.trim()
-  const phone    = document.getElementById('euPhone')?.value.trim()
-  const role     = document.getElementById('euRole')?.value || ''
-  const campId   = document.getElementById('euCamp')?.value || null
-  // الصلاحيات العامة تُشتق من صلاحيات الصفحات تلقائياً
+  const fullName = document.getElementById('euFullName')?.value?.trim() || ''
+  const phone    = document.getElementById('euPhone')?.value?.trim()    || ''
+  const role     = document.getElementById('euRole')?.value             || ''
+  const campId   = document.getElementById('euCamp')?.value             || null
 
-  if (!fullName) { showToast('يرجى إدخال الاسم', true); return }
+  if (!fullName) { showToast('يرجى إدخال الاسم الكامل', true); return }
+  if (!role)     { showToast('خطأ: لم يتم تحديد الدور', true); return }
 
-  // حماية: المندوب لا يستطيع حفظ دور أعلى من مساعد (إلا ملك المنصة)
   const _isPOsave = currentMember?.role === 'platform_owner' || _impersonating?.original?.role === 'platform_owner'
-  if (!_isPOsave && currentMember?.role === 'camp_delegate' && role !== 'assistant' && role !== 'camp_delegate') {
+  if (!_isPOsave && currentMember?.role === 'camp_delegate' && !['assistant','camp_delegate'].includes(role)) {
     showToast('⛔ غير مسموح بتغيير الدور', true); return
   }
 
-  // جمع صلاحيات الصفحات
+  // صلاحيات الصفحات
   let allowedPages = '{}'
-  if (role === 'assistant' || role === 'camp_delegate') {
+  if (['assistant','camp_delegate'].includes(role)) {
     const pd = {}
     document.querySelectorAll('.euPageView:checked').forEach(v => {
       pd[v.dataset.page] = { view: true }
@@ -7216,58 +7215,53 @@ async function saveEditUser(id) {
     allowedPages = JSON.stringify(pd)
   }
 
-  const supId = role === 'camp_delegate' ? (document.getElementById('euSupervisorId')?.value || null) : null
-
-  // حساب الصلاحيات من الصفحات
-  let pVals = {}
-  try { pVals = JSON.parse(allowedPages) } catch(e) {}
-  const pArr = Object.values(pVals)
+  const supId = (role === 'camp_delegate') ? (document.getElementById('euSupervisorId')?.value || null) : null
+  let pArr = []
+  try { pArr = Object.values(JSON.parse(allowedPages)) } catch(e) {}
 
   const updateData = {
-    full_name:  fullName,
-    phone:      phone || null,
-    role,
-    camp_id:    ['camp_delegate','assistant'].includes(role) ? campId : null,
-    can_add:    role === 'assistant' ? pArr.some(p=>p.add)    : true,
-    can_edit:   role === 'assistant' ? pArr.some(p=>p.edit)   : true,
-    can_delete: role === 'assistant' ? pArr.some(p=>p.delete) : (role === 'camp_delegate'),
-    can_export: true,
-    can_import: role === 'camp_delegate' || role === 'assistant',
+    full_name:    fullName,
+    phone:        phone || null,
+    role:         role,
+    camp_id:      ['camp_delegate','assistant'].includes(role) ? campId : null,
+    can_add:      role === 'assistant' ? pArr.some(p=>p.add)    : true,
+    can_edit:     role === 'assistant' ? pArr.some(p=>p.edit)   : true,
+    can_delete:   role === 'assistant' ? pArr.some(p=>p.delete) : (role === 'camp_delegate'),
+    can_export:   true,
+    can_import:   ['camp_delegate','assistant'].includes(role),
   }
-
-  // أضف الحقول الجديدة فقط إذا كانت موجودة
   if (supId !== null) updateData.supervisor_id = supId
-  if (role === 'assistant' || role === 'camp_delegate') updateData.allowed_pages = allowedPages
+  if (['assistant','camp_delegate'].includes(role)) updateData.allowed_pages = allowedPages
 
-  const { error } = await db.from('org_members').update(updateData).eq('id', id)
+  try {
+    // محاولة الحفظ الكاملة
+    let res = await db.from('org_members').update(updateData).eq('id', id)
+    let err = res.error
 
-  // fallback: إذا فشل بسبب عمود غير موجود
-  if (error && (error.message?.includes('supervisor_id') || error.message?.includes('allowed_pages') || error.message?.includes('column'))) {
-    // أعمدة supervisor_id أو allowed_pages غير موجودة — احفظ بدونها
-    const fallback = { ...updateData }
-    delete fallback.supervisor_id
-    delete fallback.allowed_pages
-    const r2 = await db.from('org_members').update(fallback).eq('id', id)
-    error = r2.error
-    if (!error) {
-      // أضف allowed_pages محلياً لتعمل الفلترة فوراً
-      if (role === 'assistant' && allowedPages !== '{}') {
-        try { await localDB.org_members.update(id, { allowed_pages: allowedPages }) } catch(e) {}
+    // إذا فشل بسبب عمود غير موجود — احفظ بدون الحقول الجديدة
+    if (err && (err.message?.includes('supervisor_id') || err.message?.includes('allowed_pages') || err.message?.includes('column'))) {
+      const slim = { ...updateData }
+      delete slim.supervisor_id
+      delete slim.allowed_pages
+      res = await db.from('org_members').update(slim).eq('id', id)
+      err = res.error
+      if (!err) {
+        try { await localDB.org_members.update(id, { allowed_pages: allowedPages }) } catch(e2) {}
       }
-      showToast('✅ تم الحفظ — ⚠️ لحفظ صلاحيات الصفحات نهائياً شغّل:\nALTER TABLE org_members ADD COLUMN IF NOT EXISTS allowed_pages text DEFAULT \'{}\';', true)
     }
-  }
 
-  if (error) { showToast('❌ ' + error.message, true); return }
-  else showToast('✅ تم حفظ التعديلات')
-  logAction('تعديل مستخدم', id, fullName)
-  document.getElementById('editUserModal')?.remove()
-  await loadUsers()
-  // أعد بناء التنقل إذا تم تعديل المستخدم الحالي أو المنتحَل به
-  const _targetId = id
-  if (_targetId === currentMember?.id || (_impersonating && _targetId === currentMember?.id)) {
-    const upd = await localDB.org_members.get(_targetId)
-    if (upd) { currentMember = upd; buildNav(); showToast('🔄 تم تحديث التنقل وفق الصلاحيات الجديدة') }
+    if (err) { showToast('❌ ' + err.message, true); return }
+
+    showToast('✅ تم الحفظ بنجاح')
+    logAction('تعديل مستخدم', id, fullName)
+    document.getElementById('editUserModal')?.remove()
+    await loadUsers()
+    if (id === currentMember?.id || (_impersonating && id === currentMember?.id)) {
+      const upd = await localDB.org_members.get(id)
+      if (upd) { currentMember = upd; buildNav() }
+    }
+  } catch(e) {
+    showToast('❌ خطأ: ' + e.message, true)
   }
 }
 
