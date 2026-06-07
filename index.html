@@ -6763,7 +6763,15 @@ async function forceLoadUsers() {
     }
 
     if (!users?.length) {
-      container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'
+      // Supabase أرجع [] — ربما offline — جرّب من localDB
+      const localUsers = await localDB.org_members.where('org_id').equals(ORG_ID).toArray().catch(()=>[])
+      if (localUsers.length) {
+        if (!allCamps.length) await loadCampsFromServer().catch(()=>{})
+        renderUsersList(localUsers, container)
+        showToast('📴 عرض من الكاش المحلي')
+      } else {
+        container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون — اتصل بالإنترنت</div>'
+      }
       return
     }
 
@@ -6807,7 +6815,11 @@ async function loadUsers() {
   // اعرض المحلي أولاً دائماً (سريع وموثوق)
   const showLocal = async () => {
     try {
-      const local = await localDB.org_members.where('org_id').equals(ORG_ID).toArray()
+      let local = await localDB.org_members.where('org_id').equals(ORG_ID).toArray()
+      if (!local.length) {
+        // جرّب بدون فلتر org_id (بيانات قديمة)
+        local = await localDB.org_members.toArray().catch(()=>[])
+      }
       const myUid = currentMember.user_id || currentUser?.id
       const filtered = currentMember.role === 'platform_owner'
         ? local  // ملك المنصة يرى الجميع
@@ -13247,47 +13259,82 @@ async function getCreatedBy(role, campId) {
   // الباقي = auth.users.id للمستخدم الحالي دائماً
   return currentUser.id
 }
+function _assignMgr(btn) {
+  assignCampSuperAdmin(btn.dataset.cid, btn.dataset.cname)
+}
+
 async function assignCampSuperAdmin(campId, campName) {
-  const _on = await checkRealConnection()
-  if (!_on) { showToast('⚠️ يتطلب اتصالاً', true); return }
-  const { data: admins } = await db.from('org_members').select('id,full_name').eq('org_id',ORG_ID).eq('role','super_admin').eq('is_active',true)
-  if (!admins?.length) { showToast('⚠️ لا يوجد مديرو إيواء', true); return }
+  // جلب المديرين من Supabase ثم localDB كاحتياطي
+  let admins = null
+  try {
+    const res = await db.from('org_members')
+      .select('id,full_name,role')
+      .eq('org_id', ORG_ID)
+      .in('role', ['super_admin','platform_owner'])
+      .eq('is_active', true)
+    admins = res.data
+  } catch(e) { admins = null }
+
+  // fallback من localDB
+  if (!admins?.length) {
+    admins = await localDB.org_members
+      .where('org_id').equals(ORG_ID)
+      .filter(u => ['super_admin','platform_owner'].includes(u.role) && u.is_active !== false)
+      .toArray().catch(() => [])
+  }
+
+  if (!admins?.length) {
+    showToast('⚠️ لا يوجد مديرو إيواء في الكاش المحلي أو السيرفر', true)
+    return
+  }
+
   const camp = allCamps.find(c => c.id === campId)
+
+  document.getElementById('assignAdminModal')?.remove()
   const modal = document.createElement('div')
   modal.id = 'assignAdminModal'
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px;'
-  modal.innerHTML = `<div style="background:var(--surface);border-radius:16px;padding:20px;width:100%;max-width:420px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <div style="font-size:14px;font-weight:700;color:var(--purple);">👤 تعيين مدير إيواء — ${esc(campName)}</div>
-      <button onclick="document.getElementById('assignAdminModal').remove()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:4px 10px;cursor:pointer;color:var(--text);font-family:Cairo,sans-serif;">✕</button>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:6px;">
-      ${admins.map(a=>`<button onclick="confirmAssignAdmin('${campId}','${a.id}','${esc(a.full_name)}')"
-        style="padding:10px 14px;background:${a.id===camp?.manager_id?'rgba(139,92,246,0.1)':'var(--surface2)'};
-               border:1px solid ${a.id===camp?.manager_id?'var(--purple)':'var(--border)'};border-radius:8px;cursor:pointer;
-               font-family:Cairo,sans-serif;width:100%;text-align:right;font-size:13px;color:var(--text);">
-        ${esc(a.full_name)} ${a.id===camp?.manager_id?'<span style="color:var(--purple);font-size:10px;">● حالي</span>':''}
-      </button>`).join('')}
-    </div>
-    ${camp?.manager_id?`<button onclick="confirmAssignAdmin('${campId}',null,'')"
-      style="width:100%;margin-top:10px;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);
-             border-radius:8px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;cursor:pointer;">🗑️ إلغاء التعيين</button>`:''}
-  </div>`
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;'
+
+  let btns = ''
+  admins.forEach(a => {
+    const isCurrent = a.id === camp?.manager_id
+    btns += '<button data-cid="' + campId + '" data-aid="' + a.id + '" data-aname="' + esc(a.full_name).replace(/"/g,'&quot;') + '" onclick="_confirmAssign(this)" style="padding:10px 14px;background:' + (isCurrent?'rgba(139,92,246,0.1)':'var(--surface2)') + ';border:1px solid ' + (isCurrent?'var(--purple)':'var(--border)') + ';border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif;width:100%;text-align:right;font-size:13px;color:var(--text);margin-bottom:6px;">' + esc(a.full_name) + (isCurrent?'  <span style="color:var(--purple);font-size:10px;">● حالي</span>':'') + '</button>'
+  })
+
+  let removeBtn = ''
+  if (camp?.manager_id) {
+    removeBtn = '<button data-cid="' + campId + '" data-aid="" data-aname="" onclick="_confirmAssign(this)" style="width:100%;margin-top:6px;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:8px;font-family:Cairo,sans-serif;font-size:12px;cursor:pointer;">🗑️ إلغاء التعيين</button>'
+  }
+
+  modal.innerHTML =
+    '<div style="background:var(--surface);border-radius:16px;padding:20px;width:100%;max-width:420px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+    '<div style="font-size:14px;font-weight:700;color:var(--purple);">👤 تعيين مدير إيواء — ' + esc(campName) + '</div>' +
+    '<button onclick="_closeAssign()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:4px 10px;cursor:pointer;color:var(--text);font-family:Cairo,sans-serif;">✕</button>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;">' + btns + removeBtn + '</div>' +
+    '</div>'
   document.body.appendChild(modal)
 }
 
-async function confirmAssignAdmin(campId, adminId, adminName) {
-  if (!confirm(adminId ? `تعيين "${adminName}" مديراً؟` : 'إلغاء تعيين المدير؟')) return
+function _closeAssign() { document.getElementById('assignAdminModal')?.remove() }
+function _confirmAssign(btn) {
+  const campId   = btn.dataset.cid
+  const adminId  = btn.dataset.aid  || null
+  const adminName = btn.dataset.aname || ''
+  const msg = adminId ? ('تعيين "' + adminName + '" مديراً؟') : 'إلغاء تعيين المدير؟'
+  if (!confirm(msg)) return
   document.getElementById('assignAdminModal')?.remove()
-  const _on = await checkRealConnection()
-  if (_on) {
-    const { error } = await db.from('camps').update({ manager_id: adminId||null }).eq('id',campId).eq('org_id',ORG_ID)
-    if (error) { showToast('❌ خطأ: '+error.message, true); return }
-  }
-  const idx = allCamps.findIndex(c => c.id===campId)
-  if (idx !== -1) allCamps[idx].manager_id = adminId||null
-  await localDB.camps.update(campId, { manager_id: adminId||null })
-  showToast(adminId ? `✅ تم تعيين ${adminName} مديراً` : '✅ تم إلغاء التعيين')
+  confirmAssignAdmin(campId, adminId, adminName)
+}
+
+async function confirmAssignAdmin(campId, adminId, adminName) {
+  const { error } = await db.from('camps').update({ manager_id: adminId || null }).eq('id', campId).eq('org_id', ORG_ID)
+  if (error) { showToast('❌ خطأ: ' + error.message, true); return }
+  const idx = allCamps.findIndex(c => c.id === campId)
+  if (idx !== -1) allCamps[idx].manager_id = adminId || null
+  try { await localDB.camps.update(campId, { manager_id: adminId || null }) } catch(e) {}
+  showToast(adminId ? ('✅ تم تعيين ' + adminName + ' مديراً') : '✅ تم إلغاء التعيين')
   await loadCampsList()
 }
 
