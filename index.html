@@ -7218,8 +7218,19 @@ async function saveEditUser(id) {
   try {
     // الحفظ المباشر — RLS policy تسمح بذلك الآن
     let err = null
-    const res1 = await db.from('org_members').update(updateData).eq('id', id)
+    const res1 = await db.from('org_members').update(updateData).eq('id', id).select('id')
     err = res1.error
+    // تشخيص: هل تم تحديث صف فعلاً؟
+    const updatedCount = res1.data?.length || 0
+    if (!err && updatedCount === 0) {
+      // 0 صفوف = RLS تمنع التحديث
+      showToast('⚠️ تم الإرسال لكن 0 صفوف تغيّرت — تحقق من RLS في Supabase', true)
+      // احفظ محلياً على الأقل
+      try { await localDB.org_members.update(id, updateData) } catch(e2) {}
+      document.getElementById('editUserModal')?.remove()
+      await loadUsers()
+      return
+    }
 
     // إذا فشل بسبب عمود غير موجود — احذف الحقول الجديدة
     if (err && (err.message?.includes('supervisor_id') || err.message?.includes('allowed_pages') || err.message?.includes('column'))) {
