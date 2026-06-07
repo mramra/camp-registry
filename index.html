@@ -6737,48 +6737,63 @@ async function safeBulkPutUsers(users) {
 async function forceLoadUsers() {
   const container = document.getElementById('usersList')
   if (!container) return
-  container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ الجلب...</div></div>'
+  container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ التحديث...</div></div>'
   try {
-    let q = db.from('org_members').select('*').eq('org_id', ORG_ID)
-    if (currentMember?.role !== 'platform_owner') {
-      const uid = currentMember?.user_id || currentUser?.id
-      q = q.or('created_by.eq.' + uid + ',created_by.eq.' + currentMember.id + ',id.eq.' + currentMember.id)
+    // 1. تأكد من تحميل المخيمات أولاً
+    if (!allCamps.length) {
+      try { await loadCampsFromServer() } catch(e) {
+        // حاول من localDB
+        const lc = await localDB.camps.where('org_id').equals(ORG_ID).toArray().catch(()=>[])
+        if (lc.length) allCamps = lc
+      }
     }
-    const { data: users, error } = await q.order('created_at', { ascending: false })
+
+    // 2. جلب المستخدمين
+    const { data: users, error } = await db.from('org_members')
+      .select('*').eq('org_id', ORG_ID)
+      .order('created_at', { ascending: false })
+
     if (error) {
-      container.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>' + esc(error.message) + '</div>'
-      showToast('❌ ' + error.message, true); return
+      showToast('❌ ' + error.message, true)
+      // fallback محلي
+      const local = await localDB.org_members.where('org_id').equals(ORG_ID).toArray().catch(()=>[])
+      if (local.length) { renderUsersList(local, container); showToast('📴 من الكاش المحلي') }
+      else container.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>' + esc(error.message) + '</div>'
+      return
     }
+
     if (!users?.length) {
-      container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'; return
+      container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'
+      return
     }
-    await safeBulkPutUsers(users)
-    if (!allCamps.length) await loadCampsFromServer()
-    let badge = document.getElementById('usersCountBadge')
-    if (!badge) {
-      badge = document.createElement('span'); badge.id = 'usersCountBadge'
-      badge.style.cssText = 'background:var(--blue);color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;'
-      const hdr = document.querySelector('#page-users > div:first-child')
-      if (hdr) hdr.prepend(badge)
+
+    // 3. تأكد من المخيمات قبل الرسم
+    if (!allCamps.length) {
+      try { await loadCampsFromServer() }
+      catch(e) {
+        try { allCamps = await localDB.camps.where('org_id').equals(ORG_ID).toArray() } catch(e2) {}
+      }
     }
-    badge.textContent = '📡 ' + users.length + ' مستخدم'
+
+    // 4. حفظ في localDB
+    try { await localDB.org_members.bulkPut(users) } catch(e) {}
+
+    // 5. عرض القائمة (sync — لا race condition)
     renderUsersList(users, container)
     showToast('✅ ' + users.length + ' مستخدم')
+
   } catch(e) {
+    showToast('❌ ' + e.message, true)
     try {
       const local = await localDB.org_members.where('org_id').equals(ORG_ID).toArray()
-      if (local.length) {
-        if (!allCamps.length) await loadCampsFromServer().catch(()=>{})
-        const role = currentMember?.role
-        const filtered = role === 'platform_owner'
-          ? local  // ملك المنصة يرى الجميع بما فيه نفسه
-          : local.filter(u => u.created_by === (currentMember.user_id||currentUser?.id) || u.created_by === currentMember.id || u.id === currentMember.id)
-        if (filtered.length) { renderUsersList(filtered, container); showToast('📴 عرض من الكاش المحلي'); return }
-      }
-    } catch(e2) {}
-    container.innerHTML = '<div class="empty"><div class="empty-icon">📴</div>لا توجد بيانات محلية — اتصل بالإنترنت أولاً</div>'
+      if (local.length) { renderUsersList(local, container); showToast('📴 من الكاش المحلي') }
+      else container.innerHTML = '<div class="empty"><div class="empty-icon">📴</div>لا يوجد بيانات محلية</div>'
+    } catch(e2) {
+      container.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>' + esc(e.message) + '</div>'
+    }
   }
 }
+
 
 async function loadUsers() {
   // ══ فلتر المستخدمين حسب الدور ══
