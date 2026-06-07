@@ -7234,6 +7234,15 @@ async function saveEditUser(id) {
   if (['assistant','camp_delegate'].includes(role)) updateData.allowed_pages = allowedPages
 
   try {
+    // تشخيص: أظهر ما سيُرسَل
+    showToast('🔄 جارٍ الحفظ... id=' + id.substring(0,8) + ' role=' + role)
+
+    // تحقق أن السجل موجود أولاً
+    const { data: checkRow } = await db.from('org_members').select('id,role').eq('id', id).single()
+    if (!checkRow) {
+      showToast('❌ السجل غير موجود في Supabase — id: ' + id, true); return
+    }
+
     // محاولة الحفظ الكاملة
     let res = await db.from('org_members').update(updateData).eq('id', id)
     let err = res.error
