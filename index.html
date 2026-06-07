@@ -7155,7 +7155,7 @@ async function editUser(id) {
     '<input type="text" id="euFullName" value="' + esc(u.full_name) + '" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;outline:none;"></div>' +
     '<div class="form-group"><label>رقم الجوال</label>' +
     '<input type="tel" id="euPhone" value="' + esc(u.phone||'') + '" dir="ltr" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;text-align:center;outline:none;"></div>' +
-    (isPO || (!isDelegate) ? '<div class="form-group"><label>الدور</label>' + roleHtml + '</div>' : '') +
+    (isPO || (!isDelegate) ? '<div class="form-group"><label>الدور</label>' + roleHtml + '</div>' : '<input type="hidden" id="euRole" value="' + u.role + '">') +
     '<div class="form-group" id="euCampSection" style="' + (isDelegate||isAsst?'':'display:none') + '"><label>المخيم</label>' +
     '<select id="euCamp" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;width:100%;">' + campOpts + '</select></div>' +
     '<div class="form-group" id="euSupervisorSection" style="' + (isDelegate&&isPO?'':'display:none') + '"><label>مدير الإيواء</label>' +
@@ -7191,14 +7191,15 @@ function euPageViewToggle(cb) {
 async function saveEditUser(id) {
   const fullName = document.getElementById('euFullName')?.value.trim()
   const phone    = document.getElementById('euPhone')?.value.trim()
-  const role     = document.getElementById('euRole').value
+  const role     = document.getElementById('euRole')?.value || ''
   const campId   = document.getElementById('euCamp')?.value || null
   // الصلاحيات العامة تُشتق من صلاحيات الصفحات تلقائياً
 
   if (!fullName) { showToast('يرجى إدخال الاسم', true); return }
 
-  // حماية: المندوب لا يستطيع حفظ دور أعلى من مساعد
-  if (currentMember.role === 'camp_delegate' && role !== 'assistant') {
+  // حماية: المندوب لا يستطيع حفظ دور أعلى من مساعد (إلا ملك المنصة)
+  const _isPOsave = currentMember?.role === 'platform_owner' || _impersonating?.original?.role === 'platform_owner'
+  if (!_isPOsave && currentMember?.role === 'camp_delegate' && role !== 'assistant' && role !== 'camp_delegate') {
     showToast('⛔ غير مسموح بتغيير الدور', true); return
   }
 
