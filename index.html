@@ -7236,7 +7236,7 @@ async function saveEditUser(id) {
   try {
     // الحفظ عبر RPC function (SECURITY DEFINER — تتجاوز RLS)
     let err = null
-    const rpcResult = await db.rpc('update_org_member', {
+    const rpcResult = await db.rpc('admin_update_member', {
       p_id:           id,
       p_full_name:    updateData.full_name,
       p_phone:        updateData.phone,
