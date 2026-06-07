@@ -7239,7 +7239,14 @@ async function saveEditUser(id) {
   if (supId !== null) updateData.supervisor_id = supId
   if (role === 'assistant' || role === 'camp_delegate') updateData.allowed_pages = allowedPages
 
-  let { error } = await db.from('org_members').update(updateData).eq('id', id)
+  const { error, data: updatedRows, count: updCount } = await db.from('org_members')
+    .update(updateData).eq('id', id).select()
+
+  // إذا لم يُحدَّث أي صف — غالباً RLS تمنعه
+  if (!error && (!updatedRows || updatedRows.length === 0)) {
+    showToast('⚠️ لم يتم التحديث — RLS قد تمنعه. شغّل الـ SQL الجديد في Supabase ثم أعد المحاولة.', true)
+    return
+  }
 
   // fallback: إذا فشل بسبب عمود غير موجود
   if (error && (error.message?.includes('supervisor_id') || error.message?.includes('allowed_pages') || error.message?.includes('column'))) {
