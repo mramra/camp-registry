@@ -6824,7 +6824,7 @@ async function forceLoadUsers() {
         if (!allCamps.length) await loadCampsFromServer().catch(()=>{})
         const role = currentMember?.role
         const filtered = role === 'platform_owner'
-          ? local.filter(u => u.role !== 'platform_owner')
+          ? local  // ملك المنصة يرى الجميع بما فيه نفسه
           : local.filter(u => u.created_by === (currentMember.user_id||currentUser?.id) || u.created_by === currentMember.id || u.id === currentMember.id)
         if (filtered.length) { renderUsersList(filtered, container); showToast('📴 عرض من الكاش المحلي'); return }
       }
@@ -6848,7 +6848,7 @@ async function loadUsers() {
       const local = await localDB.org_members.where('org_id').equals(ORG_ID).toArray()
       const myUid = currentMember.user_id || currentUser?.id
       const filtered = currentMember.role === 'platform_owner'
-        ? local.filter(u => u.role !== 'platform_owner')
+        ? local  // ملك المنصة يرى الجميع
         : local.filter(u => u.created_by === myUid || u.created_by === currentMember.id || u.id === currentMember.id)
       if (filtered.length) {
         if (!allCamps.length) await loadCampsFromServer()
@@ -7049,7 +7049,10 @@ function renderUsersList(users, container) {
   const addedIds = new Set(sorted.map(u => u.id))
   users.filter(u => u.role==='assistant' && !addedIds.has(u.id)).forEach(u => sorted.push({...u, _indent: 2}))
   // ملك المنصة وغيره
-  users.filter(u => !['super_admin','camp_delegate','assistant'].includes(u.role) && !addedIds.has(u.id)).forEach(u => sorted.push({...u, _indent: 0}))
+  // ملك المنصة في أعلى القائمة دائماً
+  users.filter(u => u.role === 'platform_owner').forEach(u => { if (!addedIds.has(u.id)) sorted.unshift({...u, _indent: 0}) })
+  // أي أدوار أخرى
+  users.filter(u => !['platform_owner','super_admin','camp_delegate','assistant'].includes(u.role) && !addedIds.has(u.id)).forEach(u => sorted.push({...u, _indent: 0}))
 
   // تمييز بصري حسب الدور
   const roleStyle = {
