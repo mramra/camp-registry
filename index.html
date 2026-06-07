@@ -6737,59 +6737,6 @@ async function safeBulkPutUsers(users) {
 async function forceLoadUsers() {
   const container = document.getElementById('usersList')
   if (!container) return
-  container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ الجلب من السيرفر...</div></div>'
-  try {
-    // أولاً: تحقق من الـ session وجدّده إذا لزم
-    let { data: { session } } = await db.auth.getSession()
-    if (!session) {
-      // حاول التجديد
-      const { data: refreshed } = await db.auth.refreshSession()
-      session = refreshed?.session
-    }
-    if (!session) {
-      container.innerHTML = `<div class="empty"><div class="empty-icon">🔐</div><div style="font-size:13px;color:var(--red);">انتهت الجلسة — يرجى تسجيل الخروج والدخول مجدداً</div></div>`
-      showToast('⚠️ الجلسة منتهية — سجّل دخولك مجدداً', true)
-      return
-    }
-
-    let usersQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
-    if (!['platform_owner'].includes(currentMember.role)) {
-      const myUid = currentMember.user_id || currentUser?.id
-      usersQ = usersQ.or(`created_by.eq.${myUid},created_by.eq.${currentMember.id},id.eq.${currentMember.id}`)
-    }
-    const { data: users, error } = await usersQ.order('created_at', { ascending: false })
-    if (error) {
-      container.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div style="font-size:13px;">خطأ: ${esc(error.message)}</div></div>`
-      showToast('❌ ' + error.message, true)
-      return
-    }
-    if (!users?.length) {
-      container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>الـ query نجح لكن لا يوجد بيانات — تحقق من org_id في السيرفر</div>'
-      showToast('⚠️ الـ query أعاد صفر نتائج', true)
-      return
-    }
-    await safeBulkPutUsers(users)
-    if (!allCamps.length) await loadCampsFromServer()
-    let badge = document.getElementById('usersCountBadge')
-    if (!badge) {
-      badge = document.createElement('span')
-      badge.id = 'usersCountBadge'
-      badge.style.cssText = 'background:var(--blue);color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;'
-      const hdr = document.querySelector('#page-users > div:first-child')
-      if (hdr) hdr.prepend(badge)
-    }
-    badge.textContent = '📡 ' + users.length + ' مستخدم من السيرفر'
-    renderUsersList(users, container)
-    showToast('✅ تم الجلب: ' + users.length + ' مستخدم')
-  } catch(e) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div style="font-size:13px;">فشل: ${esc(e.message)}</div></div>`
-    showToast('❌ ' + e.message, true)
-  }
-}
-
-async function forceLoadUsers() {
-  const container = document.getElementById('usersList')
-  if (!container) return
   container.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>جارٍ الجلب...</div></div>'
   try {
     let q = db.from('org_members').select('*').eq('org_id', ORG_ID)
@@ -7061,10 +7008,18 @@ function renderUsersList(users, container) {
     assistant:     { border: 'var(--muted)',   bg: 'rgba(100,116,139,0.04)', indent: '28px', badge: 'rgba(100,116,139,0.15)', badgeColor: 'var(--muted)' },
   }
 
+  if (!sorted.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>لا يوجد مستخدمون</div>'
+    return
+  }
   container.innerHTML = sorted.map(u => {
-    const rs = roleStyle[u.role] || { border:'var(--border)', bg:'var(--surface)', badge:'rgba(245,158,11,0.15)', badgeColor:'var(--accent)' }
-    const indentPx = (u._indent || 0) * 16 + 'px'
-    return buildUserCard(u, rs, indentPx, campMap, currentMember, roleNames, esc)
+    try {
+      const rs = roleStyle[u.role] || { border:'var(--border)', bg:'var(--surface)', badge:'rgba(245,158,11,0.15)', badgeColor:'var(--accent)' }
+      const indentPx = (u._indent || 0) * 16 + 'px'
+      return buildUserCard(u, rs, indentPx, campMap, currentMember, roleNames, esc)
+    } catch(e) {
+      return '<div style="background:var(--surface);border:1px solid var(--red);border-radius:8px;padding:8px;margin-bottom:6px;font-size:11px;color:var(--red);">⚠️ خطأ في عرض: ' + esc(u.full_name||u.id||'?') + ' — ' + esc(e.message) + '</div>'
+    }
   }).join('')}
 
 
