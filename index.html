@@ -7234,29 +7234,33 @@ async function saveEditUser(id) {
   if (['assistant','camp_delegate'].includes(role)) updateData.allowed_pages = allowedPages
 
   try {
-    // تشخيص: أظهر ما سيُرسَل
-    showToast('🔄 جارٍ الحفظ... id=' + id.substring(0,8) + ' role=' + role)
+    // الحفظ — جرّب update أولاً ثم upsert كاحتياطي
+    let err = null
+    const dataWithId = { ...updateData, id }
 
-    // تحقق أن السجل موجود أولاً
-    const { data: checkRow } = await db.from('org_members').select('id,role').eq('id', id).single()
-    if (!checkRow) {
-      showToast('❌ السجل غير موجود في Supabase — id: ' + id, true); return
-    }
+    // المحاولة 1: update مباشر
+    const res1 = await db.from('org_members').update(updateData).eq('id', id)
+    err = res1.error
 
-    // محاولة الحفظ الكاملة
-    let res = await db.from('org_members').update(updateData).eq('id', id)
-    let err = res.error
-
-    // إذا فشل بسبب عمود غير موجود — احفظ بدون الحقول الجديدة
+    // إذا فشل بسبب عمود غير موجود — احذف الحقول الجديدة
     if (err && (err.message?.includes('supervisor_id') || err.message?.includes('allowed_pages') || err.message?.includes('column'))) {
+      delete dataWithId.supervisor_id
+      delete dataWithId.allowed_pages
       const slim = { ...updateData }
       delete slim.supervisor_id
       delete slim.allowed_pages
-      res = await db.from('org_members').update(slim).eq('id', id)
-      err = res.error
+      const res2 = await db.from('org_members').update(slim).eq('id', id)
+      err = res2.error
       if (!err) {
         try { await localDB.org_members.update(id, { allowed_pages: allowedPages }) } catch(e2) {}
       }
+    }
+
+    // إذا لا يزال يفشل — جرّب upsert
+    if (err) {
+      const res3 = await db.from('org_members').upsert(dataWithId, { onConflict: 'id' })
+      if (!res3.error) err = null
+      else err = res3.error
     }
 
     if (err) { showToast('❌ ' + err.message, true); return }
