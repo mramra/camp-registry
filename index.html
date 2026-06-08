@@ -2325,19 +2325,23 @@ async function impersonateUser(memberId) {
     showToast('❌ هذه الميزة لملك المنصة فقط', true); return
   }
 
-  // جلب المستخدم — أولاً من Supabase (أحدث) ثم localDB
+  // جلب المستخدم — Supabase أولاً لضمان أحدث allowed_pages
   let member = null
-  const _on = await checkRealConnection()
-  if (_on) {
-    const { data } = await db.from('org_members').select('*').eq('id', memberId).single()
-    member = data
-  }
-  if (!member) member = await localDB.org_members.get(memberId)
-  if (!member) { showToast('❌ لم يتم العثور على المستخدم (ID: ' + memberId + ')', true); return }
-  
-  // تأكد أن الـ ID صحيح
-  if (member.id !== memberId) {
-    showToast('⚠️ تحذير: ID غير متطابق — ' + member.full_name + ' vs ' + memberId, true); return
+  try {
+    const { data } = await db.from('org_members').select('*').eq('id', memberId).maybeSingle()
+    if (data) member = data
+  } catch(e) {}
+
+  // fallback من localDB
+  const localMember = await localDB.org_members.get(memberId).catch(()=>null)
+  if (!member) member = localMember
+
+  if (!member) { showToast('❌ لم يتم العثور على المستخدم', true); return }
+
+  // تأكد من allowed_pages — إذا Supabase أرجع {} جرّب النسخة المحلية
+  const ap = member.allowed_pages
+  if ((!ap || ap === '{}' || ap === '[]') && localMember?.allowed_pages && localMember.allowed_pages !== '{}' && localMember.allowed_pages !== '[]') {
+    member = { ...member, allowed_pages: localMember.allowed_pages }
   }
 
   _impersonating = { original: currentMember }
@@ -7062,7 +7066,11 @@ async function editUser(id) {
 
   const allMems = await localDB.org_members.where('org_id').equals(ORG_ID).toArray()
   const superAdmins = allMems.filter(m => m.role === 'super_admin' && m.is_active !== false)
-  const isPO = currentMember?.role === 'platform_owner' || _impersonating?.original?.role === 'platform_owner'
+  // isPO: صحيح فقط إذا كان PO يعدل شخصاً آخر — ليس عند تعديل نفسه أو الانتحال
+  const _editingSelf = (id === currentMember?.id)
+  const isPO = _editingSelf
+    ? (currentMember?.role === 'platform_owner')
+    : (currentMember?.role === 'platform_owner' || _impersonating?.original?.role === 'platform_owner')
 
   let supervisorOpts = '<option value="">-- بدون مدير --</option>'
   superAdmins.forEach(a => {
@@ -7179,7 +7187,11 @@ async function saveEditUser(id) {
   if (!fullName) { showToast('يرجى إدخال الاسم الكامل', true); return }
   if (!role)     { showToast('خطأ: لم يتم تحديد الدور', true); return }
 
-  const _isPOsave = currentMember?.role === 'platform_owner' || _impersonating?.original?.role === 'platform_owner'
+  // نفس منطق isPO في editUser — editingSelf لا يرث صلاحيات PO
+  const _editingSelf2 = (id === currentMember?.id)
+  const _isPOsave = _editingSelf2
+    ? (currentMember?.role === 'platform_owner')
+    : (currentMember?.role === 'platform_owner' || _impersonating?.original?.role === 'platform_owner')
   if (!_isPOsave && currentMember?.role === 'camp_delegate' && !['assistant','camp_delegate'].includes(role)) {
     showToast('⛔ غير مسموح بتغيير الدور', true); return
   }
