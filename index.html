@@ -7218,16 +7218,26 @@ async function saveEditUser(id) {
   try {
     let err = null
 
-    // استخدم upsert بدلاً من update — يتجاوز بعض مشاكل RLS
-    const upsertData = { ...updateData, id: id, org_id: ORG_ID }
-    const res1 = await db.from('org_members').upsert(upsertData, {
-      onConflict: 'id',
-      ignoreDuplicates: false
+    // أولاً: RPC function (SECURITY DEFINER — تتجاوز RLS نهائياً)
+    const rpcRes = await db.rpc('update_org_member', {
+      p_id:           id,
+      p_full_name:    updateData.full_name,
+      p_phone:        updateData.phone   || '',
+      p_role:         updateData.role,
+      p_camp_id:      updateData.camp_id || null,
+      p_can_add:      updateData.can_add,
+      p_can_edit:     updateData.can_edit,
+      p_can_delete:   updateData.can_delete,
+      p_can_export:   updateData.can_export,
+      p_can_import:   updateData.can_import,
+      p_supervisor_id: updateData.supervisor_id || null,
+      p_allowed_pages: updateData.allowed_pages  || '{}',
     })
-    err = res1.error
+    err = rpcRes.error
 
-    // إذا فشل upsert — جرّب update العادي
-    if (err) {
+    // إذا لم تُنشأ الدالة — fallback للـ update المباشر
+    if (err && (err.code === 'PGRST202' || err.message?.includes('update_org_member') || err.message?.includes('function'))) {
+      err = null
       const res2 = await db.from('org_members').update(updateData).eq('id', id)
       err = res2.error
     }
