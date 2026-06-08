@@ -7303,7 +7303,7 @@ async function saveEditUser(id) {
     await loadUsers()
     if (id === currentMember?.id || (_impersonating && id === currentMember?.id)) {
       const upd = await localDB.org_members.get(id)
-      if (upd) { currentMember = upd; buildNav() }
+      if (upd) { currentMember = upd; buildSidebar() }
     }
   } catch(e) {
     showToast('❌ خطأ: ' + e.message, true)
@@ -7439,6 +7439,14 @@ function editCamp(id) {
   document.getElementById('campStatus').value   = camp.status||'active'
   document.getElementById('campLat').value      = camp.latitude||''
   document.getElementById('campLng').value      = camp.longitude||''
+  // ← مهم: استعادة نوع المخيم وأبيه عند التعديل
+  const typeEl2 = document.getElementById('campType')
+  if (typeEl2) {
+    typeEl2.value = camp.camp_type || 'main'
+    toggleParentCampField()
+  }
+  const parentEl = document.getElementById('parentCampId')
+  if (parentEl && camp.parent_camp_id) parentEl.value = camp.parent_camp_id
   document.getElementById('campFormError').style.display='none'
   document.getElementById('campForm').style.display='block'
   window.scrollTo(0,0)
@@ -7519,7 +7527,7 @@ async function saveCamp() {
     latitude:  parseFloat(document.getElementById('campLat').value)||null,
     longitude: parseFloat(document.getElementById('campLng').value)||null,
     camp_type:      _campType,
-    parent_camp_id: _parentCampId,
+    parent_camp_id: _campType === 'branch' ? (_parentCampId || (editingCampId ? allCamps.find(x=>x.id===editingCampId)?.parent_camp_id : null)) : null,
     manager_id: currentMember.role === 'super_admin' ? currentMember.id : null,
   }
 
