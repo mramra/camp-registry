@@ -7216,17 +7216,21 @@ async function saveEditUser(id) {
   if (['assistant','camp_delegate'].includes(role)) updateData.allowed_pages = allowedPages
 
   try {
-    // تشخيص: تأكد من الـ ID أولاً
-    const { data: checkExist } = await db.from('org_members')
-      .select('id,full_name,role').eq('id', id).maybeSingle()
-    if (!checkExist) {
-      showToast('⚠️ السجل غير موجود في Supabase! ID: ' + id.substring(0,8) + '... — قد تكون البيانات من كاش قديم', true)
-      return
-    }
-
     let err = null
-    const res1 = await db.from('org_members').update(updateData).eq('id', id)
+
+    // استخدم upsert بدلاً من update — يتجاوز بعض مشاكل RLS
+    const upsertData = { ...updateData, id: id, org_id: ORG_ID }
+    const res1 = await db.from('org_members').upsert(upsertData, {
+      onConflict: 'id',
+      ignoreDuplicates: false
+    })
     err = res1.error
+
+    // إذا فشل upsert — جرّب update العادي
+    if (err) {
+      const res2 = await db.from('org_members').update(updateData).eq('id', id)
+      err = res2.error
+    }
 
     // إذا فشل بسبب عمود غير موجود — احذف الحقول الجديدة
     if (err && (err.message?.includes('supervisor_id') || err.message?.includes('allowed_pages') || err.message?.includes('column'))) {
