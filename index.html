@@ -2325,23 +2325,23 @@ async function impersonateUser(memberId) {
     showToast('❌ هذه الميزة لملك المنصة فقط', true); return
   }
 
-  // جلب المستخدم — Supabase أولاً لضمان أحدث allowed_pages
+  // جلب المستخدم — Supabase أولاً
   let member = null
   try {
     const { data } = await db.from('org_members').select('*').eq('id', memberId).maybeSingle()
-    if (data) member = data
+    if (data?.id) member = data
   } catch(e) {}
 
-  // fallback من localDB
   const localMember = await localDB.org_members.get(memberId).catch(()=>null)
   if (!member) member = localMember
-
   if (!member) { showToast('❌ لم يتم العثور على المستخدم', true); return }
 
-  // تأكد من allowed_pages — إذا Supabase أرجع {} جرّب النسخة المحلية
-  const ap = member.allowed_pages
-  if ((!ap || ap === '{}' || ap === '[]') && localMember?.allowed_pages && localMember.allowed_pages !== '{}' && localMember.allowed_pages !== '[]') {
-    member = { ...member, allowed_pages: localMember.allowed_pages }
+  // دمج allowed_pages — خذ أفضل قيمة متاحة
+  const srvAP  = member.allowed_pages
+  const locAP  = localMember?.allowed_pages
+  const hasData = (v) => v && v !== '{}' && v !== '[]' && v !== 'null'
+  if (!hasData(srvAP) && hasData(locAP)) {
+    member = { ...member, allowed_pages: locAP }
   }
 
   _impersonating = { original: currentMember }
@@ -6738,6 +6738,20 @@ async function safeBulkPutUsers(users) {
   if (!window._dbOffline) try { await localDB.org_members.bulkPut(merged) } catch(e) {}
 }
 
+
+function _filterUsersForRole(users, member) {
+  if (!member || member.role === 'platform_owner') return users
+  const myUid  = member.user_id
+  const myId   = member.id
+  const myCamp = member.camp_id
+  return users.filter(u =>
+    u.id === myId ||
+    (myUid  && u.created_by === myUid) ||
+    (myId   && u.created_by === myId) ||
+    (myId   && u.supervisor_id === myId) ||
+    (myCamp && u.camp_id === myCamp)
+  )
+}
 async function forceLoadUsers() {
   const container = document.getElementById('usersList')
   if (!container) return
@@ -6746,22 +6760,40 @@ async function forceLoadUsers() {
     // 1. تأكد من تحميل المخيمات أولاً
     if (!allCamps.length) {
       try { await loadCampsFromServer() } catch(e) {
-        // حاول من localDB
         const lc = await localDB.camps.where('org_id').equals(ORG_ID).toArray().catch(()=>[])
         if (lc.length) allCamps = lc
       }
     }
 
-    // 2. جلب المستخدمين
-    const { data: users, error } = await db.from('org_members')
-      .select('*').eq('org_id', ORG_ID)
-      .order('created_at', { ascending: false })
+    // 2. الانتحال: Supabase لا يعرف الانتحال — استخدم localDB مع الفلتر
+    if (_impersonating) {
+      let local = await localDB.org_members.where('org_id').equals(ORG_ID).toArray().catch(()=>[])
+      local = _filterUsersForRole(local, currentMember)
+      renderUsersList(local, container)
+      showToast('👁️ عرض كـ ' + (currentMember?.full_name || ''))
+      return
+    }
+
+    // 3. جلب المستخدمين من Supabase (المستخدم الحقيقي)
+    let uQ = db.from('org_members').select('*').eq('org_id', ORG_ID)
+    if (currentMember?.role !== 'platform_owner') {
+      const myUid  = currentMember?.user_id
+      const myId   = currentMember?.id
+      const myCamp = currentMember?.camp_id
+      const parts  = []
+      if (myUid)  parts.push('created_by.eq.' + myUid)
+      if (myId)   parts.push('id.eq.' + myId)
+      if (myId)   parts.push('supervisor_id.eq.' + myId)
+      if (myCamp) parts.push('camp_id.eq.' + myCamp)
+      if (parts.length) uQ = uQ.or(parts.join(','))
+    }
+    const { data: users, error } = await uQ.order('created_at', { ascending: false })
 
     if (error) {
       showToast('❌ ' + error.message, true)
       // fallback محلي
       const local = await localDB.org_members.where('org_id').equals(ORG_ID).toArray().catch(()=>[])
-      if (local.length) { renderUsersList(local, container); showToast('📴 من الكاش المحلي') }
+      if (local.length) { renderUsersList(_filterUsersForRole(local, currentMember), container); showToast('📴 من الكاش المحلي') }
       else container.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>' + esc(error.message) + '</div>'
       return
     }
@@ -6824,10 +6856,7 @@ async function loadUsers() {
         // جرّب بدون فلتر org_id (بيانات قديمة)
         local = await localDB.org_members.toArray().catch(()=>[])
       }
-      const myUid = currentMember.user_id || currentUser?.id
-      const filtered = currentMember.role === 'platform_owner'
-        ? local  // ملك المنصة يرى الجميع
-        : local.filter(u => u.created_by === myUid || u.created_by === currentMember.id || u.id === currentMember.id)
+      const filtered = _filterUsersForRole(local, currentMember)
       if (filtered.length) {
         if (!allCamps.length) await loadCampsFromServer()
         renderUsersList(filtered, container); return true
@@ -6850,6 +6879,8 @@ async function loadUsers() {
     // مناديب المخيمات التي يديرها هذا المدير (manager_id = currentMember.id)
     const myCampIds = allCamps.filter(c => c.manager_id === currentMember.id).map(c => c.id)
     let orFilter = `created_by.eq.${myUid},created_by.eq.${currentMember.id},id.eq.${currentMember.id}`
+    if (currentMember.id)   orFilter += `,supervisor_id.eq.${currentMember.id}`
+    if (currentMember.camp_id) orFilter += `,camp_id.eq.${currentMember.camp_id}`
     if (myCampIds.length) {
       myCampIds.forEach(cid => { orFilter += `,camp_id.eq.${cid}` })
     }
